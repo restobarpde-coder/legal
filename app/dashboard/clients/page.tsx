@@ -1,146 +1,130 @@
-"use client"
-
-import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
-import { DashboardLayout } from "@/components/layout/dashboard-layout"
-import { ClientsTable } from "@/components/clients/clients-table"
+import { redirect } from "next/navigation"
+import { createClient } from "@/lib/supabase/server"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Plus, Search } from "lucide-react"
-import { createClient } from "@/lib/supabase/client"
+import Link from "next/link"
+import { ClientsTable } from "@/components/clients/clients-table"
+import { ClientsSearch } from "@/components/clients/clients-search"
 
-interface Client {
-  id: string
-  name: string
-  email: string
-  phone: string
-  company: string
-  status: string
-  created_at: string
-}
+export default async function ClientsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ search?: string; type?: string }>
+}) {
+  const supabase = await createClient()
+  const params = await searchParams
 
-export default function ClientsPage() {
-  const router = useRouter()
-  const [clients, setClients] = useState<Client[]>([])
-  const [loading, setLoading] = useState(true)
-  const [searchTerm, setSearchTerm] = useState("")
-  const [statusFilter, setStatusFilter] = useState("all")
-  const [user, setUser] = useState<any>(null)
-  const [profile, setProfile] = useState<any>(null)
-
-  useEffect(() => {
-    const initializeAuth = async () => {
-      const supabase = createClient()
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-
-      if (!user) {
-        router.push("/auth/login")
-        return
-      }
-
-      setUser(user)
-
-      // Get user profile
-      const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).single()
-
-      setProfile(profile)
-    }
-
-    initializeAuth()
-  }, [router])
-
-  const fetchClients = async () => {
-    try {
-      const params = new URLSearchParams()
-      if (searchTerm) params.append("search", searchTerm)
-      if (statusFilter !== "all") params.append("status", statusFilter)
-
-      const response = await fetch(`/api/clients?${params}`)
-      if (!response.ok) throw new Error("Failed to fetch clients")
-
-      const data = await response.json()
-      setClients(data)
-    } catch (error) {
-      console.error("Error fetching clients:", error)
-    } finally {
-      setLoading(false)
-    }
+  const { data, error } = await supabase.auth.getUser()
+  if (error || !data?.user) {
+    redirect("/auth/login")
   }
 
-  useEffect(() => {
-    if (user) {
-      fetchClients()
-    }
-  }, [searchTerm, statusFilter, user])
+  // Get user profile to check permissions
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("organization_id, role")
+    .eq("id", data.user.id)
+    .single()
 
-  const handleSearch = (value: string) => {
-    setSearchTerm(value)
+  if (!profile) {
+    redirect("/auth/login")
   }
 
-  const handleStatusFilter = (value: string) => {
-    setStatusFilter(value)
+  // Build query for clients
+  let query = supabase
+    .from("clients")
+    .select("*")
+    .eq("organization_id", profile.organization_id)
+    .eq("is_active", true)
+    .order("created_at", { ascending: false })
+
+  // Add search filter
+  if (params.search) {
+    query = query.or(
+      `first_name.ilike.%${params.search}%,last_name.ilike.%${params.search}%,email.ilike.%${params.search}%,company_name.ilike.%${params.search}%`,
+    )
   }
 
-  if (!user) {
-    return <div>Loading...</div>
+  // Add type filter
+  if (params.type) {
+    query = query.eq("client_type", params.type)
   }
+
+  const { data: clients, error: clientsError } = await query
+
+  if (clientsError) {
+    console.error("Error fetching clients:", clientsError)
+  }
+
+  const canManageClients = ["admin", "lawyer", "assistant"].includes(profile.role)
 
   return (
-    <DashboardLayout user={user} profile={profile}>
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-balance">Clients</h1>
-            <p className="text-muted-foreground">Manage your client relationships</p>
-          </div>
-          <Button onClick={() => router.push("/dashboard/clients/new")}>
-            <Plus className="mr-2 h-4 w-4" />
-            New Client
+    <div className="container mx-auto p-6">
+      <div className="flex justify-between items-center mb-8">
+        <div>
+          <h1 className="text-3xl font-bold">Clientes</h1>
+          <p className="text-muted-foreground">Gestiona la información de tus clientes</p>
+        </div>
+        {canManageClients && (
+          <Button asChild>
+            <Link href="/dashboard/clients/new">Nuevo Cliente</Link>
           </Button>
+        )}
+      </div>
+
+      <div className="space-y-6">
+        <ClientsSearch />
+
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Clientes</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{clients?.length || 0}</div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Personas Físicas</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {clients?.filter((c) => c.client_type === "individual").length || 0}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Empresas</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {clients?.filter((c) => c.client_type === "company").length || 0}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Nuevos Este Mes</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {clients?.filter((c) => {
+                  const created = new Date(c.created_at)
+                  const now = new Date()
+                  return created.getMonth() === now.getMonth() && created.getFullYear() === now.getFullYear()
+                }).length || 0}
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Client Directory</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-col sm:flex-row gap-4 mb-6">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-                <Input
-                  placeholder="Search clients..."
-                  value={searchTerm}
-                  onChange={(e) => handleSearch(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-              <Select value={statusFilter} onValueChange={handleStatusFilter}>
-                <SelectTrigger className="w-full sm:w-[180px]">
-                  <SelectValue placeholder="Filter by status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Statuses</SelectItem>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
-                  <SelectItem value="archived">Archived</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {loading ? (
-              <div className="text-center py-8">
-                <p className="text-muted-foreground">Loading clients...</p>
-              </div>
-            ) : (
-              <ClientsTable clients={clients} onClientDeleted={fetchClients} />
-            )}
-          </CardContent>
-        </Card>
+        <ClientsTable clients={clients || []} canManage={canManageClients} />
       </div>
-    </DashboardLayout>
+    </div>
   )
 }

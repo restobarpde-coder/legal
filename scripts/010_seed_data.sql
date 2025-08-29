@@ -1,48 +1,163 @@
--- Seed data for LegalStudio
--- Insert sample profiles (lawyers and staff)
-INSERT INTO profiles (id, first_name, last_name, email, role, phone, created_at, updated_at) VALUES
-  ('00000000-0000-0000-0000-000000000001', 'John', 'Smith', 'john.smith@legalstudio.com', 'partner', '+1-555-0101', NOW(), NOW()),
-  ('00000000-0000-0000-0000-000000000002', 'Sarah', 'Johnson', 'sarah.johnson@legalstudio.com', 'associate', '+1-555-0102', NOW(), NOW()),
-  ('00000000-0000-0000-0000-000000000003', 'Michael', 'Brown', 'michael.brown@legalstudio.com', 'paralegal', '+1-555-0103', NOW(), NOW()),
-  ('00000000-0000-0000-0000-000000000004', 'Emily', 'Davis', 'emily.davis@legalstudio.com', 'admin', '+1-555-0104', NOW(), NOW());
+-- Insert demo organization
+INSERT INTO public.organizations (id, name, description, address, phone, email, website)
+VALUES (
+  '550e8400-e29b-41d4-a716-446655440000',
+  'Estudio Jurídico Demo',
+  'Estudio jurídico especializado en derecho civil y comercial',
+  'Av. Corrientes 1234, CABA, Argentina',
+  '+54 11 4567-8900',
+  'contacto@estudiodemo.com.ar',
+  'https://estudiodemo.com.ar'
+) ON CONFLICT (id) DO NOTHING;
 
--- Insert sample clients
-INSERT INTO clients (id, name, email, phone, address, client_type, created_by, created_at, updated_at) VALUES
-  ('10000000-0000-0000-0000-000000000001', 'Acme Corporation', 'legal@acme.com', '+1-555-1001', '123 Business Ave, New York, NY 10001', 'corporate', '00000000-0000-0000-0000-000000000001', NOW(), NOW()),
-  ('10000000-0000-0000-0000-000000000002', 'Jane Doe', 'jane.doe@email.com', '+1-555-1002', '456 Residential St, Los Angeles, CA 90001', 'individual', '00000000-0000-0000-0000-000000000001', NOW(), NOW()),
-  ('10000000-0000-0000-0000-000000000003', 'TechStart Inc.', 'contact@techstart.com', '+1-555-1003', '789 Innovation Blvd, San Francisco, CA 94105', 'corporate', '00000000-0000-0000-0000-000000000002', NOW(), NOW()),
-  ('10000000-0000-0000-0000-000000000004', 'Robert Wilson', 'robert.wilson@email.com', '+1-555-1004', '321 Main St, Chicago, IL 60601', 'individual', '00000000-0000-0000-0000-000000000002', NOW(), NOW());
+-- Insert demo clients
+INSERT INTO public.clients (id, organization_id, first_name, last_name, email, phone, address, identification_number, client_type, notes)
+VALUES 
+  (
+    '660e8400-e29b-41d4-a716-446655440001',
+    '550e8400-e29b-41d4-a716-446655440000',
+    'Juan Carlos',
+    'Pérez',
+    'juan.perez@email.com',
+    '+54 11 1234-5678',
+    'Av. Santa Fe 2345, CABA',
+    '12345678',
+    'individual',
+    'Cliente desde 2020, casos de derecho civil'
+  ),
+  (
+    '660e8400-e29b-41d4-a716-446655440002',
+    '550e8400-e29b-41d4-a716-446655440000',
+    'María Elena',
+    'González',
+    'maria.gonzalez@email.com',
+    '+54 11 2345-6789',
+    'Av. Rivadavia 3456, CABA',
+    '23456789',
+    'individual',
+    'Caso de divorcio en proceso'
+  ),
+  (
+    '660e8400-e29b-41d4-a716-446655440003',
+    '550e8400-e29b-41d4-a716-446655440000',
+    'Empresa',
+    'Tech Solutions SRL',
+    'info@techsolutions.com.ar',
+    '+54 11 3456-7890',
+    'Av. Córdoba 4567, CABA',
+    '30-12345678-9',
+    'company',
+    'Empresa de tecnología, contratos comerciales'
+  )
+ON CONFLICT (id) DO NOTHING;
 
--- Insert sample matters
-INSERT INTO matters (id, title, matter_number, description, client_id, responsible_lawyer, status, priority, created_at, updated_at) VALUES
-  ('20000000-0000-0000-0000-000000000001', 'Contract Negotiation', 'MAT-2024-001', 'Negotiating service agreement with vendor', '10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001', 'active', 'high', NOW(), NOW()),
-  ('20000000-0000-0000-0000-000000000002', 'Personal Injury Claim', 'MAT-2024-002', 'Auto accident personal injury case', '10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000001', 'active', 'medium', NOW(), NOW()),
-  ('20000000-0000-0000-0000-000000000003', 'Intellectual Property Filing', 'MAT-2024-003', 'Patent application for new technology', '10000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000002', 'active', 'high', NOW(), NOW()),
-  ('20000000-0000-0000-0000-000000000004', 'Estate Planning', 'MAT-2024-004', 'Will and trust preparation', '10000000-0000-0000-0000-000000000004', '00000000-0000-0000-0000-000000000002', 'pending', 'low', NOW(), NOW());
+-- Insert demo legal matters
+INSERT INTO public.matters (id, organization_id, client_id, title, description, matter_type, status, priority, start_date, estimated_hours, hourly_rate)
+VALUES 
+  (
+    '770e8400-e29b-41d4-a716-446655440001',
+    '550e8400-e29b-41d4-a716-446655440000',
+    '660e8400-e29b-41d4-a716-446655440001',
+    'Reclamo de Daños y Perjuicios',
+    'Reclamo por accidente de tránsito con lesiones menores',
+    'Civil',
+    'active',
+    'medium',
+    '2024-01-15',
+    40,
+    15000.00
+  ),
+  (
+    '770e8400-e29b-41d4-a716-446655440002',
+    '550e8400-e29b-41d4-a716-446655440000',
+    '660e8400-e29b-41d4-a716-446655440002',
+    'Divorcio Contencioso',
+    'Proceso de divorcio con división de bienes',
+    'Familia',
+    'active',
+    'high',
+    '2024-02-01',
+    60,
+    18000.00
+  ),
+  (
+    '770e8400-e29b-41d4-a716-446655440003',
+    '550e8400-e29b-41d4-a716-446655440000',
+    '660e8400-e29b-41d4-a716-446655440003',
+    'Revisión de Contratos Comerciales',
+    'Revisión y redacción de contratos de servicios',
+    'Comercial',
+    'pending',
+    'medium',
+    '2024-03-01',
+    20,
+    20000.00
+  )
+ON CONFLICT (id) DO NOTHING;
 
--- Insert sample tasks
-INSERT INTO tasks (id, title, description, matter_id, assigned_to, status, priority, due_date, estimated_hours, created_at, updated_at) VALUES
-  ('30000000-0000-0000-0000-000000000001', 'Review Contract Terms', 'Review and analyze contract terms for negotiation', '20000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001', 'in_progress', 'high', NOW() + INTERVAL '3 days', 4.0, NOW(), NOW()),
-  ('30000000-0000-0000-0000-000000000002', 'Prepare Discovery Documents', 'Prepare initial discovery documents for personal injury case', '20000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000003', 'pending', 'medium', NOW() + INTERVAL '1 week', 6.0, NOW(), NOW()),
-  ('30000000-0000-0000-0000-000000000003', 'Patent Research', 'Conduct prior art research for patent application', '20000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000002', 'pending', 'high', NOW() + INTERVAL '5 days', 8.0, NOW(), NOW()),
-  ('30000000-0000-0000-0000-000000000004', 'Schedule Client Meeting', 'Schedule initial consultation for estate planning', '20000000-0000-0000-0000-000000000004', '00000000-0000-0000-0000-000000000004', 'completed', 'low', NOW() - INTERVAL '1 day', 0.5, NOW(), NOW());
+-- Insert demo tasks
+INSERT INTO public.tasks (id, organization_id, matter_id, title, description, status, priority, due_date, estimated_hours)
+VALUES 
+  (
+    '880e8400-e29b-41d4-a716-446655440001',
+    '550e8400-e29b-41d4-a716-446655440000',
+    '770e8400-e29b-41d4-a716-446655440001',
+    'Recopilar documentación médica',
+    'Solicitar informes médicos del accidente',
+    'pending',
+    'high',
+    '2024-12-31 18:00:00+00',
+    4
+  ),
+  (
+    '880e8400-e29b-41d4-a716-446655440002',
+    '550e8400-e29b-41d4-a716-446655440000',
+    '770e8400-e29b-41d4-a716-446655440002',
+    'Preparar documentos de divorcio',
+    'Redactar demanda de divorcio',
+    'in_progress',
+    'high',
+    '2024-12-30 15:00:00+00',
+    8
+  ),
+  (
+    '880e8400-e29b-41d4-a716-446655440003',
+    '550e8400-e29b-41d4-a716-446655440000',
+    '770e8400-e29b-41d4-a716-446655440003',
+    'Revisar cláusulas contractuales',
+    'Analizar términos y condiciones propuestos',
+    'pending',
+    'medium',
+    '2025-01-15 12:00:00+00',
+    6
+  )
+ON CONFLICT (id) DO NOTHING;
 
--- Insert sample calendar events
-INSERT INTO calendar_events (id, title, description, start_time, end_time, event_type, all_day, location, matter_id, client_id, attendees, created_by, created_at, updated_at) VALUES
-  ('40000000-0000-0000-0000-000000000001', 'Contract Review Meeting', 'Meeting to discuss contract terms with client', NOW() + INTERVAL '2 days', NOW() + INTERVAL '2 days' + INTERVAL '1 hour', 'meeting', false, 'Conference Room A', '20000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', ARRAY['legal@acme.com'], '00000000-0000-0000-0000-000000000001', NOW(), NOW()),
-  ('40000000-0000-0000-0000-000000000002', 'Court Hearing', 'Initial hearing for personal injury case', NOW() + INTERVAL '1 week', NOW() + INTERVAL '1 week' + INTERVAL '2 hours', 'court', false, 'Superior Court Room 3', '20000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000002', ARRAY['jane.doe@email.com'], '00000000-0000-0000-0000-000000000001', NOW(), NOW()),
-  ('40000000-0000-0000-0000-000000000003', 'Patent Filing Deadline', 'Deadline to file patent application', NOW() + INTERVAL '10 days', NOW() + INTERVAL '10 days', 'deadline', true, '', '20000000-0000-0000-0000-000000000003', '10000000-0000-0000-0000-000000000003', ARRAY[], '00000000-0000-0000-0000-000000000002', NOW(), NOW()),
-  ('40000000-0000-0000-0000-000000000004', 'Estate Planning Consultation', 'Initial consultation for will and trust', NOW() + INTERVAL '3 days', NOW() + INTERVAL '3 days' + INTERVAL '90 minutes', 'consultation', false, 'Office', '20000000-0000-0000-0000-000000000004', '10000000-0000-0000-0000-000000000004', ARRAY['robert.wilson@email.com'], '00000000-0000-0000-0000-000000000002', NOW(), NOW());
-
--- Insert sample time entries
-INSERT INTO time_entries (id, matter_id, user_id, description, hours, billable_rate, date, is_billable, created_at, updated_at) VALUES
-  ('50000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001', 'Contract review and analysis', 3.5, 350.00, CURRENT_DATE - INTERVAL '1 day', true, NOW(), NOW()),
-  ('50000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000001', 'Client consultation and case assessment', 2.0, 350.00, CURRENT_DATE - INTERVAL '2 days', true, NOW(), NOW()),
-  ('50000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000002', 'Patent research and documentation', 4.0, 275.00, CURRENT_DATE - INTERVAL '1 day', true, NOW(), NOW()),
-  ('50000000-0000-0000-0000-000000000004', '20000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000003', 'Document preparation and filing', 1.5, 125.00, CURRENT_DATE, true, NOW(), NOW());
-
--- Insert sample invoices
-INSERT INTO invoices (id, client_id, matter_id, invoice_number, amount, status, due_date, created_by, created_at, updated_at) VALUES
-  ('60000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', 'INV-2024-001', 1225.00, 'sent', CURRENT_DATE + INTERVAL '30 days', '00000000-0000-0000-0000-000000000001', NOW(), NOW()),
-  ('60000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000002', 'INV-2024-002', 887.50, 'draft', CURRENT_DATE + INTERVAL '30 days', '00000000-0000-0000-0000-000000000001', NOW(), NOW()),
-  ('60000000-0000-0000-0000-000000000003', '10000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000003', 'INV-2024-003', 1100.00, 'paid', CURRENT_DATE - INTERVAL '5 days', '00000000-0000-0000-0000-000000000002', NOW(), NOW());
+-- Insert demo events
+INSERT INTO public.events (id, organization_id, matter_id, client_id, title, description, event_type, start_time, end_time, location)
+VALUES 
+  (
+    '990e8400-e29b-41d4-a716-446655440001',
+    '550e8400-e29b-41d4-a716-446655440000',
+    '770e8400-e29b-41d4-a716-446655440001',
+    '660e8400-e29b-41d4-a716-446655440001',
+    'Reunión con cliente - Caso Pérez',
+    'Revisión del estado del caso y próximos pasos',
+    'meeting',
+    '2024-12-30 14:00:00+00',
+    '2024-12-30 15:30:00+00',
+    'Oficina - Sala de reuniones'
+  ),
+  (
+    '990e8400-e29b-41d4-a716-446655440002',
+    '550e8400-e29b-41d4-a716-446655440000',
+    '770e8400-e29b-41d4-a716-446655440002',
+    '660e8400-e29b-41d4-a716-446655440002',
+    'Audiencia de divorcio',
+    'Primera audiencia en juzgado de familia',
+    'hearing',
+    '2025-01-10 10:00:00+00',
+    '2025-01-10 12:00:00+00',
+    'Juzgado de Familia N° 3'
+  )
+ON CONFLICT (id) DO NOTHING;

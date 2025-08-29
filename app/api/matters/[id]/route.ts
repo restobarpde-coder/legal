@@ -2,109 +2,95 @@ import { createClient } from "@/lib/supabase/server"
 import { type NextRequest, NextResponse } from "next/server"
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const { id } = await params
-    const supabase = await createClient()
+  const { id } = await params
+  const supabase = await createClient()
 
-    // Check authentication
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const { data, error } = await supabase
-      .from("matters")
-      .select(`
-        *,
-        clients:client_id (
-          id,
-          name,
-          email,
-          phone,
-          company
-        ),
-        profiles:assigned_lawyer (
-          id,
-          first_name,
-          last_name,
-          email
-        )
-      `)
-      .eq("id", id)
-      .single()
-
-    if (error) {
-      if (error.code === "PGRST116") {
-        return NextResponse.json({ error: "Matter not found" }, { status: 404 })
-      }
-      return NextResponse.json({ error: error.message }, { status: 500 })
-    }
-
-    return NextResponse.json(data)
-  } catch (error) {
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+  // Check authentication
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser()
+  if (authError || !user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
+
+  // Get user's organization
+  const { data: profile } = await supabase.from("profiles").select("organization_id").eq("id", user.id).single()
+
+  if (!profile) {
+    return NextResponse.json({ error: "Profile not found" }, { status: 404 })
+  }
+
+  const { data: matter, error } = await supabase
+    .from("matters")
+    .select(`
+      *,
+      clients (
+        id,
+        first_name,
+        last_name,
+        company_name,
+        client_type,
+        email,
+        phone
+      ),
+      profiles!matters_assigned_lawyer_fkey (
+        first_name,
+        last_name,
+        email
+      )
+    `)
+    .eq("id", id)
+    .eq("organization_id", profile.organization_id)
+    .single()
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  if (!matter) {
+    return NextResponse.json({ error: "Matter not found" }, { status: 404 })
+  }
+
+  return NextResponse.json(matter)
 }
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  const supabase = await createClient()
+
+  // Check authentication
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser()
+  if (authError || !user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  // Get user's organization and role
+  const { data: profile } = await supabase.from("profiles").select("organization_id, role").eq("id", user.id).single()
+
+  if (!profile || !["admin", "lawyer", "assistant"].includes(profile.role)) {
+    return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })
+  }
+
   try {
-    const { id } = await params
-    const supabase = await createClient()
-
-    // Check authentication
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
     const body = await request.json()
-    const {
-      title,
-      description,
-      status,
-      priority,
-      practice_area,
-      assigned_lawyer,
-      hourly_rate,
-      budget,
-      start_date,
-      end_date,
-    } = body
 
-    const updateData: any = { updated_at: new Date().toISOString() }
-    if (title !== undefined) updateData.title = title
-    if (description !== undefined) updateData.description = description
-    if (status !== undefined) updateData.status = status
-    if (priority !== undefined) updateData.priority = priority
-    if (practice_area !== undefined) updateData.practice_area = practice_area
-    if (assigned_lawyer !== undefined) updateData.assigned_lawyer = assigned_lawyer
-    if (hourly_rate !== undefined) updateData.hourly_rate = hourly_rate
-    if (budget !== undefined) updateData.budget = budget
-    if (start_date !== undefined) updateData.start_date = start_date
-    if (end_date !== undefined) updateData.end_date = end_date
-
-    const { data, error } = await supabase
+    const { data: matter, error } = await supabase
       .from("matters")
-      .update(updateData)
+      .update(body)
       .eq("id", id)
+      .eq("organization_id", profile.organization_id)
       .select(`
         *,
-        clients:client_id (
-          id,
-          name,
-          email
-        ),
-        profiles:assigned_lawyer (
+        clients (
           id,
           first_name,
           last_name,
-          email
+          company_name,
+          client_type
         )
       `)
       .single()
@@ -113,34 +99,52 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    return NextResponse.json(data)
+    if (!matter) {
+      return NextResponse.json({ error: "Matter not found" }, { status: 404 })
+    }
+
+    return NextResponse.json(matter)
   } catch (error) {
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 })
   }
 }
 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const { id } = await params
-    const supabase = await createClient()
+  const { id } = await params
+  const supabase = await createClient()
 
-    // Check authentication
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const { error } = await supabase.from("matters").delete().eq("id", id)
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
-    }
-
-    return NextResponse.json({ message: "Matter deleted successfully" })
-  } catch (error) {
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+  // Check authentication
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser()
+  if (authError || !user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
+
+  // Get user's organization and role
+  const { data: profile } = await supabase.from("profiles").select("organization_id, role").eq("id", user.id).single()
+
+  if (!profile || !["admin", "lawyer"].includes(profile.role)) {
+    return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })
+  }
+
+  // Archive the matter by setting status to archived
+  const { data: matter, error } = await supabase
+    .from("matters")
+    .update({ status: "archived" })
+    .eq("id", id)
+    .eq("organization_id", profile.organization_id)
+    .select()
+    .single()
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  if (!matter) {
+    return NextResponse.json({ error: "Matter not found" }, { status: 404 })
+  }
+
+  return NextResponse.json({ message: "Matter archived successfully" })
 }

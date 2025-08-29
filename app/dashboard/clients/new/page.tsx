@@ -1,53 +1,30 @@
-"use client"
-
-import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
-import { DashboardLayout } from "@/components/layout/dashboard-layout"
+import { redirect } from "next/navigation"
+import { createClient } from "@/lib/supabase/server"
 import { ClientForm } from "@/components/clients/client-form"
-import { createClient } from "@/lib/supabase/client"
 
-export default function NewClientPage() {
-  const router = useRouter()
-  const [user, setUser] = useState<any>(null)
-  const [profile, setProfile] = useState<any>(null)
+export default async function NewClientPage() {
+  const supabase = await createClient()
 
-  useEffect(() => {
-    const initializeAuth = async () => {
-      const supabase = createClient()
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
+  const { data, error } = await supabase.auth.getUser()
+  if (error || !data?.user) {
+    redirect("/auth/login")
+  }
 
-      if (!user) {
-        router.push("/auth/login")
-        return
-      }
+  // Check user permissions
+  const { data: profile } = await supabase.from("profiles").select("role").eq("id", data.user.id).single()
 
-      setUser(user)
-
-      // Get user profile
-      const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).single()
-
-      setProfile(profile)
-    }
-
-    initializeAuth()
-  }, [router])
-
-  if (!user) {
-    return <div>Loading...</div>
+  if (!profile || !["admin", "lawyer", "assistant"].includes(profile.role)) {
+    redirect("/dashboard/clients")
   }
 
   return (
-    <DashboardLayout user={user} profile={profile}>
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold text-balance">New Client</h1>
-          <p className="text-muted-foreground">Add a new client to your practice</p>
-        </div>
-
-        <ClientForm />
+    <div className="container mx-auto p-6">
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold">Nuevo Cliente</h1>
+        <p className="text-muted-foreground">Agrega un nuevo cliente al sistema</p>
       </div>
-    </DashboardLayout>
+
+      <ClientForm />
+    </div>
   )
 }

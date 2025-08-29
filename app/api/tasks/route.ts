@@ -2,124 +2,130 @@ import { createClient } from "@/lib/supabase/server"
 import { type NextRequest, NextResponse } from "next/server"
 
 export async function GET(request: NextRequest) {
-  try {
-    const supabase = await createClient()
+  const supabase = await createClient()
 
-    // Check authentication
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+  // Check authentication
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser()
+  if (authError || !user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
 
-    const { searchParams } = new URL(request.url)
-    const matterId = searchParams.get("matter_id")
-    const assignedTo = searchParams.get("assigned_to")
-    const status = searchParams.get("status")
-    const priority = searchParams.get("priority")
+  // Get user's organization
+  const { data: profile } = await supabase.from("profiles").select("organization_id").eq("id", user.id).single()
 
-    let query = supabase
-      .from("tasks")
-      .select(`
-        *,
-        matters:matter_id (
-          id,
-          title,
-          matter_number
-        ),
-        assigned_user:assigned_to (
-          id,
+  if (!profile) {
+    return NextResponse.json({ error: "Profile not found" }, { status: 404 })
+  }
+
+  // Get search parameters
+  const searchParams = request.nextUrl.searchParams
+  const search = searchParams.get("search") || ""
+  const status = searchParams.get("status") || ""
+  const priority = searchParams.get("priority") || ""
+  const assignedTo = searchParams.get("assigned_to") || ""
+  const matterId = searchParams.get("matter_id") || ""
+
+  // Build query with related data
+  let query = supabase
+    .from("tasks")
+    .select(`
+      *,
+      matters (
+        id,
+        title,
+        clients (
           first_name,
           last_name,
-          email
+          company_name,
+          client_type
         )
-      `)
-      .order("created_at", { ascending: false })
+      ),
+      profiles!tasks_assigned_to_fkey (
+        first_name,
+        last_name
+      )
+    `)
+    .eq("organization_id", profile.organization_id)
+    .order("created_at", { ascending: false })
 
-    if (matterId) {
-      query = query.eq("matter_id", matterId)
-    }
-
-    if (assignedTo) {
-      query = query.eq("assigned_to", assignedTo)
-    }
-
-    if (status) {
-      query = query.eq("status", status)
-    }
-
-    if (priority) {
-      query = query.eq("priority", priority)
-    }
-
-    const { data, error } = await query
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
-    }
-
-    return NextResponse.json(data)
-  } catch (error) {
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+  // Add search filter
+  if (search) {
+    query = query.or(`title.ilike.%${search}%,description.ilike.%${search}%`)
   }
+
+  // Add filters
+  if (status) {
+    query = query.eq("status", status)
+  }
+
+  if (priority) {
+    query = query.eq("priority", priority)
+  }
+
+  if (assignedTo) {
+    query = query.eq("assigned_to", assignedTo)
+  }
+
+  if (matterId) {
+    query = query.eq("matter_id", matterId)
+  }
+
+  const { data: tasks, error } = await query
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  return NextResponse.json(tasks)
 }
 
 export async function POST(request: NextRequest) {
+  const supabase = await createClient()
+
+  // Check authentication
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser()
+  if (authError || !user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  // Get user's organization
+  const { data: profile } = await supabase.from("profiles").select("organization_id, role").eq("id", user.id).single()
+
+  if (!profile || !["admin", "lawyer", "assistant"].includes(profile.role)) {
+    return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 })
+  }
+
   try {
-    const supabase = await createClient()
-
-    // Check authentication
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
     const body = await request.json()
-    const {
-      title,
-      description,
-      matter_id,
-      assigned_to,
-      status = "pending",
-      priority = "medium",
-      due_date,
-      estimated_hours,
-    } = body
 
-    if (!title) {
-      return NextResponse.json({ error: "Title is required" }, { status: 400 })
-    }
-
-    const { data, error } = await supabase
+    const { data: task, error } = await supabase
       .from("tasks")
       .insert({
-        title,
-        description,
-        matter_id,
-        assigned_to,
-        status,
-        priority,
-        due_date,
-        estimated_hours,
+        ...body,
+        organization_id: profile.organization_id,
         created_by: user.id,
       })
       .select(`
         *,
-        matters:matter_id (
+        matters (
           id,
           title,
-          matter_number
+          clients (
+            first_name,
+            last_name,
+            company_name,
+            client_type
+          )
         ),
-        assigned_user:assigned_to (
-          id,
+        profiles!tasks_assigned_to_fkey (
           first_name,
-          last_name,
-          email
+          last_name
         )
       `)
       .single()
@@ -128,8 +134,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    return NextResponse.json(data, { status: 201 })
+    return NextResponse.json(task, { status: 201 })
   } catch (error) {
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 })
   }
 }

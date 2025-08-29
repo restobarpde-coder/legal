@@ -1,41 +1,34 @@
 "use client"
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { MoreHorizontal, Edit, Trash2, Eye } from "lucide-react"
-import { toast } from "@/hooks/use-toast"
+import { MoreHorizontal, Eye, Edit, Trash2 } from "lucide-react"
+import Link from "next/link"
+import { useState } from "react"
 
 interface Client {
   id: string
-  name: string
-  email: string
-  phone: string
-  company: string
-  status: string
+  first_name: string
+  last_name: string
+  email: string | null
+  phone: string | null
+  client_type: "individual" | "company"
+  company_name: string | null
   created_at: string
 }
 
 interface ClientsTableProps {
   clients: Client[]
-  onClientDeleted: () => void
+  canManage: boolean
 }
 
-const statusColors = {
-  active: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300",
-  inactive: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300",
-  archived: "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300",
-}
-
-export function ClientsTable({ clients, onClientDeleted }: ClientsTableProps) {
-  const router = useRouter()
+export function ClientsTable({ clients, canManage }: ClientsTableProps) {
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const handleDelete = async (clientId: string) => {
-    if (!confirm("Are you sure you want to delete this client?")) {
+    if (!confirm("¿Estás seguro de que quieres eliminar este cliente?")) {
       return
     }
 
@@ -45,31 +38,38 @@ export function ClientsTable({ clients, onClientDeleted }: ClientsTableProps) {
         method: "DELETE",
       })
 
-      if (!response.ok) {
-        throw new Error("Failed to delete client")
+      if (response.ok) {
+        window.location.reload()
+      } else {
+        alert("Error al eliminar el cliente")
       }
-
-      toast({
-        title: "Success",
-        description: "Client deleted successfully",
-      })
-
-      onClientDeleted()
     } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to delete client",
-        variant: "destructive",
-      })
+      alert("Error al eliminar el cliente")
     } finally {
       setDeletingId(null)
     }
   }
 
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString("es-ES")
+  }
+
+  const getClientName = (client: Client) => {
+    if (client.client_type === "company") {
+      return client.company_name || `${client.first_name} ${client.last_name}`
+    }
+    return `${client.first_name} ${client.last_name}`
+  }
+
   if (clients.length === 0) {
     return (
-      <div className="text-center py-8">
-        <p className="text-muted-foreground">No clients found</p>
+      <div className="text-center py-12">
+        <p className="text-muted-foreground">No se encontraron clientes</p>
+        {canManage && (
+          <Button asChild className="mt-4">
+            <Link href="/dashboard/clients/new">Crear Primer Cliente</Link>
+          </Button>
+        )}
       </div>
     )
   }
@@ -79,24 +79,26 @@ export function ClientsTable({ clients, onClientDeleted }: ClientsTableProps) {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Name</TableHead>
+            <TableHead>Nombre</TableHead>
+            <TableHead>Tipo</TableHead>
             <TableHead>Email</TableHead>
-            <TableHead>Phone</TableHead>
-            <TableHead>Company</TableHead>
-            <TableHead>Status</TableHead>
+            <TableHead>Teléfono</TableHead>
+            <TableHead>Fecha de Registro</TableHead>
             <TableHead className="w-[70px]"></TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {clients.map((client) => (
             <TableRow key={client.id}>
-              <TableCell className="font-medium">{client.name}</TableCell>
+              <TableCell className="font-medium">{getClientName(client)}</TableCell>
+              <TableCell>
+                <Badge variant={client.client_type === "individual" ? "default" : "secondary"}>
+                  {client.client_type === "individual" ? "Persona" : "Empresa"}
+                </Badge>
+              </TableCell>
               <TableCell>{client.email || "-"}</TableCell>
               <TableCell>{client.phone || "-"}</TableCell>
-              <TableCell>{client.company || "-"}</TableCell>
-              <TableCell>
-                <Badge className={statusColors[client.status as keyof typeof statusColors]}>{client.status}</Badge>
-              </TableCell>
+              <TableCell>{formatDate(client.created_at)}</TableCell>
               <TableCell>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -105,22 +107,30 @@ export function ClientsTable({ clients, onClientDeleted }: ClientsTableProps) {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => router.push(`/dashboard/clients/${client.id}`)}>
-                      <Eye className="mr-2 h-4 w-4" />
-                      View
+                    <DropdownMenuItem asChild>
+                      <Link href={`/dashboard/clients/${client.id}`}>
+                        <Eye className="mr-2 h-4 w-4" />
+                        Ver Detalles
+                      </Link>
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => router.push(`/dashboard/clients/${client.id}/edit`)}>
-                      <Edit className="mr-2 h-4 w-4" />
-                      Edit
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => handleDelete(client.id)}
-                      disabled={deletingId === client.id}
-                      className="text-red-600"
-                    >
-                      <Trash2 className="mr-2 h-4 w-4" />
-                      {deletingId === client.id ? "Deleting..." : "Delete"}
-                    </DropdownMenuItem>
+                    {canManage && (
+                      <>
+                        <DropdownMenuItem asChild>
+                          <Link href={`/dashboard/clients/${client.id}/edit`}>
+                            <Edit className="mr-2 h-4 w-4" />
+                            Editar
+                          </Link>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => handleDelete(client.id)}
+                          disabled={deletingId === client.id}
+                          className="text-red-600"
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          {deletingId === client.id ? "Eliminando..." : "Eliminar"}
+                        </DropdownMenuItem>
+                      </>
+                    )}
                   </DropdownMenuContent>
                 </DropdownMenu>
               </TableCell>

@@ -32,9 +32,30 @@ export function Header({ user, profile }: HeaderProps) {
   const router = useRouter()
 
   const handleSignOut = async () => {
-    const supabase = createClient()
-    await supabase.auth.signOut()
-    router.push("/auth/login")
+    try {
+      const supabase = createClient()
+      
+      // Sign out from Supabase
+      const { error } = await supabase.auth.signOut()
+      
+      if (error) {
+        console.error('Logout error:', error)
+      }
+      
+      // Clear any local storage or session data
+      if (typeof window !== 'undefined') {
+        // Clear any cached data
+        localStorage.clear()
+        sessionStorage.clear()
+      }
+      
+      // Force redirect to login page
+      window.location.href = '/auth/login'
+    } catch (error) {
+      console.error('Unexpected logout error:', error)
+      // Force redirect even if there's an error
+      window.location.href = '/auth/login'
+    }
   }
 
   const displayName = profile?.first_name ? `${profile.first_name} ${profile.last_name || ""}`.trim() : user.email

@@ -1,137 +1,139 @@
 import { Button } from "@/components/ui/button"
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Scale, Users, FileText, Calendar, Clock, Shield, BarChart3 } from "lucide-react"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import Link from "next/link"
 
 export default function HomePage() {
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b bg-card">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Scale className="h-8 w-8 text-primary" />
-              <h1 className="text-2xl font-bold">LegalStudio</h1>
-            </div>
-            <div className="flex items-center gap-4">
-              <Button asChild variant="outline">
-                <Link href="/auth/login">Sign In</Link>
-              </Button>
-              <Button asChild>
-                <Link href="/auth/sign-up">Get Started</Link>
-              </Button>
-            </div>
+    <div className="flex min-h-svh flex-col">
+      {/* Header */}
+      <header className="border-b">
+        <div className="container mx-auto flex h-16 items-center justify-between px-4">
+          <div className="flex items-center space-x-2">
+            <div className="h-8 w-8 rounded bg-primary"></div>
+            <span className="text-xl font-bold">LegalManager</span>
+          </div>
+          <div className="flex items-center space-x-4">
+            <Button variant="ghost" asChild>
+              <Link href="/auth/login">Iniciar Sesión</Link>
+            </Button>
+            <Button asChild>
+              <Link href="/auth/register">Registrarse</Link>
+            </Button>
           </div>
         </div>
       </header>
 
-      <main>
-        {/* Hero Section */}
-        <section className="container mx-auto px-4 py-16 text-center">
-          <div className="max-w-3xl mx-auto">
-            <h2 className="text-4xl md:text-6xl font-bold text-balance mb-6">Professional Legal Practice Management</h2>
-            <p className="text-xl text-muted-foreground text-pretty mb-8">
-              Streamline your law firm operations with comprehensive client management, matter tracking, time billing,
-              and calendar integration.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Button asChild size="lg">
-                <Link href="/auth/sign-up">Start Free Trial</Link>
-              </Button>
-              <Button asChild variant="outline" size="lg">
-                <Link href="/auth/login">Sign In</Link>
-              </Button>
-            </div>
+      {/* Hero Section */}
+      <main className="flex-1">
+        <section className="container mx-auto px-4 py-24 text-center">
+          <h1 className="text-4xl font-bold tracking-tight sm:text-6xl">
+            Gestión Integral para <span className="text-primary">Estudios Jurídicos</span>
+          </h1>
+          <p className="mx-auto mt-6 max-w-2xl text-lg text-muted-foreground">
+            Administra clientes, casos, tareas y documentos de manera eficiente. La solución completa para la gestión de
+            tu estudio jurídico.
+          </p>
+          <div className="mt-10 flex items-center justify-center gap-x-6">
+            <Button size="lg" asChild>
+              <Link href="/auth/register">Comenzar Gratis</Link>
+            </Button>
+            <Button variant="outline" size="lg" asChild>
+              <Link href="/auth/login">Acceder</Link>
+            </Button>
           </div>
         </section>
 
-        {/* Features Section */}
-        <section className="bg-muted/50 py-16">
+        {/* Features */}
+        <section className="bg-muted/50 py-24">
           <div className="container mx-auto px-4">
-            <div className="text-center mb-12">
-              <h3 className="text-3xl font-bold mb-4">Everything You Need</h3>
-              <p className="text-muted-foreground text-lg">
-                Comprehensive tools designed specifically for legal professionals
+            <div className="text-center">
+              <h2 className="text-3xl font-bold tracking-tight">Todo lo que necesitas para tu estudio</h2>
+              <p className="mt-4 text-lg text-muted-foreground">
+                Herramientas profesionales diseñadas específicamente para abogados
               </p>
             </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="mt-16 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
               <Card>
                 <CardHeader>
-                  <Users className="h-8 w-8 text-primary mb-2" />
-                  <CardTitle>Client Management</CardTitle>
-                  <CardDescription>Organize client information, contacts, and communication history</CardDescription>
+                  <CardTitle>Gestión de Clientes</CardTitle>
+                  <CardDescription>Administra la información de tus clientes de manera centralizada</CardDescription>
                 </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground">
+                    Mantén un registro completo de todos tus clientes con datos de contacto, historial de casos y
+                    documentación relevante.
+                  </p>
+                </CardContent>
               </Card>
 
               <Card>
                 <CardHeader>
-                  <FileText className="h-8 w-8 text-primary mb-2" />
-                  <CardTitle>Matter Tracking</CardTitle>
-                  <CardDescription>Track cases, deadlines, and matter progress with detailed workflows</CardDescription>
+                  <CardTitle>Control de Casos</CardTitle>
+                  <CardDescription>Seguimiento detallado de todos tus casos legales</CardDescription>
                 </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground">
+                    Organiza casos por tipo, estado y prioridad. Mantén un historial completo de cada proceso legal.
+                  </p>
+                </CardContent>
               </Card>
 
               <Card>
                 <CardHeader>
-                  <Calendar className="h-8 w-8 text-primary mb-2" />
-                  <CardTitle>Calendar & Scheduling</CardTitle>
-                  <CardDescription>Manage appointments, court dates, and important deadlines</CardDescription>
+                  <CardTitle>Calendario Integrado</CardTitle>
+                  <CardDescription>Nunca pierdas una cita o fecha límite importante</CardDescription>
                 </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground">
+                    Programa audiencias, reuniones y recordatorios. Sincroniza con tu calendario personal.
+                  </p>
+                </CardContent>
               </Card>
 
               <Card>
                 <CardHeader>
-                  <Clock className="h-8 w-8 text-primary mb-2" />
-                  <CardTitle>Time Tracking</CardTitle>
-                  <CardDescription>Log billable hours and generate accurate time reports</CardDescription>
+                  <CardTitle>Gestión de Documentos</CardTitle>
+                  <CardDescription>Almacena y organiza todos tus documentos legales</CardDescription>
                 </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground">
+                    Sube, categoriza y busca documentos fácilmente. Control de versiones y acceso seguro.
+                  </p>
+                </CardContent>
               </Card>
 
               <Card>
                 <CardHeader>
-                  <BarChart3 className="h-8 w-8 text-primary mb-2" />
-                  <CardTitle>Billing & Invoicing</CardTitle>
-                  <CardDescription>Create professional invoices and track payment status</CardDescription>
+                  <CardTitle>Tareas y Recordatorios</CardTitle>
+                  <CardDescription>Mantén el control de todas tus actividades</CardDescription>
                 </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground">
+                    Crea tareas, asigna responsables y recibe notificaciones para no olvidar nada importante.
+                  </p>
+                </CardContent>
               </Card>
 
               <Card>
                 <CardHeader>
-                  <Shield className="h-8 w-8 text-primary mb-2" />
-                  <CardTitle>Secure & Compliant</CardTitle>
-                  <CardDescription>Bank-level security with legal industry compliance standards</CardDescription>
+                  <CardTitle>Seguridad Avanzada</CardTitle>
+                  <CardDescription>Protección de datos con los más altos estándares</CardDescription>
                 </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground">
+                    Encriptación de datos, control de acceso por roles y cumplimiento de normativas de privacidad.
+                  </p>
+                </CardContent>
               </Card>
             </div>
-          </div>
-        </section>
-
-        {/* CTA Section */}
-        <section className="container mx-auto px-4 py-16 text-center">
-          <div className="max-w-2xl mx-auto">
-            <h3 className="text-3xl font-bold mb-4">Ready to Get Started?</h3>
-            <p className="text-muted-foreground text-lg mb-8">
-              Join thousands of legal professionals who trust LegalStudio to manage their practice efficiently.
-            </p>
-            <Button asChild size="lg">
-              <Link href="/auth/sign-up">Create Your Account</Link>
-            </Button>
           </div>
         </section>
       </main>
 
-      <footer className="border-t bg-card">
-        <div className="container mx-auto px-4 py-8">
-          <div className="flex items-center justify-center">
-            <div className="flex items-center gap-2">
-              <Scale className="h-6 w-6 text-primary" />
-              <span className="font-semibold">LegalStudio</span>
-            </div>
-          </div>
-          <p className="text-center text-sm text-muted-foreground mt-4">
-            © 2024 LegalStudio. Professional legal practice management.
-          </p>
+      {/* Footer */}
+      <footer className="border-t py-12">
+        <div className="container mx-auto px-4 text-center">
+          <p className="text-sm text-muted-foreground">© 2024 LegalManager. Todos los derechos reservados.</p>
         </div>
       </footer>
     </div>

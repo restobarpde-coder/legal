@@ -1,165 +1,181 @@
-"use client"
-
-import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
-import { DashboardLayout } from "@/components/layout/dashboard-layout"
-import { TasksTable } from "@/components/tasks/tasks-table"
+import { redirect } from "next/navigation"
+import { createClient } from "@/lib/supabase/server"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Plus, Search } from "lucide-react"
-import { createClient } from "@/lib/supabase/client"
+import Link from "next/link"
+import { TasksTable } from "@/components/tasks/tasks-table"
+import { TasksSearch } from "@/components/tasks/tasks-search"
 
-interface Task {
-  id: string
-  title: string
-  status: string
-  priority: string
-  due_date: string | null
-  estimated_hours: number | null
-  matters?: {
-    title: string
-    matter_number: string
-  }
-  assigned_user?: {
-    first_name: string
-    last_name: string
-  }
-}
+export default async function TasksPage({
+  searchParams,
+}: {
+  searchParams: Promise<{
+    search?: string
+    status?: string
+    priority?: string
+    assigned_to?: string
+    matter_id?: string
+  }>
+}) {
+  const supabase = await createClient()
+  const params = await searchParams
 
-export default function TasksPage() {
-  const router = useRouter()
-  const [tasks, setTasks] = useState<Task[]>([])
-  const [loading, setLoading] = useState(true)
-  const [searchTerm, setSearchTerm] = useState("")
-  const [statusFilter, setStatusFilter] = useState("all")
-  const [priorityFilter, setPriorityFilter] = useState("all")
-  const [user, setUser] = useState<any>(null)
-  const [profile, setProfile] = useState<any>(null)
-
-  useEffect(() => {
-    const initializeAuth = async () => {
-      const supabase = createClient()
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-
-      if (!user) {
-        router.push("/auth/login")
-        return
-      }
-
-      setUser(user)
-
-      // Get user profile
-      const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).single()
-
-      setProfile(profile)
-    }
-
-    initializeAuth()
-  }, [router])
-
-  const fetchTasks = async () => {
-    try {
-      const params = new URLSearchParams()
-      if (statusFilter !== "all") params.append("status", statusFilter)
-      if (priorityFilter !== "all") params.append("priority", priorityFilter)
-
-      const response = await fetch(`/api/tasks?${params}`)
-      if (!response.ok) throw new Error("Failed to fetch tasks")
-
-      const data = await response.json()
-
-      // Filter by search term on client side
-      const filteredData = searchTerm
-        ? data.filter((task: Task) => task.title.toLowerCase().includes(searchTerm.toLowerCase()))
-        : data
-
-      setTasks(filteredData)
-    } catch (error) {
-      console.error("Error fetching tasks:", error)
-    } finally {
-      setLoading(false)
-    }
+  const { data, error } = await supabase.auth.getUser()
+  if (error || !data?.user) {
+    redirect("/auth/login")
   }
 
-  useEffect(() => {
-    if (user) {
-      fetchTasks()
-    }
-  }, [searchTerm, statusFilter, priorityFilter, user])
+  // Get user profile
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("organization_id, role")
+    .eq("id", data.user.id)
+    .single()
 
-  if (!user) {
-    return <div>Loading...</div>
+  if (!profile) {
+    redirect("/auth/login")
   }
+
+  // Build query for tasks
+  let query = supabase
+    .from("tasks")
+    .select(`
+      *,
+      matters (
+        id,
+        title,
+        clients (
+          first_name,
+          last_name,
+          company_name,
+          client_type
+        )
+      ),
+      profiles!tasks_assigned_to_fkey (
+        first_name,
+        last_name
+      )
+    `)
+    .eq("organization_id", profile.organization_id)
+    .order("created_at", { ascending: false })
+
+  // Add filters
+  if (params.search) {
+    query = query.or(`title.ilike.%${params.search}%,description.ilike.%${params.search}%`)
+  }
+
+  if (params.status) {
+    query = query.eq("status", params.status)
+  }
+
+  if (params.priority) {
+    query = query.eq("priority", params.priority)
+  }
+
+  if (params.assigned_to) {
+    query = query.eq("assigned_to", params.assigned_to)
+  }
+
+  if (params.matter_id) {
+    query = query.eq("matter_id", params.matter_id)
+  }
+
+  const { data: tasks, error: tasksError } = await query
+
+  if (tasksError) {
+    console.error("Error fetching tasks:", tasksError)
+  }
+
+  // Get team members for filters
+  const { data: teamMembers } = await supabase
+    .from("profiles")
+    .select("id, first_name, last_name")
+    .eq("organization_id", profile.organization_id)
+    .in("role", ["admin", "lawyer", "assistant"])
+    .eq("is_active", true)
+    .order("first_name")
+
+  // Get matters for filters
+  const { data: matters } = await supabase
+    .from("matters")
+    .select("id, title")
+    .eq("organization_id", profile.organization_id)
+    .neq("status", "archived")
+    .order("title")
+
+  const canManageTasks = ["admin", "lawyer", "assistant"].includes(profile.role)
+
+  // Calculate statistics
+  const pendingTasks = tasks?.filter((t) => t.status === "pending").length || 0
+  const inProgressTasks = tasks?.filter((t) => t.status === "in_progress").length || 0
+  const completedTasks = tasks?.filter((t) => t.status === "completed").length || 0
+  const overdueTasks =
+    tasks?.filter((t) => {
+      if (!t.due_date || t.status === "completed") return false
+      return new Date(t.due_date) < new Date()
+    }).length || 0
 
   return (
-    <DashboardLayout user={user} profile={profile}>
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-balance">Tasks</h1>
-            <p className="text-muted-foreground">Manage your tasks and assignments</p>
-          </div>
-          <Button onClick={() => router.push("/dashboard/tasks/new")}>
-            <Plus className="mr-2 h-4 w-4" />
-            New Task
+    <div className="container mx-auto p-6">
+      <div className="flex justify-between items-center mb-8">
+        <div>
+          <h1 className="text-3xl font-bold">Tareas</h1>
+          <p className="text-muted-foreground">Gestiona las tareas y actividades del estudio</p>
+        </div>
+        {canManageTasks && (
+          <Button asChild>
+            <Link href="/dashboard/tasks/new">Nueva Tarea</Link>
           </Button>
+        )}
+      </div>
+
+      <div className="space-y-6">
+        <TasksSearch teamMembers={teamMembers || []} matters={matters || []} />
+
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Pendientes</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{pendingTasks}</div>
+              <p className="text-xs text-muted-foreground">Por iniciar</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">En Progreso</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{inProgressTasks}</div>
+              <p className="text-xs text-muted-foreground">Trabajando</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Completadas</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{completedTasks}</div>
+              <p className="text-xs text-muted-foreground">Finalizadas</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Vencidas</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-red-600">{overdueTasks}</div>
+              <p className="text-xs text-muted-foreground">Requieren atención</p>
+            </CardContent>
+          </Card>
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Task Management</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-col sm:flex-row gap-4 mb-6">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-                <Input
-                  placeholder="Search tasks..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-full sm:w-[180px]">
-                  <SelectValue placeholder="Filter by status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Statuses</SelectItem>
-                  <SelectItem value="pending">Pending</SelectItem>
-                  <SelectItem value="in_progress">In Progress</SelectItem>
-                  <SelectItem value="completed">Completed</SelectItem>
-                  <SelectItem value="cancelled">Cancelled</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-                <SelectTrigger className="w-full sm:w-[180px]">
-                  <SelectValue placeholder="Filter by priority" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Priorities</SelectItem>
-                  <SelectItem value="low">Low</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="high">High</SelectItem>
-                  <SelectItem value="urgent">Urgent</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {loading ? (
-              <div className="text-center py-8">
-                <p className="text-muted-foreground">Loading tasks...</p>
-              </div>
-            ) : (
-              <TasksTable tasks={tasks} onTaskUpdated={fetchTasks} />
-            )}
-          </CardContent>
-        </Card>
+        <TasksTable tasks={tasks || []} canManage={canManageTasks} />
       </div>
-    </DashboardLayout>
+    </div>
   )
 }

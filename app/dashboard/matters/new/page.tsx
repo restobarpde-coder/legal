@@ -1,53 +1,51 @@
-"use client"
-
-import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
-import { DashboardLayout } from "@/components/layout/dashboard-layout"
+import { redirect } from "next/navigation"
+import { createClient } from "@/lib/supabase/server"
 import { MatterForm } from "@/components/matters/matter-form"
-import { createClient } from "@/lib/supabase/client"
 
-export default function NewMatterPage() {
-  const router = useRouter()
-  const [user, setUser] = useState<any>(null)
-  const [profile, setProfile] = useState<any>(null)
+export default async function NewMatterPage() {
+  const supabase = await createClient()
 
-  useEffect(() => {
-    const initializeAuth = async () => {
-      const supabase = createClient()
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-
-      if (!user) {
-        router.push("/auth/login")
-        return
-      }
-
-      setUser(user)
-
-      // Get user profile
-      const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).single()
-
-      setProfile(profile)
-    }
-
-    initializeAuth()
-  }, [router])
-
-  if (!user) {
-    return <div>Loading...</div>
+  const { data, error } = await supabase.auth.getUser()
+  if (error || !data?.user) {
+    redirect("/auth/login")
   }
 
-  return (
-    <DashboardLayout user={user} profile={profile}>
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold text-balance">New Matter</h1>
-          <p className="text-muted-foreground">Create a new legal matter</p>
-        </div>
+  // Check user permissions
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("organization_id, role")
+    .eq("id", data.user.id)
+    .single()
 
-        <MatterForm />
+  if (!profile || !["admin", "lawyer", "assistant"].includes(profile.role)) {
+    redirect("/dashboard/matters")
+  }
+
+  // Get clients for the form
+  const { data: clients } = await supabase
+    .from("clients")
+    .select("id, first_name, last_name, company_name, client_type")
+    .eq("organization_id", profile.organization_id)
+    .eq("is_active", true)
+    .order("first_name")
+
+  // Get lawyers for assignment
+  const { data: lawyers } = await supabase
+    .from("profiles")
+    .select("id, first_name, last_name")
+    .eq("organization_id", profile.organization_id)
+    .in("role", ["admin", "lawyer"])
+    .eq("is_active", true)
+    .order("first_name")
+
+  return (
+    <div className="container mx-auto p-6">
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold">Nuevo Caso</h1>
+        <p className="text-muted-foreground">Crea un nuevo caso legal</p>
       </div>
-    </DashboardLayout>
+
+      <MatterForm clients={clients || []} lawyers={lawyers || []} />
+    </div>
   )
 }
