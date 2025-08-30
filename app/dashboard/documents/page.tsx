@@ -1,191 +1,210 @@
-import { redirect } from "next/navigation"
-import { createClient } from "@/lib/supabase/server"
-import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { createClient } from "@/lib/supabase/server"
+import { requireAuth } from "@/lib/auth"
+import { Plus, Search, Download, Eye, MoreHorizontal, FileText, File } from "lucide-react"
 import Link from "next/link"
-import { DocumentsTable } from "@/components/documents/documents-table"
-import { DocumentsSearch } from "@/components/documents/documents-search"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 
-export default async function DocumentsPage({
-  searchParams,
-}: {
-  searchParams: Promise<{
-    search?: string
-    document_type?: string
-    matter_id?: string
-    client_id?: string
-    is_confidential?: string
-  }>
-}) {
+async function getDocuments() {
   const supabase = await createClient()
-  const params = await searchParams
+  await requireAuth()
 
-  const { data, error } = await supabase.auth.getUser()
-  if (error || !data?.user) {
-    redirect("/auth/login")
-  }
-
-  // Get user profile
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("organization_id, role")
-    .eq("id", data.user.id)
-    .single()
-
-  if (!profile) {
-    redirect("/auth/login")
-  }
-
-  // Build query for documents
-  let query = supabase
+  const { data: documents, error } = await supabase
     .from("documents")
     .select(`
       *,
-      matters (
+      cases (
         id,
         title,
-        clients (
-          first_name,
-          last_name,
-          company_name,
-          client_type
-        )
+        clients (name)
       ),
-      clients (
-        id,
-        first_name,
-        last_name,
-        company_name,
-        client_type
-      ),
-      profiles!documents_uploaded_by_fkey (
-        first_name,
-        last_name
+      users (
+        full_name
       )
     `)
-    .eq("organization_id", profile.organization_id)
     .order("created_at", { ascending: false })
 
-  // Add filters
-  if (params.search) {
-    query = query.or(
-      `name.ilike.%${params.search}%,description.ilike.%${params.search}%,document_type.ilike.%${params.search}%`,
-    )
+  if (error) {
+    console.error("Error fetching documents:", error)
+    return []
   }
 
-  if (params.document_type) {
-    query = query.eq("document_type", params.document_type)
+  return documents || []
+}
+
+function getDocumentIcon(mimeType: string | null) {
+  if (!mimeType) return File
+
+  if (mimeType.includes("pdf")) return FileText
+  if (mimeType.includes("word")) return FileText
+  if (mimeType.includes("image")) return File
+  return File
+}
+
+function formatFileSize(bytes: number | null) {
+  if (!bytes) return "Desconocido"
+
+  const sizes = ["Bytes", "KB", "MB", "GB"]
+  const i = Math.floor(Math.log(bytes) / Math.log(1024))
+  return Math.round((bytes / Math.pow(1024, i)) * 100) / 100 + " " + sizes[i]
+}
+
+function getDocumentTypeColor(type: string) {
+  switch (type) {
+    case "contract":
+      return "default"
+    case "brief":
+      return "secondary"
+    case "evidence":
+      return "outline"
+    case "correspondence":
+      return "default"
+    case "court_filing":
+      return "secondary"
+    default:
+      return "outline"
   }
+}
 
-  if (params.matter_id) {
-    query = query.eq("matter_id", params.matter_id)
-  }
-
-  if (params.client_id) {
-    query = query.eq("client_id", params.client_id)
-  }
-
-  if (params.is_confidential !== undefined) {
-    query = query.eq("is_confidential", params.is_confidential === "true")
-  }
-
-  const { data: documents, error: documentsError } = await query
-
-  if (documentsError) {
-    console.error("Error fetching documents:", documentsError)
-  }
-
-  // Get matters and clients for filters
-  const { data: matters } = await supabase
-    .from("matters")
-    .select("id, title")
-    .eq("organization_id", profile.organization_id)
-    .neq("status", "archived")
-    .order("title")
-
-  const { data: clients } = await supabase
-    .from("clients")
-    .select("id, first_name, last_name, company_name, client_type")
-    .eq("organization_id", profile.organization_id)
-    .eq("is_active", true)
-    .order("first_name")
-
-  const canManageDocuments = ["admin", "lawyer", "assistant"].includes(profile.role)
-
-  // Calculate statistics
-  const totalDocuments = documents?.length || 0
-  const confidentialDocs = documents?.filter((d) => d.is_confidential).length || 0
-  const recentDocs =
-    documents?.filter((d) => {
-      const created = new Date(d.created_at)
-      const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-      return created >= weekAgo
-    }).length || 0
-
-  // Calculate total file size (simulated)
-  const totalSize = documents?.reduce((acc, doc) => acc + (doc.file_size || 0), 0) || 0
-  const totalSizeMB = (totalSize / (1024 * 1024)).toFixed(1)
+export default async function DocumentsPage() {
+  const documents = await getDocuments()
 
   return (
-    <div className="container mx-auto p-6">
-      <div className="flex justify-between items-center mb-8">
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Documentos</h1>
-          <p className="text-muted-foreground">Gestiona los documentos legales del estudio</p>
+          <h1 className="text-3xl font-bold tracking-tight">Documentos</h1>
+          <p className="text-muted-foreground">Gestiona todos los documentos de tu estudio jurídico</p>
         </div>
-        {canManageDocuments && (
-          <Button asChild>
-            <Link href="/dashboard/documents/upload">Subir Documento</Link>
-          </Button>
-        )}
+        <Button asChild>
+          <Link href="/dashboard/documents/upload">
+            <Plus className="h-4 w-4 mr-2" />
+            Subir Documento
+          </Link>
+        </Button>
       </div>
 
-      <div className="space-y-6">
-        <DocumentsSearch matters={matters || []} clients={clients || []} />
+      {/* Filters */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Filtros</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input placeholder="Buscar documentos..." className="pl-9" />
+            </div>
+            <Select defaultValue="all">
+              <SelectTrigger className="w-full sm:w-48">
+                <SelectValue placeholder="Tipo" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos los tipos</SelectItem>
+                <SelectItem value="contract">Contrato</SelectItem>
+                <SelectItem value="brief">Escrito</SelectItem>
+                <SelectItem value="evidence">Evidencia</SelectItem>
+                <SelectItem value="correspondence">Correspondencia</SelectItem>
+                <SelectItem value="court_filing">Presentación Judicial</SelectItem>
+                <SelectItem value="other">Otro</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select defaultValue="all">
+              <SelectTrigger className="w-full sm:w-48">
+                <SelectValue placeholder="Caso" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos los casos</SelectItem>
+                {/* This would be populated with actual cases */}
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
 
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      {/* Documents list */}
+      <div className="grid gap-4">
+        {documents.length === 0 ? (
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Documentos</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{totalDocuments}</div>
-              <p className="text-xs text-muted-foreground">Archivos almacenados</p>
+            <CardContent className="flex flex-col items-center justify-center py-12">
+              <div className="text-center">
+                <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                <h3 className="text-lg font-semibold mb-2">No hay documentos</h3>
+                <p className="text-muted-foreground mb-4">Comienza subiendo tu primer documento</p>
+                <Button asChild>
+                  <Link href="/dashboard/documents/upload">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Subir Primer Documento
+                  </Link>
+                </Button>
+              </div>
             </CardContent>
           </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Confidenciales</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{confidentialDocs}</div>
-              <p className="text-xs text-muted-foreground">Acceso restringido</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Esta Semana</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{recentDocs}</div>
-              <p className="text-xs text-muted-foreground">Documentos nuevos</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Almacenamiento</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{totalSizeMB} MB</div>
-              <p className="text-xs text-muted-foreground">Espacio utilizado</p>
-            </CardContent>
-          </Card>
-        </div>
-
-        <DocumentsTable documents={documents || []} canManage={canManageDocuments} />
+        ) : (
+          documents.map((document) => {
+            const IconComponent = getDocumentIcon(document.mime_type)
+            return (
+              <Card key={document.id} className="hover:shadow-md transition-shadow">
+                <CardContent className="p-6">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-start gap-4 flex-1 min-w-0">
+                      <div className="p-2 bg-muted rounded-lg">
+                        <IconComponent className="h-6 w-6 text-muted-foreground" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-3 mb-2">
+                          <h3 className="text-lg font-semibold truncate">{document.name}</h3>
+                          <Badge variant={getDocumentTypeColor(document.document_type)}>{document.document_type}</Badge>
+                        </div>
+                        {document.description && (
+                          <p className="text-muted-foreground mb-3 line-clamp-2">{document.description}</p>
+                        )}
+                        <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+                          {document.cases && (
+                            <span>
+                              <strong>Caso:</strong> {document.cases.title} - {document.cases.clients?.name}
+                            </span>
+                          )}
+                          <span>
+                            <strong>Tamaño:</strong> {formatFileSize(document.file_size)}
+                          </span>
+                          <span>
+                            <strong>Subido por:</strong> {document.users?.full_name}
+                          </span>
+                          <span>
+                            <strong>Fecha:</strong> {new Date(document.created_at).toLocaleDateString("es-ES")}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem>
+                          <Eye className="h-4 w-4 mr-2" />
+                          Ver
+                        </DropdownMenuItem>
+                        <DropdownMenuItem>
+                          <Download className="h-4 w-4 mr-2" />
+                          Descargar
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })
+        )}
       </div>
     </div>
   )

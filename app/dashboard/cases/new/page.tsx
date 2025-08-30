@@ -15,64 +15,39 @@ import { createClient } from "@/lib/supabase/client"
 import { Loader2, ArrowLeft } from "lucide-react"
 import Link from "next/link"
 
-interface Case {
+interface Client {
   id: string
-  title: string
-  clients: { name: string }
+  name: string
+  company?: string
 }
 
-interface User {
-  id: string
-  full_name: string
-  role: string
-}
-
-export default function NewTaskPage() {
+export default function NewCasePage() {
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
-  const [caseId, setCaseId] = useState("")
-  const [assignedTo, setAssignedTo] = useState("")
+  const [clientId, setClientId] = useState("")
   const [priority, setPriority] = useState<"low" | "medium" | "high" | "urgent">("medium")
-  const [dueDate, setDueDate] = useState("")
-  const [cases, setCases] = useState<Case[]>([])
-  const [users, setUsers] = useState<User[]>([])
+  const [startDate, setStartDate] = useState(new Date().toISOString().split("T")[0])
+  const [endDate, setEndDate] = useState("")
+  const [estimatedHours, setEstimatedHours] = useState("")
+  const [hourlyRate, setHourlyRate] = useState("")
+  const [clients, setClients] = useState<Client[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const router = useRouter()
   const supabase = createClient()
 
   useEffect(() => {
-    async function fetchData() {
-      // Fetch cases
-      const { data: casesData, error: casesError } = await supabase
-        .from("cases")
-        .select(`
-          id,
-          title,
-          clients (name)
-        `)
-        .order("title")
+    async function fetchClients() {
+      const { data, error } = await supabase.from("clients").select("id, name, company").order("name")
 
-      if (casesError) {
-        console.error("Error fetching cases:", casesError)
+      if (error) {
+        console.error("Error fetching clients:", error)
       } else {
-        setCases(casesData || [])
-      }
-
-      // Fetch users
-      const { data: usersData, error: usersError } = await supabase
-        .from("users")
-        .select("id, full_name, role")
-        .order("full_name")
-
-      if (usersError) {
-        console.error("Error fetching users:", usersError)
-      } else {
-        setUsers(usersData || [])
+        setClients(data || [])
       }
     }
 
-    fetchData()
+    fetchClients()
   }, [supabase])
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -87,22 +62,24 @@ export default function NewTaskPage() {
         return
       }
 
-      const taskData = {
+      const caseData = {
         title,
         description,
-        case_id: caseId || null,
-        assigned_to: assignedTo || null,
+        client_id: clientId,
         priority,
-        due_date: dueDate ? new Date(dueDate).toISOString() : null,
+        start_date: startDate,
+        end_date: endDate || null,
+        estimated_hours: estimatedHours ? Number.parseInt(estimatedHours) : null,
+        hourly_rate: hourlyRate ? Number.parseFloat(hourlyRate) : null,
         created_by: userData.user.id,
       }
 
-      const { data, error } = await supabase.from("tasks").insert([taskData]).select().single()
+      const { data, error } = await supabase.from("cases").insert([caseData]).select().single()
 
       if (error) {
         setError(error.message)
       } else {
-        router.push(`/dashboard/tasks/${data.id}`)
+        router.push(`/dashboard/cases/${data.id}`)
       }
     } catch (err) {
       setError("Error inesperado. Intenta nuevamente.")
@@ -116,21 +93,21 @@ export default function NewTaskPage() {
       {/* Header */}
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" asChild>
-          <Link href="/dashboard/tasks">
+          <Link href="/dashboard/cases">
             <ArrowLeft className="h-4 w-4" />
           </Link>
         </Button>
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Nueva Tarea</h1>
-          <p className="text-muted-foreground">Crea una nueva tarea para tu estudio jurídico</p>
+          <h1 className="text-3xl font-bold tracking-tight">Nuevo Caso</h1>
+          <p className="text-muted-foreground">Crea un nuevo caso para tu estudio jurídico</p>
         </div>
       </div>
 
       {/* Form */}
       <Card className="max-w-2xl">
         <CardHeader>
-          <CardTitle>Información de la Tarea</CardTitle>
-          <CardDescription>Completa los detalles de la nueva tarea</CardDescription>
+          <CardTitle>Información del Caso</CardTitle>
+          <CardDescription>Completa los detalles del nuevo caso</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
@@ -141,12 +118,12 @@ export default function NewTaskPage() {
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="title">Título de la Tarea *</Label>
+              <Label htmlFor="title">Título del Caso *</Label>
               <Input
                 id="title"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="Ej: Revisar contrato de servicios"
+                placeholder="Ej: Contrato de Servicios ABC"
                 required
                 disabled={loading}
               />
@@ -158,44 +135,34 @@ export default function NewTaskPage() {
                 id="description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Describe los detalles de la tarea..."
+                placeholder="Describe los detalles del caso..."
                 rows={4}
                 disabled={loading}
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="case">Caso (Opcional)</Label>
-              <Select value={caseId} onValueChange={setCaseId}>
+              <Label htmlFor="client">Cliente *</Label>
+              <Select value={clientId} onValueChange={setClientId} required>
                 <SelectTrigger>
-                  <SelectValue placeholder="Selecciona un caso" />
+                  <SelectValue placeholder="Selecciona un cliente" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Sin caso asignado</SelectItem>
-                  {cases.map((case_) => (
-                    <SelectItem key={case_.id} value={case_.id}>
-                      {case_.title} - {case_.clients?.name}
+                  {clients.map((client) => (
+                    <SelectItem key={client.id} value={client.id}>
+                      {client.name} {client.company && `(${client.company})`}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="assignedTo">Asignar a</Label>
-              <Select value={assignedTo} onValueChange={setAssignedTo}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecciona un usuario" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">Sin asignar</SelectItem>
-                  {users.map((user) => (
-                    <SelectItem key={user.id} value={user.id}>
-                      {user.full_name} ({user.role})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {clients.length === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  No hay clientes disponibles.{" "}
+                  <Link href="/dashboard/clients/new" className="text-primary hover:underline">
+                    Crear cliente
+                  </Link>
+                </p>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -218,30 +185,68 @@ export default function NewTaskPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="dueDate">Fecha de Vencimiento</Label>
+                <Label htmlFor="hourlyRate">Tarifa por Hora</Label>
                 <Input
-                  id="dueDate"
-                  type="datetime-local"
-                  value={dueDate}
-                  onChange={(e) => setDueDate(e.target.value)}
+                  id="hourlyRate"
+                  type="number"
+                  step="0.01"
+                  value={hourlyRate}
+                  onChange={(e) => setHourlyRate(e.target.value)}
+                  placeholder="15000.00"
                   disabled={loading}
                 />
               </div>
             </div>
 
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="startDate">Fecha de Inicio</Label>
+                <Input
+                  id="startDate"
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  disabled={loading}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="endDate">Fecha de Fin (Estimada)</Label>
+                <Input
+                  id="endDate"
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  disabled={loading}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="estimatedHours">Horas Estimadas</Label>
+              <Input
+                id="estimatedHours"
+                type="number"
+                value={estimatedHours}
+                onChange={(e) => setEstimatedHours(e.target.value)}
+                placeholder="40"
+                disabled={loading}
+              />
+            </div>
+
             <div className="flex gap-4">
-              <Button type="submit" disabled={loading || !title}>
+              <Button type="submit" disabled={loading || !title || !clientId}>
                 {loading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Creando...
                   </>
                 ) : (
-                  "Crear Tarea"
+                  "Crear Caso"
                 )}
               </Button>
               <Button type="button" variant="outline" asChild>
-                <Link href="/dashboard/tasks">Cancelar</Link>
+                <Link href="/dashboard/cases">Cancelar</Link>
               </Button>
             </div>
           </form>

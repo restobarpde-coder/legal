@@ -1,311 +1,195 @@
-import { redirect } from "next/navigation"
-import { createClient } from "@/lib/supabase/server"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { createClient } from "@/lib/supabase/server"
+import { requireAuth } from "@/lib/auth"
+import { Scale, Users, FileText, CheckSquare, AlertCircle, Plus } from "lucide-react"
+import Link from "next/link"
 
-export default async function DashboardPage() {
+async function getDashboardData() {
   const supabase = await createClient()
+  const user = await requireAuth()
 
-  const { data, error } = await supabase.auth.getUser()
-  if (error || !data?.user) {
-    redirect("/auth/login")
-  }
-
-  // Get user profile
-  const { data: profile } = await supabase
-    .from("profiles")
+  // Get user's cases
+  const { data: cases } = await supabase
+    .from("cases")
     .select(`
       *,
-      organizations (
-        name,
-        description
-      )
+      clients (name),
+      case_members!inner (user_id)
     `)
-    .eq("id", data.user.id)
-    .single()
+    .eq("case_members.user_id", user.id)
 
-  const [
-    { count: clientsCount },
-    { count: mattersCount },
-    { count: tasksCount },
-    { count: pendingTasksCount },
-    { count: documentsCount },
-    { count: upcomingEventsCount },
-  ] = await Promise.all([
-    supabase
-      .from("clients")
-      .select("*", { count: "exact", head: true })
-      .eq("organization_id", profile?.organization_id),
-    supabase
-      .from("matters")
-      .select("*", { count: "exact", head: true })
-      .eq("organization_id", profile?.organization_id),
-    supabase.from("tasks").select("*", { count: "exact", head: true }).eq("organization_id", profile?.organization_id),
-    supabase
-      .from("tasks")
-      .select("*", { count: "exact", head: true })
-      .eq("organization_id", profile?.organization_id)
-      .eq("status", "pending"),
-    supabase
-      .from("documents")
-      .select("*", { count: "exact", head: true })
-      .eq("organization_id", profile?.organization_id),
-    supabase
-      .from("events")
-      .select("*", { count: "exact", head: true })
-      .eq("organization_id", profile?.organization_id)
-      .gte("start_time", new Date().toISOString())
-      .lte("start_time", new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()),
-  ])
-
-  const { data: recentTasks } = await supabase
+  // Get recent tasks
+  const { data: tasks } = await supabase
     .from("tasks")
     .select(`
       *,
-      matters (title),
-      assigned_to:profiles!tasks_assigned_to_fkey (first_name, last_name)
+      cases (title, clients (name))
     `)
-    .eq("organization_id", profile?.organization_id)
+    .or(`assigned_to.eq.${user.id},created_by.eq.${user.id}`)
     .order("created_at", { ascending: false })
     .limit(5)
 
-  const { data: recentEvents } = await supabase
-    .from("events")
-    .select(`
-      *,
-      matters (title),
-      clients (name)
-    `)
-    .eq("organization_id", profile?.organization_id)
-    .gte("start_time", new Date().toISOString())
-    .order("start_time", { ascending: true })
-    .limit(5)
+  // Get clients count
+  const { count: clientsCount } = await supabase.from("clients").select("*", { count: "exact", head: true })
 
-  const handleSignOut = async () => {
-    "use server"
-    const supabase = await createClient()
-    await supabase.auth.signOut()
-    redirect("/auth/login")
+  // Get documents count
+  const { count: documentsCount } = await supabase.from("documents").select("*", { count: "exact", head: true })
+
+  return {
+    cases: cases || [],
+    tasks: tasks || [],
+    clientsCount: clientsCount || 0,
+    documentsCount: documentsCount || 0,
   }
+}
+
+export default async function DashboardPage() {
+  const { cases, tasks, clientsCount, documentsCount } = await getDashboardData()
+
+  const activeCases = cases.filter((c) => c.status === "active").length
+  const pendingTasks = tasks.filter((t) => t.status === "pending").length
+  const urgentTasks = tasks.filter((t) => t.priority === "urgent").length
 
   return (
-    <div className="flex h-screen bg-gray-50">
-      <div className="w-64 bg-white shadow-sm">
-        <div className="p-6">
-          <h2 className="text-xl font-bold text-gray-900">Sistema Jurídico</h2>
-          <p className="text-sm text-gray-600">{profile?.organizations?.name}</p>
-        </div>
-        <nav className="mt-6">
-          <div className="px-3">
-            <div className="space-y-1">
-              <a
-                href="/dashboard"
-                className="bg-blue-50 text-blue-700 group flex items-center px-2 py-2 text-sm font-medium rounded-md"
-              >
-                Dashboard
-              </a>
-              <a
-                href="/dashboard/clients"
-                className="text-gray-700 hover:bg-gray-50 group flex items-center px-2 py-2 text-sm font-medium rounded-md"
-              >
-                Clientes
-              </a>
-              <a
-                href="/dashboard/matters"
-                className="text-gray-700 hover:bg-gray-50 group flex items-center px-2 py-2 text-sm font-medium rounded-md"
-              >
-                Casos
-              </a>
-              <a
-                href="/dashboard/tasks"
-                className="text-gray-700 hover:bg-gray-50 group flex items-center px-2 py-2 text-sm font-medium rounded-md"
-              >
-                Tareas
-              </a>
-              <a
-                href="/dashboard/calendar"
-                className="text-gray-700 hover:bg-gray-50 group flex items-center px-2 py-2 text-sm font-medium rounded-md"
-              >
-                Calendario
-              </a>
-              <a
-                href="/dashboard/documents"
-                className="text-gray-700 hover:bg-gray-50 group flex items-center px-2 py-2 text-sm font-medium rounded-md"
-              >
-                Documentos
-              </a>
-              {profile?.role === "admin" && (
-                <a
-                  href="/dashboard/admin"
-                  className="text-gray-700 hover:bg-gray-50 group flex items-center px-2 py-2 text-sm font-medium rounded-md"
-                >
-                  Administración
-                </a>
-              )}
-            </div>
-          </div>
-        </nav>
+    <div className="space-y-6">
+      {/* Welcome section */}
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+        <p className="text-muted-foreground">Resumen de la actividad de tu estudio jurídico</p>
       </div>
 
-      <div className="flex-1 overflow-auto">
-        <div className="p-8">
-          <div className="flex justify-between items-center mb-8">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-              <p className="text-gray-600">
-                Bienvenido, {profile?.first_name} {profile?.last_name}
-              </p>
-            </div>
-            <form action={handleSignOut}>
-              <Button variant="outline" type="submit">
-                Cerrar Sesión
+      {/* Stats cards */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Casos Activos</CardTitle>
+            <Scale className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{activeCases}</div>
+            <p className="text-xs text-muted-foreground">de {cases.length} casos totales</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Clientes</CardTitle>
+            <Users className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{clientsCount}</div>
+            <p className="text-xs text-muted-foreground">clientes registrados</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Tareas Pendientes</CardTitle>
+            <CheckSquare className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{pendingTasks}</div>
+            <p className="text-xs text-muted-foreground">
+              {urgentTasks > 0 && <span className="text-destructive font-medium">{urgentTasks} urgentes</span>}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Documentos</CardTitle>
+            <FileText className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{documentsCount}</div>
+            <p className="text-xs text-muted-foreground">archivos almacenados</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-6 md:grid-cols-2">
+        {/* Recent cases */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Casos Recientes</CardTitle>
+                <CardDescription>Tus casos más recientes</CardDescription>
+              </div>
+              <Button asChild size="sm">
+                <Link href="/dashboard/cases">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Nuevo Caso
+                </Link>
               </Button>
-            </form>
-          </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {cases.slice(0, 5).map((case_) => (
+              <div key={case_.id} className="flex items-center justify-between space-x-4">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{case_.title}</p>
+                  <p className="text-xs text-muted-foreground truncate">{case_.clients?.name}</p>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Badge
+                    variant={
+                      case_.status === "active" ? "default" : case_.status === "pending" ? "secondary" : "outline"
+                    }
+                  >
+                    {case_.status}
+                  </Badge>
+                  {case_.priority === "urgent" && <AlertCircle className="h-4 w-4 text-destructive" />}
+                </div>
+              </div>
+            ))}
+            {cases.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-4">No hay casos registrados</p>
+            )}
+          </CardContent>
+        </Card>
 
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 mb-8">
-            <Card>
-              <CardHeader>
-                <CardTitle>Clientes</CardTitle>
-                <CardDescription>Total de clientes activos</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{clientsCount || 0}</div>
-                <p className="text-xs text-muted-foreground">Clientes registrados</p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Casos Activos</CardTitle>
-                <CardDescription>Casos en progreso</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{mattersCount || 0}</div>
-                <p className="text-xs text-muted-foreground">Casos totales</p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Tareas Pendientes</CardTitle>
-                <CardDescription>Tareas por completar</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{pendingTasksCount || 0}</div>
-                <p className="text-xs text-muted-foreground">de {tasksCount || 0} tareas totales</p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Próximos Eventos</CardTitle>
-                <CardDescription>Esta semana</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{upcomingEventsCount || 0}</div>
-                <p className="text-xs text-muted-foreground">Eventos programados</p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Documentos</CardTitle>
-                <CardDescription>Archivos subidos</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{documentsCount || 0}</div>
-                <p className="text-xs text-muted-foreground">Documentos totales</p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Mi Rol</CardTitle>
-                <CardDescription>Nivel de acceso</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-lg font-semibold capitalize">{profile?.role}</div>
-                <p className="text-xs text-muted-foreground">{profile?.organizations?.name}</p>
-              </CardContent>
-            </Card>
-          </div>
-
-          <div className="grid gap-6 md:grid-cols-2">
-            <Card>
-              <CardHeader>
+        {/* Recent tasks */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
                 <CardTitle>Tareas Recientes</CardTitle>
-                <CardDescription>Últimas tareas creadas</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {recentTasks?.map((task) => (
-                    <div key={task.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                      <div>
-                        <p className="font-medium text-sm">{task.title}</p>
-                        <p className="text-xs text-gray-600">
-                          {task.matters?.title} • {task.assigned_to?.first_name} {task.assigned_to?.last_name}
-                        </p>
-                      </div>
-                      <span
-                        className={`px-2 py-1 text-xs rounded-full ${
-                          task.status === "completed"
-                            ? "bg-green-100 text-green-800"
-                            : task.status === "in_progress"
-                              ? "bg-blue-100 text-blue-800"
-                              : "bg-yellow-100 text-yellow-800"
-                        }`}
-                      >
-                        {task.status === "completed"
-                          ? "Completada"
-                          : task.status === "in_progress"
-                            ? "En Progreso"
-                            : "Pendiente"}
-                      </span>
-                    </div>
-                  )) || <p className="text-gray-500 text-sm">No hay tareas recientes</p>}
+                <CardDescription>Tus tareas más recientes</CardDescription>
+              </div>
+              <Button asChild size="sm" variant="outline">
+                <Link href="/dashboard/tasks">Ver Todas</Link>
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {tasks.map((task) => (
+              <div key={task.id} className="flex items-center justify-between space-x-4">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{task.title}</p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {task.cases?.title} - {task.cases?.clients?.name}
+                  </p>
                 </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Próximos Eventos</CardTitle>
-                <CardDescription>Eventos programados</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {recentEvents?.map((event) => (
-                    <div key={event.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                      <div>
-                        <p className="font-medium text-sm">{event.title}</p>
-                        <p className="text-xs text-gray-600">
-                          {new Date(event.start_time).toLocaleDateString("es-ES", {
-                            day: "numeric",
-                            month: "short",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </p>
-                      </div>
-                      <span
-                        className={`px-2 py-1 text-xs rounded-full ${
-                          event.type === "hearing"
-                            ? "bg-red-100 text-red-800"
-                            : event.type === "meeting"
-                              ? "bg-blue-100 text-blue-800"
-                              : "bg-gray-100 text-gray-800"
-                        }`}
-                      >
-                        {event.type === "hearing" ? "Audiencia" : event.type === "meeting" ? "Reunión" : "Evento"}
-                      </span>
-                    </div>
-                  )) || <p className="text-gray-500 text-sm">No hay eventos próximos</p>}
+                <div className="flex items-center space-x-2">
+                  <Badge
+                    variant={
+                      task.status === "completed" ? "default" : task.status === "in_progress" ? "secondary" : "outline"
+                    }
+                  >
+                    {task.status}
+                  </Badge>
+                  {task.priority === "urgent" && <AlertCircle className="h-4 w-4 text-destructive" />}
                 </div>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
+              </div>
+            ))}
+            {tasks.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-4">No hay tareas registradas</p>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </div>
   )

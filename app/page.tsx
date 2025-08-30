@@ -1,141 +1,98 @@
+import { getUser } from "@/lib/auth"
+import { redirect } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Scale, Users, FileText, Calendar } from "lucide-react"
 import Link from "next/link"
 
-export default function HomePage() {
+export default async function HomePage() {
+  const user = await getUser()
+
+  if (user) {
+    redirect("/dashboard")
+  }
+
   return (
-    <div className="flex min-h-svh flex-col">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
       {/* Header */}
-      <header className="border-b">
-        <div className="container mx-auto flex h-16 items-center justify-between px-4">
+      <header className="border-b bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm">
+        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center space-x-2">
-            <div className="h-8 w-8 rounded bg-primary"></div>
-            <span className="text-xl font-bold">LegalManager</span>
+            <Scale className="h-8 w-8 text-blue-600" />
+            <h1 className="text-2xl font-bold">Estudio Jurídico MVP</h1>
           </div>
-          <div className="flex items-center space-x-4">
+          <div className="space-x-2">
             <Button variant="ghost" asChild>
-              <Link href="/auth/login">Iniciar Sesión</Link>
+              <Link href="/login">Iniciar Sesión</Link>
             </Button>
             <Button asChild>
-              <Link href="/auth/register">Registrarse</Link>
+              <Link href="/register">Registrarse</Link>
             </Button>
           </div>
         </div>
       </header>
 
       {/* Hero Section */}
-      <main className="flex-1">
-        <section className="container mx-auto px-4 py-24 text-center">
-          <h1 className="text-4xl font-bold tracking-tight sm:text-6xl">
-            Gestión Integral para <span className="text-primary">Estudios Jurídicos</span>
-          </h1>
-          <p className="mx-auto mt-6 max-w-2xl text-lg text-muted-foreground">
-            Administra clientes, casos, tareas y documentos de manera eficiente. La solución completa para la gestión de
-            tu estudio jurídico.
+      <main className="container mx-auto px-4 py-16">
+        <div className="text-center mb-16">
+          <h2 className="text-4xl font-bold mb-4 text-balance">Gestiona tu estudio jurídico de manera eficiente</h2>
+          <p className="text-xl text-muted-foreground mb-8 text-pretty max-w-2xl mx-auto">
+            Sistema completo para la gestión de casos, clientes, documentos y tareas. Diseñado específicamente para
+            estudios jurídicos pequeños y medianos.
           </p>
-          <div className="mt-10 flex items-center justify-center gap-x-6">
+          <div className="space-x-4">
             <Button size="lg" asChild>
-              <Link href="/auth/register">Comenzar Gratis</Link>
+              <Link href="/register">Comenzar Ahora</Link>
             </Button>
-            <Button variant="outline" size="lg" asChild>
-              <Link href="/auth/login">Acceder</Link>
+            <Button size="lg" variant="outline" asChild>
+              <Link href="/login">Iniciar Sesión</Link>
             </Button>
           </div>
-        </section>
+        </div>
 
         {/* Features */}
-        <section className="bg-muted/50 py-24">
-          <div className="container mx-auto px-4">
-            <div className="text-center">
-              <h2 className="text-3xl font-bold tracking-tight">Todo lo que necesitas para tu estudio</h2>
-              <p className="mt-4 text-lg text-muted-foreground">
-                Herramientas profesionales diseñadas específicamente para abogados
-              </p>
-            </div>
-            <div className="mt-16 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Gestión de Clientes</CardTitle>
-                  <CardDescription>Administra la información de tus clientes de manera centralizada</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-muted-foreground">
-                    Mantén un registro completo de todos tus clientes con datos de contacto, historial de casos y
-                    documentación relevante.
-                  </p>
-                </CardContent>
-              </Card>
+        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <Card>
+            <CardHeader>
+              <Users className="h-8 w-8 text-blue-600 mb-2" />
+              <CardTitle>Gestión de Clientes</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <CardDescription>Mantén toda la información de tus clientes organizada y accesible.</CardDescription>
+            </CardContent>
+          </Card>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle>Control de Casos</CardTitle>
-                  <CardDescription>Seguimiento detallado de todos tus casos legales</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-muted-foreground">
-                    Organiza casos por tipo, estado y prioridad. Mantén un historial completo de cada proceso legal.
-                  </p>
-                </CardContent>
-              </Card>
+          <Card>
+            <CardHeader>
+              <FileText className="h-8 w-8 text-green-600 mb-2" />
+              <CardTitle>Control de Casos</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <CardDescription>Seguimiento completo del progreso de cada caso legal.</CardDescription>
+            </CardContent>
+          </Card>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle>Calendario Integrado</CardTitle>
-                  <CardDescription>Nunca pierdas una cita o fecha límite importante</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-muted-foreground">
-                    Programa audiencias, reuniones y recordatorios. Sincroniza con tu calendario personal.
-                  </p>
-                </CardContent>
-              </Card>
+          <Card>
+            <CardHeader>
+              <Calendar className="h-8 w-8 text-purple-600 mb-2" />
+              <CardTitle>Gestión de Tareas</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <CardDescription>Organiza y prioriza las tareas de tu equipo legal.</CardDescription>
+            </CardContent>
+          </Card>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle>Gestión de Documentos</CardTitle>
-                  <CardDescription>Almacena y organiza todos tus documentos legales</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-muted-foreground">
-                    Sube, categoriza y busca documentos fácilmente. Control de versiones y acceso seguro.
-                  </p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Tareas y Recordatorios</CardTitle>
-                  <CardDescription>Mantén el control de todas tus actividades</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-muted-foreground">
-                    Crea tareas, asigna responsables y recibe notificaciones para no olvidar nada importante.
-                  </p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Seguridad Avanzada</CardTitle>
-                  <CardDescription>Protección de datos con los más altos estándares</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-muted-foreground">
-                    Encriptación de datos, control de acceso por roles y cumplimiento de normativas de privacidad.
-                  </p>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-        </section>
-      </main>
-
-      {/* Footer */}
-      <footer className="border-t py-12">
-        <div className="container mx-auto px-4 text-center">
-          <p className="text-sm text-muted-foreground">© 2024 LegalManager. Todos los derechos reservados.</p>
+          <Card>
+            <CardHeader>
+              <Scale className="h-8 w-8 text-orange-600 mb-2" />
+              <CardTitle>Documentos Legales</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <CardDescription>Almacena y organiza todos tus documentos de forma segura.</CardDescription>
+            </CardContent>
+          </Card>
         </div>
-      </footer>
+      </main>
     </div>
   )
 }
