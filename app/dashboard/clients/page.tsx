@@ -11,6 +11,7 @@ async function getClients() {
   const supabase = await createClient()
   await requireAuth()
 
+  console.log('Fetching clients...')
   const { data: clients, error } = await supabase
     .from("clients")
     .select(`
@@ -23,8 +24,17 @@ async function getClients() {
     `)
     .order("created_at", { ascending: false })
 
+  console.log('Clients query result:', { clients, error })
+  console.log('Number of clients found:', clients?.length || 0)
+
   if (error) {
     console.error("Error fetching clients:", error)
+    console.error("Error details:", {
+      code: error.code,
+      message: error.message,
+      details: error.details,
+      hint: error.hint
+    })
     return []
   }
 

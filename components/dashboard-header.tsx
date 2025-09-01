@@ -1,6 +1,6 @@
 "use client"
 
-import { DashboardSidebar } from "./dashboard-sidebar"
+import { MobileDashboardSidebar } from "./dashboard-sidebar"
 import { Button } from "@/components/ui/button"
 import { Bell, Search } from "lucide-react"
 import { Input } from "@/components/ui/input"
@@ -19,7 +19,7 @@ export function DashboardHeader({ user, title }: DashboardHeaderProps) {
     <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="flex h-16 items-center gap-4 px-4 md:px-6">
         {/* Mobile menu button */}
-        <DashboardSidebar user={user} />
+        <MobileDashboardSidebar user={user} />
 
         {/* Page title */}
         {title && <h1 className="text-lg font-semibold md:text-xl">{title}</h1>}

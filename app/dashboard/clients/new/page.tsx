@@ -48,12 +48,25 @@ export default function NewClientPage() {
         created_by: userData.user.id,
       }
 
+      console.log('Attempting to insert client data:', clientData)
       const { data, error } = await supabase.from("clients").insert([clientData]).select().single()
+      
+      console.log('Insert result:', { data, error })
 
       if (error) {
+        console.error('Error creating client:', error)
         setError(error.message)
       } else {
-        router.push(`/dashboard/clients/${data.id}`)
+        console.log('Client created successfully:', data)
+        
+        // Option 1: Redirect to client list instead of detail page
+        console.log('Redirecting to clients list...')
+        router.push('/dashboard/clients')
+        router.refresh() // Force refresh to update the list
+        
+        // Alternative option: redirect to detail page
+        // console.log('Redirecting to:', `/dashboard/clients/${data.id}`)
+        // router.push(`/dashboard/clients/${data.id}`)
       }
     } catch (err) {
       setError("Error inesperado. Intenta nuevamente.")

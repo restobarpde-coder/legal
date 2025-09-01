@@ -140,27 +140,25 @@ function SidebarContent({ user }: DashboardSidebarProps) {
   )
 }
 
-export function DashboardSidebar({ user }: DashboardSidebarProps) {
+// Mobile sidebar component
+export function MobileDashboardSidebar({ user }: DashboardSidebarProps) {
   const [open, setOpen] = useState(false)
 
   return (
-    <>
-      {/* Mobile sidebar */}
-      <Sheet open={open} onOpenChange={setOpen}>
-        <SheetTrigger asChild>
-          <Button variant="ghost" size="icon" className="md:hidden">
-            <Menu className="h-5 w-5" />
-          </Button>
-        </SheetTrigger>
-        <SheetContent side="left" className="p-0 w-64">
-          <SidebarContent user={user} />
-        </SheetContent>
-      </Sheet>
-
-      {/* Desktop sidebar */}
-      <div className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0">
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetTrigger asChild>
+        <Button variant="ghost" size="icon" className="md:hidden">
+          <Menu className="h-5 w-5" />
+        </Button>
+      </SheetTrigger>
+      <SheetContent side="left" className="p-0 w-64">
         <SidebarContent user={user} />
-      </div>
-    </>
+      </SheetContent>
+    </Sheet>
   )
+}
+
+// Desktop sidebar component
+export function DashboardSidebar({ user }: DashboardSidebarProps) {
+  return <SidebarContent user={user} />
 }
