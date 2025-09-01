@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { ArrowLeft, Edit, Users, FileText, CheckSquare, Clock, Mail, Phone, Building, StickyNote, Trash2, MoreVertical } from 'lucide-react'
+import { ArrowLeft, Edit, Users, FileText, CheckSquare, Clock, Mail, Phone, Building, StickyNote, Trash2, MoreVertical, Calendar, User } from 'lucide-react'
 import Link from 'next/link'
 import { NoteModal } from '@/components/modals/note-modal'
 import { TaskModal } from '@/components/modals/task-modal'
@@ -127,6 +127,125 @@ export function CaseDetailsClient({ caseId }: CaseDetailsClientProps) {
         .filter((entry) => entry.billable)
         .reduce((sum, entry) => sum + Number(entry.hours) * (entry.rate || caseData.hourly_rate || 0), 0)
 
+    // Create timeline with all activities
+    const createTimeline = () => {
+        const activities = [
+            ...tasks.map(task => ({
+                id: `task-${task.id}`,
+                type: 'task' as const,
+                title: task.title,
+                description: task.description,
+                date: task.created_at,
+                updatedAt: task.updated_at,
+                status: task.status,
+                priority: task.priority,
+                assignedTo: task.assigned_to,
+                createdBy: task.created_by,
+                data: task
+            })),
+            ...documents.map(doc => ({
+                id: `document-${doc.id}`,
+                type: 'document' as const,
+                title: doc.name,
+                description: doc.document_type || 'Documento',
+                date: doc.created_at,
+                updatedAt: doc.updated_at,
+                createdBy: doc.uploaded_by,
+                data: doc
+            })),
+            ...notes.map(note => ({
+                id: `note-${note.id}`,
+                type: 'note' as const,
+                title: note.title || 'Nota sin título',
+                description: note.content,
+                date: note.created_at,
+                updatedAt: note.updated_at,
+                isPrivate: note.is_private,
+                createdBy: note.created_by,
+                data: note
+            })),
+            ...timeEntries.map(entry => ({
+                id: `time-${entry.id}`,
+                type: 'time' as const,
+                title: entry.description,
+                description: `${entry.hours}h ${entry.billable ? '(Facturable)' : '(No facturable)'}`,
+                date: entry.date,
+                updatedAt: entry.updated_at,
+                createdBy: entry.user_id,
+                data: entry
+            }))
+        ];
+
+        // Sort by most recent first (using updated_at if available, otherwise created_at/date)
+        return activities.sort((a, b) => {
+            const dateA = new Date(a.updatedAt || a.date);
+            const dateB = new Date(b.updatedAt || b.date);
+            return dateB.getTime() - dateA.getTime();
+        });
+    }
+
+    const timeline = createTimeline()
+
+    // Helper function to get activity icon
+    const getActivityIcon = (type: string) => {
+        switch (type) {
+            case 'task':
+                return <CheckSquare className="h-4 w-4 text-blue-600" />
+            case 'document':
+                return <FileText className="h-4 w-4 text-green-600" />
+            case 'note':
+                return <StickyNote className="h-4 w-4 text-yellow-600" />
+            case 'time':
+                return <Clock className="h-4 w-4 text-purple-600" />
+            default:
+                return <Calendar className="h-4 w-4 text-gray-600" />
+        }
+    }
+
+    // Helper function to get activity color
+    const getActivityColor = (type: string) => {
+        switch (type) {
+            case 'task':
+                return 'border-blue-200 bg-blue-50'
+            case 'document':
+                return 'border-green-200 bg-green-50'
+            case 'note':
+                return 'border-yellow-200 bg-yellow-50'
+            case 'time':
+                return 'border-purple-200 bg-purple-50'
+            default:
+                return 'border-gray-200 bg-gray-50'
+        }
+    }
+
+    // Helper function to format date and time
+    const formatDateTime = (dateStr: string) => {
+        const date = new Date(dateStr)
+        const now = new Date()
+        const diffInHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60)
+        
+        if (diffInHours < 1) {
+            const diffInMinutes = Math.floor(diffInHours * 60)
+            return `Hace ${diffInMinutes} minuto${diffInMinutes !== 1 ? 's' : ''}`
+        } else if (diffInHours < 24) {
+            const hours = Math.floor(diffInHours)
+            return `Hace ${hours} hora${hours !== 1 ? 's' : ''}`
+        } else {
+            return date.toLocaleDateString('es-ES', {
+                day: 'numeric',
+                month: 'short',
+                hour: '2-digit',
+                minute: '2-digit'
+            })
+        }
+    }
+
+    // Get user name by ID (helper function)
+    const getUserName = (userId: string) => {
+        const member = caseData.case_members.find(m => m.users.id === userId)
+        return member?.users.full_name || 'Usuario desconocido'
+    }
+
     return (
         <div className="space-y-6">
             {/* Header */}
@@ -206,37 +325,100 @@ export function CaseDetailsClient({ caseId }: CaseDetailsClientProps) {
                                 </CardContent>
                             </Card>
 
-                            {/* Recent activity summary */}
+                            {/* Timeline cronológico */}
                             <Card>
                                 <CardHeader>
-                                    <CardTitle>Actividad Reciente</CardTitle>
+                                    <CardTitle className="flex items-center gap-2">
+                                        <Calendar className="h-5 w-5" />
+                                        Timeline de Actividad
+                                    </CardTitle>
                                 </CardHeader>
                                 <CardContent>
-                                    <div className="space-y-4">
-                                        {/* Recent tasks */}
-                                        {tasks.slice(0, 3).map((task) => (
-                                            <div key={task.id} className="flex items-center justify-between p-3 border rounded-lg">
-                                                <div>
-                                                    <p className="font-medium">{task.title}</p>
-                                                    <p className="text-sm text-muted-foreground">Tarea • {new Date(task.created_at).toLocaleDateString("es-ES")}</p>
-                                                </div>
-                                                <Badge variant={task.status === "completed" ? "default" : "secondary"}>{task.status}</Badge>
+                                    <div className="relative">
+                                        {timeline.length === 0 ? (
+                                            <div className="text-center py-8">
+                                                <Calendar className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                                                <h3 className="text-lg font-semibold mb-2">Sin actividad</h3>
+                                                <p className="text-muted-foreground">No hay actividad registrada para este caso</p>
                                             </div>
-                                        ))}
-
-                                        {/* Recent documents */}
-                                        {documents.slice(0, 2).map((doc) => (
-                                            <div key={doc.id} className="flex items-center justify-between p-3 border rounded-lg">
-                                                <div>
-                                                    <p className="font-medium">{doc.name}</p>
-                                                    <p className="text-sm text-muted-foreground">Documento • {new Date(doc.created_at).toLocaleDateString("es-ES")}</p>
-                                                </div>
-                                                <FileText className="h-4 w-4 text-muted-foreground" />
+                                        ) : (
+                                            <div className="space-y-4">
+                                                {/* Timeline line */}
+                                                <div className="absolute left-6 top-0 bottom-0 w-px bg-border"></div>
+                                                
+                                                {timeline.slice(0, 10).map((activity, index) => (
+                                                    <div key={activity.id} className="relative flex gap-4">
+                                                        {/* Timeline dot */}
+                                                        <div className={`relative z-10 flex h-12 w-12 items-center justify-center rounded-full border-2 border-white shadow-sm ${
+                                                            getActivityColor(activity.type)
+                                                        }`}>
+                                                            {getActivityIcon(activity.type)}
+                                                        </div>
+                                                        
+                                                        {/* Activity content */}
+                                                        <div className="flex-1 min-w-0 pb-6">
+                                                            <div className="flex items-start justify-between">
+                                                                <div className="flex-1">
+                                                                    <h4 className="font-medium text-sm mb-1">{activity.title}</h4>
+                                                                    <p className="text-sm text-muted-foreground mb-2 line-clamp-2">
+                                                                        {activity.description}
+                                                                    </p>
+                                                                    
+                                                                    {/* Activity metadata */}
+                                                                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                                                                        <span className="flex items-center gap-1">
+                                                                            <User className="h-3 w-3" />
+                                                                            {getUserName(activity.createdBy)}
+                                                                        </span>
+                                                                        <span>{formatDateTime(activity.date)}</span>
+                                                                        
+                                                                        {/* Activity-specific badges */}
+                                                                        {activity.type === 'task' && activity.status && (
+                                                                            <Badge variant={activity.status === 'completed' ? 'default' : 'secondary'} className="text-xs">
+                                                                                {activity.status}
+                                                                            </Badge>
+                                                                        )}
+                                                                        {activity.type === 'task' && activity.priority && (
+                                                                            <Badge variant="outline" className="text-xs">
+                                                                                {activity.priority}
+                                                                            </Badge>
+                                                                        )}
+                                                                        {activity.type === 'note' && activity.isPrivate && (
+                                                                            <Badge variant="outline" className="text-xs text-amber-600">
+                                                                                Privada
+                                                                            </Badge>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                                
+                                                                {/* Activity type badge */}
+                                                                <div className="ml-2">
+                                                                    <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
+                                                                        activity.type === 'task' ? 'bg-blue-100 text-blue-700' :
+                                                                        activity.type === 'document' ? 'bg-green-100 text-green-700' :
+                                                                        activity.type === 'note' ? 'bg-yellow-100 text-yellow-700' :
+                                                                        activity.type === 'time' ? 'bg-purple-100 text-purple-700' :
+                                                                        'bg-gray-100 text-gray-700'
+                                                                    }`}>
+                                                                        {activity.type === 'task' && 'Tarea'}
+                                                                        {activity.type === 'document' && 'Documento'}
+                                                                        {activity.type === 'note' && 'Nota'}
+                                                                        {activity.type === 'time' && 'Tiempo'}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                                
+                                                {timeline.length > 10 && (
+                                                    <div className="text-center pt-4">
+                                                        <p className="text-sm text-muted-foreground">
+                                                            Y {timeline.length - 10} actividades más...
+                                                        </p>
+                                                    </div>
+                                                )}
                                             </div>
-                                        ))}
-
-                                        {tasks.length === 0 && documents.length === 0 && (
-                                            <p className="text-center text-muted-foreground py-4">No hay actividad reciente</p>
                                         )}
                                     </div>
                                 </CardContent>

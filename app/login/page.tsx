@@ -25,18 +25,18 @@ export default function LoginPage() {
     }
   }, [state])
 
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <div className="flex justify-center mb-4">
-            <div className="p-3 bg-blue-100 dark:bg-blue-900 rounded-full">
-              <Scale className="h-8 w-8 text-blue-600 dark:text-blue-400" />
-            </div>
-          </div>
-          <CardTitle className="text-2xl font-bold">Iniciar Sesión</CardTitle>
-          <CardDescription>Accede a tu cuenta del estudio jurídico</CardDescription>
-        </CardHeader>
+    return (
+        <div className="min-h-screen flex items-center justify-center bg-background p-4">
+            <Card className="w-full max-w-md border-border shadow-lg">
+                <CardHeader className="text-center">
+                    <div className="flex justify-center mb-4">
+                        <div className="p-3 bg-primary/10 rounded-full">
+                            <Scale className="h-8 w-8 text-primary" />
+                        </div>
+                    </div>
+                    <CardTitle className="text-2xl font-bold text-foreground">Iniciar Sesión</CardTitle>
+                    <CardDescription className="text-muted-foreground">Accede a tu cuenta del estudio jurídico</CardDescription>
+                </CardHeader>
         <form action={formAction}>
           <CardContent className="space-y-4">
             <div className="space-y-2">

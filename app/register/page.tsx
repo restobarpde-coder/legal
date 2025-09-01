@@ -70,19 +70,19 @@ export default function RegisterPage() {
     }
   }
 
-  if (success) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-4">
-        <Card className="w-full max-w-md">
-          <CardHeader className="text-center">
-            <div className="flex justify-center mb-4">
-              <div className="p-3 bg-green-100 dark:bg-green-900 rounded-full">
-                <Scale className="h-8 w-8 text-green-600 dark:text-green-400" />
-              </div>
-            </div>
-            <CardTitle className="text-2xl font-bold text-green-600">¡Registro Exitoso!</CardTitle>
-            <CardDescription>Revisa tu email para confirmar tu cuenta</CardDescription>
-          </CardHeader>
+    if (success) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-background p-4">
+                <Card className="w-full max-w-md border-border shadow-lg">
+                    <CardHeader className="text-center">
+                        <div className="flex justify-center mb-4">
+                            <div className="p-3 bg-green-50 border-green-200 border-2 rounded-full">
+                                <Scale className="h-8 w-8 text-green-600" />
+                            </div>
+                        </div>
+                        <CardTitle className="text-2xl font-bold text-green-600">¡Registro Exitoso!</CardTitle>
+                        <CardDescription className="text-muted-foreground">Revisa tu email para confirmar tu cuenta</CardDescription>
+                    </CardHeader>
           <CardFooter>
             <Button onClick={() => router.push("/login")} className="w-full">
               Ir al Login
@@ -94,16 +94,16 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-4">
-      <Card className="w-full max-w-md">
+    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+      <Card className="w-full max-w-md border-border shadow-lg">
         <CardHeader className="text-center">
           <div className="flex justify-center mb-4">
-            <div className="p-3 bg-blue-100 dark:bg-blue-900 rounded-full">
-              <Scale className="h-8 w-8 text-blue-600 dark:text-blue-400" />
+            <div className="p-3 bg-primary/10 rounded-full">
+              <Scale className="h-8 w-8 text-primary" />
             </div>
           </div>
-          <CardTitle className="text-2xl font-bold">Crear Cuenta</CardTitle>
-          <CardDescription>Únete al equipo del estudio jurídico</CardDescription>
+          <CardTitle className="text-2xl font-bold text-foreground">Crear Cuenta</CardTitle>
+          <CardDescription className="text-muted-foreground">Únete al equipo del estudio jurídico</CardDescription>
         </CardHeader>
         <form onSubmit={handleRegister}>
           <CardContent className="space-y-4">
