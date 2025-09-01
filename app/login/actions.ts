@@ -37,5 +37,5 @@ export async function loginAction(
 
     // On success, the middleware will handle the redirection after the cookie is set.
     // We can also explicitly redirect here.
-    redirect('/dashboard')
+    redirect('/')
 }

@@ -7,9 +7,9 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Modal } from "@/components/ui/modal"
-import { createClient } from "@/lib/supabase/client"
 import { FileText, Upload, Loader2 } from "lucide-react"
 import { toast } from "sonner"
+import { useUploadDocuments } from "@/hooks/use-documents"
 
 const DOCUMENT_TYPES = [
   { value: "contract", label: "Contrato" },
@@ -28,11 +28,11 @@ interface DocumentModalProps {
 }
 
 export function DocumentModal({ isOpen, onClose, caseId, onSuccess }: DocumentModalProps) {
-  const [loading, setLoading] = useState(false)
   const [files, setFiles] = useState<File[]>([])
   const [documentType, setDocumentType] = useState("")
   const [description, setDescription] = useState("")
-  const supabase = createClient()
+  
+  const uploadMutation = useUploadDocuments()
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = Array.from(e.target.files || [])
@@ -54,7 +54,7 @@ export function DocumentModal({ isOpen, onClose, caseId, onSuccess }: DocumentMo
     }
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     
     if (files.length === 0) {
@@ -67,96 +67,43 @@ export function DocumentModal({ isOpen, onClose, caseId, onSuccess }: DocumentMo
       return
     }
 
-    setLoading(true)
-    let uploadedCount = 0
-    let failedCount = 0
-
-    try {
-      // Get current user
-      const { data: userData, error: userError } = await supabase.auth.getUser()
-      if (userError || !userData.user) {
-        throw new Error("Usuario no autenticado")
-      }
-
-      // Use the existing 'documents' bucket
-
-      // Process each file
-      for (const file of files) {
-        try {
-          // Create unique filename with timestamp and original name
-          const timestamp = new Date().toISOString().replace(/[:.]/g, "-")
-          const fileName = `${userData.user.id}/${caseId}/${timestamp}-${file.name}`
-
-          // Upload file to Supabase Storage
-          const { data: uploadData, error: uploadError } = await supabase.storage
-            .from('documents')
-            .upload(fileName, file, {
-              cacheControl: '3600',
-              upsert: false
-            })
-
-          if (uploadError) {
-            console.error('Upload error for', file.name, ':', uploadError)
-            failedCount++
-            continue
+    uploadMutation.mutate(
+      {
+        caseId,
+        files,
+        documentType,
+        description: description || undefined,
+      },
+      {
+        onSuccess: (data) => {
+          // Show success/error messages
+          if (data.uploadedCount > 0) {
+            toast.success(`${data.uploadedCount} documento(s) subido(s) exitosamente`)
           }
-
-          // Save document metadata to database
-          const { error: dbError } = await supabase
-            .from('documents')
-            .insert({
-              name: file.name,
-              file_path: uploadData.path,
-              file_size: file.size,
-              mime_type: file.type,
-              document_type: documentType,
-              description: description || null,
-              case_id: caseId,
-              uploaded_by: userData.user.id
-            })
-
-          if (dbError) {
-            console.error('Database error for', file.name, ':', dbError)
-            failedCount++
-            continue
+          if (data.failedCount > 0) {
+            toast.error(`${data.failedCount} documento(s) no pudieron subirse`)
           }
-
-          uploadedCount++
-        } catch (fileError) {
-          console.error('Error processing file', file.name, ':', fileError)
-          failedCount++
-        }
+          
+          // Reset form if at least one file was uploaded successfully
+          if (data.uploadedCount > 0) {
+            setFiles([])
+            setDocumentType("")
+            setDescription("")
+            
+            // Close modal
+            onClose()
+            if (onSuccess) onSuccess()
+          }
+        },
+        onError: (error) => {
+          toast.error(error.message || "Error al subir los documentos")
+        },
       }
-
-      // Show success/error messages
-      if (uploadedCount > 0) {
-        toast.success(`${uploadedCount} documento(s) subido(s) exitosamente`)
-      }
-      if (failedCount > 0) {
-        toast.error(`${failedCount} documento(s) no pudieron subirse`)
-      }
-      
-      // Reset form if at least one file was uploaded successfully
-      if (uploadedCount > 0) {
-        setFiles([])
-        setDocumentType("")
-        setDescription("")
-        
-        // Close modal and refresh data
-        onClose()
-        if (onSuccess) onSuccess()
-      }
-
-    } catch (error: any) {
-      console.error('Error uploading documents:', error)
-      toast.error(error.message || "Error al subir los documentos")
-    } finally {
-      setLoading(false)
-    }
+    )
   }
 
   const handleClose = () => {
-    if (!loading) {
+    if (!uploadMutation.isPending) {
       setFiles([])
       setDocumentType("")
       setDescription("")
@@ -179,7 +126,7 @@ export function DocumentModal({ isOpen, onClose, caseId, onSuccess }: DocumentMo
                 multiple
                 onChange={handleFileChange}
                 accept=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png"
-                disabled={loading}
+                disabled={uploadMutation.isPending}
                 className="file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
               />
             </div>
@@ -201,7 +148,7 @@ export function DocumentModal({ isOpen, onClose, caseId, onSuccess }: DocumentMo
           {/* Document Type */}
           <div className="space-y-2">
             <Label>Tipo de Documento *</Label>
-            <Select value={documentType} onValueChange={setDocumentType} disabled={loading}>
+            <Select value={documentType} onValueChange={setDocumentType} disabled={uploadMutation.isPending}>
               <SelectTrigger>
                 <SelectValue placeholder="Selecciona el tipo de documento" />
               </SelectTrigger>
@@ -224,7 +171,7 @@ export function DocumentModal({ isOpen, onClose, caseId, onSuccess }: DocumentMo
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Describe brevemente el contenido del documento..."
               rows={3}
-              disabled={loading}
+              disabled={uploadMutation.isPending}
             />
           </div>
 
@@ -234,17 +181,17 @@ export function DocumentModal({ isOpen, onClose, caseId, onSuccess }: DocumentMo
               type="button"
               variant="outline"
               onClick={handleClose}
-              disabled={loading}
+              disabled={uploadMutation.isPending}
               className="flex-1"
             >
               Cancelar
             </Button>
             <Button
               type="submit"
-              disabled={loading || files.length === 0 || !documentType}
+              disabled={uploadMutation.isPending || files.length === 0 || !documentType}
               className="flex-1"
             >
-              {loading ? (
+              {uploadMutation.isPending ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   Subiendo...

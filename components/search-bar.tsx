@@ -5,19 +5,31 @@ import { Input } from "@/components/ui/input"
 import { useDebouncedCallback } from "use-debounce"
 import { Search } from "lucide-react"
 
-export function SearchBar({ placeholder }: { placeholder: string }) {
+interface SearchBarProps {
+    placeholder: string;
+    value?: string;
+    onChange?: (value: string) => void;
+}
+
+export function SearchBar({ placeholder, value, onChange }: SearchBarProps) {
     const searchParams = useSearchParams()
     const pathname = usePathname()
     const { replace } = useRouter()
 
+    // If controlled, use the provided onChange
     const handleSearch = useDebouncedCallback((term: string) => {
-        const params = new URLSearchParams(searchParams)
-        if (term) {
-            params.set("q", term)
+        if (onChange) {
+            onChange(term)
         } else {
-            params.delete("q")
+            // Fallback to URL params if not controlled
+            const params = new URLSearchParams(searchParams)
+            if (term) {
+                params.set("q", term)
+            } else {
+                params.delete("q")
+            }
+            replace(`${pathname}?${params.toString()}`)
         }
-        replace(`${pathname}?${params.toString()}`)
     }, 300)
 
     return (
@@ -27,7 +39,8 @@ export function SearchBar({ placeholder }: { placeholder: string }) {
                 type="search"
                 placeholder={placeholder}
                 onChange={(e) => handleSearch(e.target.value)}
-                defaultValue={searchParams.get("q")?.toString()}
+                value={value}
+                defaultValue={value === undefined ? searchParams.get("q")?.toString() : undefined}
                 className="pl-9 w-full"
             />
         </div>

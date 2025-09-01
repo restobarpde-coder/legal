@@ -8,8 +8,10 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { createClient } from "@/lib/supabase/client"
 import { Loader2 } from "lucide-react"
+import { toast } from "sonner"
+import { useCreateTask } from "@/hooks/use-tasks"
+import { createClient } from "@/lib/supabase/client"
 
 interface User {
   id: string
@@ -31,9 +33,9 @@ export function TaskModal({ isOpen, onClose, caseId, onSuccess }: TaskModalProps
   const [priority, setPriority] = useState<"low" | "medium" | "high" | "urgent">("medium")
   const [dueDate, setDueDate] = useState("")
   const [users, setUsers] = useState<User[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState("")
   const supabase = createClient()
+  
+  const createTaskMutation = useCreateTask()
 
   useEffect(() => {
     if (isOpen) {
@@ -54,69 +56,53 @@ export function TaskModal({ isOpen, onClose, caseId, onSuccess }: TaskModalProps
     }
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!title.trim()) {
-      setError("El título es requerido")
+      toast.error("El título es requerido")
       return
     }
 
-    setLoading(true)
-    setError("")
-
-    try {
-      const { data: userData } = await supabase.auth.getUser()
-      if (!userData.user) {
-        setError("Usuario no autenticado")
-        return
-      }
-
-      const taskData = {
+    createTaskMutation.mutate(
+      {
+        caseId,
         title: title.trim(),
-        description: description.trim() || null,
-        case_id: caseId,
-        assigned_to: assignedTo === "none" || !assignedTo ? null : assignedTo,
+        description: description.trim() || undefined,
         priority,
-        due_date: dueDate ? new Date(dueDate).toISOString() : null,
-        created_by: userData.user.id,
+        status: 'pending',
+        dueDate: dueDate || undefined,
+      },
+      {
+        onSuccess: () => {
+          toast.success("Tarea creada exitosamente")
+          
+          // Reset form
+          setTitle("")
+          setDescription("")
+          setAssignedTo("")
+          setPriority("medium")
+          setDueDate("")
+          
+          // Close modal
+          onClose()
+          if (onSuccess) {
+            onSuccess()
+          }
+        },
+        onError: (error) => {
+          toast.error(error.message || "Error al crear la tarea")
+        },
       }
-
-      const { error: dbError } = await supabase
-        .from("tasks")
-        .insert([taskData])
-
-      if (dbError) {
-        setError(dbError.message)
-      } else {
-        // Reset form
-        setTitle("")
-        setDescription("")
-        setAssignedTo("")
-        setPriority("medium")
-        setDueDate("")
-        setError("")
-        
-        // Close modal and trigger refresh
-        onClose()
-        if (onSuccess) {
-          onSuccess()
-        }
-      }
-    } catch (err) {
-      setError("Error inesperado. Intenta nuevamente.")
-    } finally {
-      setLoading(false)
-    }
+    )
   }
 
   const handleClose = () => {
-    if (!loading) {
+    if (!createTaskMutation.isPending) {
       setTitle("")
       setDescription("")
       setAssignedTo("")
       setPriority("medium")
       setDueDate("")
-      setError("")
       onClose()
     }
   }
@@ -125,96 +111,107 @@ export function TaskModal({ isOpen, onClose, caseId, onSuccess }: TaskModalProps
     <Modal isOpen={isOpen} onClose={handleClose} title="Nueva Tarea" description="Crea una nueva tarea para el caso">
       <div className="sm:max-w-2xl">
         <form onSubmit={handleSubmit} className="space-y-4">
-        {error && (
-          <Alert variant="destructive">
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
+          {createTaskMutation.error && (
+            <Alert variant="destructive">
+              <AlertDescription>
+                {createTaskMutation.error.message || "Error al crear la tarea"}
+              </AlertDescription>
+            </Alert>
+          )}
 
-        <div className="grid grid-cols-2 gap-4">
-          <div className="col-span-2 space-y-2">
-            <Label htmlFor="title">Título *</Label>
-            <Input
-              id="title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Título de la tarea"
-              required
-              disabled={loading}
-            />
+          <div className="grid grid-cols-2 gap-4">
+            <div className="col-span-2 space-y-2">
+              <Label htmlFor="title">Título *</Label>
+              <Input
+                id="title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Título de la tarea"
+                required
+                disabled={createTaskMutation.isPending}
+              />
+            </div>
+
+            <div className="col-span-2 space-y-2">
+              <Label htmlFor="description">Descripción</Label>
+              <Textarea
+                id="description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Describe los detalles de la tarea..."
+                rows={3}
+                disabled={createTaskMutation.isPending}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="assignedTo">Asignar a</Label>
+              <Select value={assignedTo} onValueChange={setAssignedTo} disabled={createTaskMutation.isPending}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecciona un usuario" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sin asignar</SelectItem>
+                  {users.map((user) => (
+                    <SelectItem key={user.id} value={user.id}>
+                      {user.full_name} ({user.role})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="priority">Prioridad</Label>
+              <Select 
+                value={priority} 
+                onValueChange={(value) => setPriority(value as any)}
+                disabled={createTaskMutation.isPending}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="low">Baja</SelectItem>
+                  <SelectItem value="medium">Media</SelectItem>
+                  <SelectItem value="high">Alta</SelectItem>
+                  <SelectItem value="urgent">Urgente</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="col-span-2 space-y-2">
+              <Label htmlFor="dueDate">Fecha de Vencimiento</Label>
+              <Input
+                id="dueDate"
+                type="datetime-local"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                disabled={createTaskMutation.isPending}
+              />
+            </div>
           </div>
 
-          <div className="col-span-2 space-y-2">
-            <Label htmlFor="description">Descripción</Label>
-            <Textarea
-              id="description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Describe los detalles de la tarea..."
-              rows={3}
-              disabled={loading}
-            />
+          <div className="flex gap-3 pt-4">
+            <Button type="submit" disabled={createTaskMutation.isPending || !title.trim()}>
+              {createTaskMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Creando...
+                </>
+              ) : (
+                "Crear Tarea"
+              )}
+            </Button>
+            <Button 
+              type="button" 
+              variant="outline" 
+              onClick={handleClose} 
+              disabled={createTaskMutation.isPending}
+            >
+              Cancelar
+            </Button>
           </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="assignedTo">Asignar a</Label>
-            <Select value={assignedTo} onValueChange={setAssignedTo}>
-              <SelectTrigger>
-                <SelectValue placeholder="Selecciona un usuario" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Sin asignar</SelectItem>
-                {users.map((user) => (
-                  <SelectItem key={user.id} value={user.id}>
-                    {user.full_name} ({user.role})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="priority">Prioridad</Label>
-            <Select value={priority} onValueChange={(value) => setPriority(value as any)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="low">Baja</SelectItem>
-                <SelectItem value="medium">Media</SelectItem>
-                <SelectItem value="high">Alta</SelectItem>
-                <SelectItem value="urgent">Urgente</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="col-span-2 space-y-2">
-            <Label htmlFor="dueDate">Fecha de Vencimiento</Label>
-            <Input
-              id="dueDate"
-              type="datetime-local"
-              value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
-              disabled={loading}
-            />
-          </div>
-        </div>
-
-        <div className="flex gap-3 pt-4">
-          <Button type="submit" disabled={loading || !title.trim()}>
-            {loading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Creando...
-              </>
-            ) : (
-              "Crear Tarea"
-            )}
-          </Button>
-          <Button type="button" variant="outline" onClick={handleClose} disabled={loading}>
-            Cancelar
-          </Button>
-        </div>
         </form>
       </div>
     </Modal>

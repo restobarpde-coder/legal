@@ -6,31 +6,48 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 interface CaseFiltersProps {
   defaultStatus: string
   defaultPriority: string
+  onStatusChange?: (value: string) => void
+  onPriorityChange?: (value: string) => void
 }
 
-export function CaseFilters({ defaultStatus, defaultPriority }: CaseFiltersProps) {
+export function CaseFilters({ 
+  defaultStatus, 
+  defaultPriority, 
+  onStatusChange, 
+  onPriorityChange 
+}: CaseFiltersProps) {
   const searchParams = useSearchParams()
   const pathname = usePathname()
   const { replace } = useRouter()
 
   const handleStatusChange = (value: string) => {
-    const params = new URLSearchParams(searchParams)
-    if (value === "all") {
-      params.delete("status")
+    if (onStatusChange) {
+      onStatusChange(value)
     } else {
-      params.set("status", value)
+      // Fallback to URL params if not controlled
+      const params = new URLSearchParams(searchParams)
+      if (value === "all") {
+        params.delete("status")
+      } else {
+        params.set("status", value)
+      }
+      replace(`${pathname}?${params.toString()}`)
     }
-    replace(`${pathname}?${params.toString()}`)
   }
 
   const handlePriorityChange = (value: string) => {
-    const params = new URLSearchParams(searchParams)
-    if (value === "all") {
-      params.delete("priority")
+    if (onPriorityChange) {
+      onPriorityChange(value)
     } else {
-      params.set("priority", value)
+      // Fallback to URL params if not controlled
+      const params = new URLSearchParams(searchParams)
+      if (value === "all") {
+        params.delete("priority")
+      } else {
+        params.set("priority", value)
+      }
+      replace(`${pathname}?${params.toString()}`)
     }
-    replace(`${pathname}?${params.toString()}`)
   }
 
   return (

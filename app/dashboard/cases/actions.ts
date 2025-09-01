@@ -12,25 +12,25 @@ export async function createCase(
 ): Promise<CaseFormState> {
   console.log('=== CASE CREATION STARTED ===')
   console.log('Form data entries:', Object.fromEntries(formData.entries()))
-  
+
   const user = await requireAuth()
   console.log('User authenticated:', user.id)
-  
+
   const supabase = await createClient()
-  
+
   // Ensure user exists in users table (this creates it if not exists)
   const userProfile = await getUserProfile()
   if (!userProfile) {
     console.error('Could not get or create user profile')
     return { message: 'Error: No se pudo obtener el perfil del usuario.' }
   }
-  
+
   console.log('User profile:', userProfile)
 
   const validatedFields = caseSchema.safeParse(
     Object.fromEntries(formData.entries())
   )
-  
+
   console.log('Validation result:', validatedFields)
 
   if (!validatedFields.success) {
@@ -129,4 +129,71 @@ export async function updateCase(
   revalidatePath(`/dashboard/cases/${caseId}`)
   revalidatePath(`/dashboard/cases/${caseId}/edit`)
   redirect('/dashboard/cases?success=case-updated')
+}
+
+export async function getAssignableUsers(caseId: string) {
+  await requireAuth()
+  const supabase = await createClient()
+
+  // Find users who are already members of this case
+  const { data: members, error: membersError } = await supabase
+    .from('case_members')
+    .select('user_id')
+    .eq('case_id', caseId)
+
+  if (membersError) {
+    console.error('Error fetching case members:', membersError)
+    return []
+  }
+
+  const memberIds = members.map(m => m.user_id)
+
+  // Find all users who are not yet members of this case
+  const { data: users, error: usersError } = await supabase
+    .from('users')
+    .select('id, full_name, email, role')
+    .not('id', 'in', `(${memberIds.join(',')})`)
+
+  if (usersError) {
+    console.error('Error fetching assignable users:', usersError)
+    return []
+  }
+
+  return users
+}
+
+export async function addCaseMember(caseId: string, userId: string, role: string = 'assistant') {
+  await requireAuth()
+  const supabase = await createClient()
+
+  const { error } = await supabase
+    .from('case_members')
+    .insert({ case_id: caseId, user_id: userId, role })
+
+  if (error) {
+    console.error('Error adding case member:', error)
+    return { success: false, message: 'No se pudo agregar el miembro al caso.' }
+  }
+
+  revalidatePath(`/dashboard/cases/${caseId}`)
+  return { success: true }
+}
+
+export async function removeCaseMember(caseId: string, userId: string) {
+  await requireAuth()
+  const supabase = await createClient()
+
+  const { error } = await supabase
+    .from('case_members')
+    .delete()
+    .eq('case_id', caseId)
+    .eq('user_id', userId)
+
+  if (error) {
+    console.error('Error removing case member:', error)
+    return { success: false, message: 'No se pudo remover el miembro del caso.' }
+  }
+
+  revalidatePath(`/dashboard/cases/${caseId}`)
+  return { success: true }
 }

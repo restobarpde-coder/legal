@@ -6,9 +6,10 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Modal } from "@/components/ui/modal"
-import { createClient } from "@/lib/supabase/client"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Users, Loader2 } from "lucide-react"
 import { toast } from "sonner"
+import { useCreateClient } from "@/hooks/use-clients"
 
 interface ClientModalProps {
   isOpen: boolean
@@ -17,7 +18,6 @@ interface ClientModalProps {
 }
 
 export function ClientModal({ isOpen, onClose, onSuccess }: ClientModalProps) {
-  const [loading, setLoading] = useState(false)
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -26,13 +26,14 @@ export function ClientModal({ isOpen, onClose, onSuccess }: ClientModalProps) {
     address: "",
     notes: ""
   })
-  const supabase = createClient()
+  
+  const createClientMutation = useCreateClient()
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }))
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     
     if (!formData.name.trim()) {
@@ -46,64 +47,42 @@ export function ClientModal({ isOpen, onClose, onSuccess }: ClientModalProps) {
       return
     }
 
-    setLoading(true)
-
-    try {
-      // Get current user
-      const { data: userData, error: userError } = await supabase.auth.getUser()
-      if (userError || !userData.user) {
-        throw new Error("Usuario no autenticado")
-      }
-
-      // Prepare client data
-      const clientData = {
-        name: formData.name.trim(),
-        email: formData.email.trim() || null,
-        phone: formData.phone.trim() || null,
-        company: formData.company.trim() || null,
-        address: formData.address.trim() || null,
-        notes: formData.notes.trim() || null,
-        created_by: userData.user.id
-      }
-
-      // Insert client
-      const { data: newClient, error: dbError } = await supabase
-        .from('clients')
-        .insert(clientData)
-        .select()
-        .single()
-
-      if (dbError) {
-        console.error('Database error:', dbError)
-        throw new Error("Error al crear el cliente")
-      }
-
-      toast.success("Cliente creado exitosamente")
-      
-      // Reset form
-      setFormData({
-        name: "",
-        email: "",
-        phone: "",
-        company: "",
-        address: "",
-        notes: ""
-      })
-      
-      // Close modal and trigger success callback
-      onClose()
-      if (onSuccess) onSuccess(newClient)
-
-    } catch (error: any) {
-      console.error('Error creating client:', error)
-      toast.error(error.message || "Error al crear el cliente")
-    } finally {
-      setLoading(false)
+    // Prepare client data
+    const clientData = {
+      name: formData.name.trim(),
+      email: formData.email.trim() || undefined,
+      phone: formData.phone.trim() || undefined,
+      company: formData.company.trim() || undefined,
+      address: formData.address.trim() || undefined,
+      notes: formData.notes.trim() || undefined,
     }
+
+    createClientMutation.mutate(clientData, {
+      onSuccess: (newClient) => {
+        toast.success("Cliente creado exitosamente")
+        
+        // Reset form
+        setFormData({
+          name: "",
+          email: "",
+          phone: "",
+          company: "",
+          address: "",
+          notes: ""
+        })
+        
+        // Close modal and trigger success callback
+        onClose()
+        if (onSuccess) onSuccess(newClient)
+      },
+      onError: (error) => {
+        toast.error(error.message || "Error al crear el cliente")
+      }
+    })
   }
 
   const handleClose = () => {
-    if (!loading) {
+    if (!createClientMutation.isPending) {
       setFormData({
         name: "",
         email: "",
@@ -121,6 +100,14 @@ export function ClientModal({ isOpen, onClose, onSuccess }: ClientModalProps) {
       <div className="sm:max-w-2xl">
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {createClientMutation.error && (
+            <Alert variant="destructive">
+              <AlertDescription>
+                {createClientMutation.error.message || "Error al crear el cliente"}
+              </AlertDescription>
+            </Alert>
+          )}
+
           {/* Name and Company */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
@@ -130,7 +117,7 @@ export function ClientModal({ isOpen, onClose, onSuccess }: ClientModalProps) {
                 value={formData.name}
                 onChange={(e) => handleInputChange("name", e.target.value)}
                 placeholder="Nombre completo del cliente"
-                disabled={loading}
+                disabled={createClientMutation.isPending}
                 required
               />
             </div>
@@ -141,7 +128,7 @@ export function ClientModal({ isOpen, onClose, onSuccess }: ClientModalProps) {
                 value={formData.company}
                 onChange={(e) => handleInputChange("company", e.target.value)}
                 placeholder="Nombre de la empresa (opcional)"
-                disabled={loading}
+                disabled={createClientMutation.isPending}
               />
             </div>
           </div>
@@ -156,7 +143,7 @@ export function ClientModal({ isOpen, onClose, onSuccess }: ClientModalProps) {
                 value={formData.email}
                 onChange={(e) => handleInputChange("email", e.target.value)}
                 placeholder="correo@ejemplo.com"
-                disabled={loading}
+                disabled={createClientMutation.isPending}
               />
             </div>
             <div className="space-y-2">
@@ -167,7 +154,7 @@ export function ClientModal({ isOpen, onClose, onSuccess }: ClientModalProps) {
                 value={formData.phone}
                 onChange={(e) => handleInputChange("phone", e.target.value)}
                 placeholder="+1 (555) 123-4567"
-                disabled={loading}
+                disabled={createClientMutation.isPending}
               />
             </div>
           </div>
@@ -180,7 +167,7 @@ export function ClientModal({ isOpen, onClose, onSuccess }: ClientModalProps) {
               value={formData.address}
               onChange={(e) => handleInputChange("address", e.target.value)}
               placeholder="Dirección completa (opcional)"
-              disabled={loading}
+              disabled={createClientMutation.isPending}
             />
           </div>
 
@@ -193,7 +180,7 @@ export function ClientModal({ isOpen, onClose, onSuccess }: ClientModalProps) {
               onChange={(e) => handleInputChange("notes", e.target.value)}
               placeholder="Información adicional sobre el cliente..."
               rows={3}
-              disabled={loading}
+              disabled={createClientMutation.isPending}
             />
           </div>
 
@@ -203,17 +190,17 @@ export function ClientModal({ isOpen, onClose, onSuccess }: ClientModalProps) {
               type="button"
               variant="outline"
               onClick={handleClose}
-              disabled={loading}
+              disabled={createClientMutation.isPending}
               className="flex-1"
             >
               Cancelar
             </Button>
             <Button
               type="submit"
-              disabled={loading || !formData.name.trim()}
+              disabled={createClientMutation.isPending || !formData.name.trim()}
               className="flex-1"
             >
-              {loading ? (
+              {createClientMutation.isPending ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   Creando...

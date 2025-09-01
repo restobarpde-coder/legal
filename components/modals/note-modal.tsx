@@ -6,10 +6,10 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Checkbox } from "@/components/ui/checkbox"
-import { createClient } from "@/lib/supabase/client"
 import { Loader2 } from "lucide-react"
+import { toast } from "sonner"
+import { useCreateNote } from "@/hooks/use-notes"
 
 interface NoteModalProps {
   isOpen: boolean
@@ -22,68 +22,50 @@ export function NoteModal({ isOpen, onClose, caseId, onSuccess }: NoteModalProps
   const [title, setTitle] = useState("")
   const [content, setContent] = useState("")
   const [isPrivate, setIsPrivate] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState("")
-  const supabase = createClient()
+  
+  const createNoteMutation = useCreateNote()
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!content.trim()) {
-      setError("El contenido de la nota es requerido")
+      toast.error("El contenido de la nota es requerido")
       return
     }
 
-    setLoading(true)
-    setError("")
-
-    try {
-      const { data: userData } = await supabase.auth.getUser()
-      if (!userData.user) {
-        setError("Usuario no autenticado")
-        return
-      }
-
-      const noteData = {
-        title: title.trim() || null,
+    createNoteMutation.mutate(
+      {
+        caseId,
+        title: title.trim() || undefined,
         content: content.trim(),
-        case_id: caseId,
-        client_id: null,
-        is_private: isPrivate,
-        created_by: userData.user.id,
+        isPrivate,
+      },
+      {
+        onSuccess: () => {
+          toast.success("Nota creada exitosamente")
+          
+          // Reset form
+          setTitle("")
+          setContent("")
+          setIsPrivate(false)
+          
+          // Close modal
+          onClose()
+          if (onSuccess) {
+            onSuccess()
+          }
+        },
+        onError: (error) => {
+          toast.error(error.message || "Error al crear la nota")
+        },
       }
-
-      const { error: dbError } = await supabase
-        .from("notes")
-        .insert([noteData])
-
-      if (dbError) {
-        setError(dbError.message)
-      } else {
-        // Reset form
-        setTitle("")
-        setContent("")
-        setIsPrivate(false)
-        setError("")
-        
-        // Close modal and trigger refresh
-        onClose()
-        if (onSuccess) {
-          onSuccess()
-        }
-      }
-    } catch (err) {
-      setError("Error inesperado. Intenta nuevamente.")
-    } finally {
-      setLoading(false)
-    }
+    )
   }
 
   const handleClose = () => {
-    if (!loading) {
+    if (!createNoteMutation.isPending) {
       setTitle("")
       setContent("")
       setIsPrivate(false)
-      setError("")
       onClose()
     }
   }
@@ -92,12 +74,6 @@ export function NoteModal({ isOpen, onClose, caseId, onSuccess }: NoteModalProps
     <Modal isOpen={isOpen} onClose={handleClose} title="Nueva Nota" description="Agrega una nota al caso">
       <div className="sm:max-w-xl">
         <form onSubmit={handleSubmit} className="space-y-4">
-        {error && (
-          <Alert variant="destructive">
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
-
         <div className="space-y-2">
           <Label htmlFor="title">Título (Opcional)</Label>
           <Input
@@ -105,7 +81,7 @@ export function NoteModal({ isOpen, onClose, caseId, onSuccess }: NoteModalProps
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Título descriptivo de la nota"
-            disabled={loading}
+            disabled={createNoteMutation.isPending}
           />
         </div>
 
@@ -118,7 +94,7 @@ export function NoteModal({ isOpen, onClose, caseId, onSuccess }: NoteModalProps
             placeholder="Escribe el contenido de la nota aquí..."
             rows={6}
             required
-            disabled={loading}
+            disabled={createNoteMutation.isPending}
           />
         </div>
 
@@ -127,7 +103,7 @@ export function NoteModal({ isOpen, onClose, caseId, onSuccess }: NoteModalProps
             id="isPrivate" 
             checked={isPrivate}
             onCheckedChange={(checked) => setIsPrivate(checked as boolean)}
-            disabled={loading}
+            disabled={createNoteMutation.isPending}
           />
           <Label htmlFor="isPrivate" className="text-sm">
             Nota privada (solo visible para ti)
@@ -135,8 +111,8 @@ export function NoteModal({ isOpen, onClose, caseId, onSuccess }: NoteModalProps
         </div>
 
         <div className="flex gap-3 pt-4">
-          <Button type="submit" disabled={loading || !content.trim()}>
-            {loading ? (
+          <Button type="submit" disabled={createNoteMutation.isPending || !content.trim()}>
+            {createNoteMutation.isPending ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Guardando...
@@ -145,7 +121,7 @@ export function NoteModal({ isOpen, onClose, caseId, onSuccess }: NoteModalProps
               "Guardar Nota"
             )}
           </Button>
-          <Button type="button" variant="outline" onClick={handleClose} disabled={loading}>
+          <Button type="button" variant="outline" onClick={handleClose} disabled={createNoteMutation.isPending}>
             Cancelar
           </Button>
         </div>

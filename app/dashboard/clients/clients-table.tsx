@@ -8,113 +8,65 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge"
 import { SearchBar } from "@/components/search-bar"
 import { DeleteConfirmationModal } from "@/components/delete-confirmation-modal"
-import { createClient } from "@/lib/supabase/client"
 import { Eye, Edit, MoreHorizontal, Trash2 } from "lucide-react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-
-type Client = {
-  id: string;
-  name: string;
-  email: string | null;
-  phone: string | null;
-  company: string | null;
-  created_at: string;
-  users: { full_name: string } | null;
-  cases?: { id: string, status: string }[];
-};
+import { useDeleteClient, type Client } from "@/hooks/use-clients"
 
 interface ClientsTableProps {
-  initialClients: Client[]
+  clients: Client[]
+  searchQuery: string
+  onSearchChange: (query: string) => void
 }
 
-export function ClientsTable({ initialClients }: ClientsTableProps) {
-  const [clients, setClients] = useState<Client[]>(initialClients)
+export function ClientsTable({ clients, searchQuery, onSearchChange }: ClientsTableProps) {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<{id: string, name: string} | null>(null)
-  const [deleteLoading, setDeleteLoading] = useState(false)
-  const supabase = createClient()
-  const router = useRouter()
+  
+  const deleteClientMutation = useDeleteClient()
 
   const handleDelete = async (id: string, name: string) => {
     setDeleteTarget({ id, name })
     setDeleteModalOpen(true)
   }
 
-  const confirmDelete = async () => {
+  const confirmDelete = () => {
     if (!deleteTarget) return
     
-    console.log('🗑️ Iniciando eliminación de cliente:', deleteTarget)
-    setDeleteLoading(true)
+    // First, check if client has active cases
+    const clientToDelete = clients.find(c => c.id === deleteTarget.id)
+    const activeCases = clientToDelete?.cases?.filter(c => c.status === 'active') || []
     
-    try {
-      // Check authentication first
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
-      if (authError || !user) {
-        console.error('❌ Usuario no autenticado:', authError)
-        toast.error('Debes estar autenticado para eliminar clientes')
-        return
-      }
-      
-      console.log('✅ Usuario autenticado:', user.email)
-      
-      // First, check if client has active cases
-      const clientToDelete = clients.find(c => c.id === deleteTarget.id)
-      const activeCases = clientToDelete?.cases?.filter(c => c.status === 'active') || []
-      
-      if (activeCases.length > 0) {
-        toast.error(`No se puede eliminar el cliente. Tiene ${activeCases.length} caso(s) activo(s).`)
-        setDeleteLoading(false)
-        setDeleteModalOpen(false)
-        setDeleteTarget(null)
-        return
-      }
-
-      console.log('🔄 Eliminando cliente...')
-      const { data: deletedData, error } = await supabase
-        .from('clients')
-        .delete()
-        .eq('id', deleteTarget.id)
-        .select() // Return deleted data to verify
-
-      console.log('📊 Resultado de eliminación cliente:', { data: deletedData, error })
-
-      if (error) {
-        console.error('❌ Delete error:', error)
-        toast.error(`Error al eliminar el cliente: ${error.message}`)
-        return
-      }
-      
-      // Check if anything was actually deleted
-      if (!deletedData || deletedData.length === 0) {
-        console.warn('⚠️ No se eliminó ningún cliente - posible problema de permisos')
-        toast.error('No se pudo eliminar el cliente. Verifica tus permisos.')
-        return
-      }
-      
-      console.log('✅ Cliente eliminado exitosamente')
-      toast.success('Cliente eliminado exitosamente')
-      // Remove client from local state
-      setClients(prev => prev.filter(c => c.id !== deleteTarget.id))
-      // Refresh the page data
-      router.refresh()
-      
-    } catch (error: any) {
-      console.error('❌ Error inesperado al eliminar:', error)
-      toast.error(`Error inesperado: ${error.message || 'Error desconocido'}`)
-    } finally {
-      setDeleteLoading(false)
+    if (activeCases.length > 0) {
+      toast.error(`No se puede eliminar el cliente. Tiene ${activeCases.length} caso(s) activo(s).`)
       setDeleteModalOpen(false)
       setDeleteTarget(null)
+      return
     }
+
+    deleteClientMutation.mutate(deleteTarget.id, {
+      onSuccess: () => {
+        toast.success('Cliente eliminado exitosamente')
+        setDeleteModalOpen(false)
+        setDeleteTarget(null)
+      },
+      onError: (error) => {
+        toast.error(error.message || 'Error al eliminar el cliente')
+        setDeleteModalOpen(false)
+        setDeleteTarget(null)
+      }
+    })
   }
 
   return (
     <>
       <Card>
         <CardHeader>
-          <SearchBar placeholder="Buscar por nombre, email o empresa..." />
+          <SearchBar 
+            placeholder="Buscar por nombre, email o empresa..." 
+            value={searchQuery}
+            onChange={onSearchChange}
+          />
         </CardHeader>
         <CardContent>
           <Table>
@@ -192,7 +144,7 @@ export function ClientsTable({ initialClients }: ClientsTableProps) {
         title="Eliminar Cliente"
         description="Esta acción eliminará permanentemente el cliente y toda su información asociada."
         itemName={deleteTarget?.name}
-        loading={deleteLoading}
+        loading={deleteClientMutation.isPending}
       />
     </>
   )

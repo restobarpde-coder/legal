@@ -4,15 +4,13 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Plus } from "lucide-react"
 import { ClientModal } from "@/components/modals/client-modal"
-import { useRouter } from "next/navigation"
 
 export function ClientPageHeader() {
   const [clientModalOpen, setClientModalOpen] = useState(false)
-  const router = useRouter()
 
   const handleClientCreated = (client: any) => {
-    // Refresh the page to show the new client
-    router.refresh()
+    // React Query will automatically update the clients list
+    // No manual refresh needed
   }
 
   return (

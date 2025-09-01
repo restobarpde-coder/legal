@@ -65,3 +65,32 @@ BEGIN
   ORDER BY c.created_at DESC;
 END;
 $$ language 'plpgsql';
+
+-- =============================================================================
+-- HELPER FUNCTIONS FOR RLS
+-- =============================================================================
+
+-- Helper function to get user role
+CREATE OR REPLACE FUNCTION get_user_role(p_user_id UUID)
+RETURNS TEXT AS $$
+DECLARE
+    user_role TEXT;
+BEGIN
+    SELECT role INTO user_role
+    FROM public.users 
+    WHERE id = p_user_id;
+    RETURN user_role;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Helper function to check case membership
+CREATE OR REPLACE FUNCTION is_case_member(p_case_id UUID, p_user_id UUID)
+RETURNS BOOLEAN AS $$
+BEGIN
+    RETURN EXISTS (
+        SELECT 1
+        FROM public.case_members
+        WHERE case_id = p_case_id AND user_id = p_user_id
+    );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
