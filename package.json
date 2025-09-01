@@ -6,7 +6,10 @@
     "build": "next build",
     "dev": "next dev",
     "lint": "next lint",
-    "start": "next start"
+    "start": "next start",
+    "db:seed": "cat scripts/*.sql | psql \"$DATABASE_URL\"",
+    "db:reset": "psql \"$DATABASE_URL\" -c 'drop schema public cascade; create schema public;' && npm run db:seed",
+    "db:reset-rls": "psql \"$DATABASE_URL\" < scripts/reset-rls.sql"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -47,6 +50,7 @@
     "clsx": "^2.1.1",
     "cmdk": "1.0.4",
     "date-fns": "4.1.0",
+    "dotenv": "^17.2.1",
     "embla-carousel-react": "8.5.1",
     "geist": "latest",
     "input-otp": "1.4.1",
@@ -63,6 +67,7 @@
     "svelte": "latest",
     "tailwind-merge": "^2.5.5",
     "tailwindcss-animate": "^1.0.7",
+    "use-debounce": "^10.0.1",
     "vaul": "^0.9.9",
     "vue": "latest",
     "vue-router": "latest",

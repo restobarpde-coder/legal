@@ -1,19 +1,46 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { createClient } from "@/lib/supabase/server"
 import { requireAuth } from "@/lib/auth"
-import { Plus, Search, Eye, Edit, MoreHorizontal } from "lucide-react"
+import { Plus, Eye, Edit, MoreHorizontal } from "lucide-react"
 import Link from "next/link"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { SearchBar } from "@/components/search-bar"
+import { CaseFilters } from "./case-filters"
+import { SuccessToast } from "./success-toast"
 
-async function getCases() {
+type Case = {
+  id: string;
+  title: string;
+  description: string | null;
+  status: string;
+  priority: string;
+  start_date: string;
+  end_date: string | null;
+  hourly_rate: number | null;
+  created_at: string;
+  clients: {
+    id: string;
+    name: string;
+    email: string | null;
+    company: string | null;
+  } | null;
+  case_members: {
+    user_id: string;
+    role: string;
+  }[];
+};
+
+async function getCases(
+  searchQuery?: string,
+  statusFilter?: string,
+  priorityFilter?: string
+): Promise<Case[]> {
   const supabase = await createClient()
-  const user = await requireAuth()
+  await requireAuth()
 
-  const { data: cases, error } = await supabase
+  let query = supabase
     .from("cases")
     .select(`
       *,
@@ -28,15 +55,31 @@ async function getCases() {
         role
       )
     `)
-    .eq("case_members.user_id", user.id)
     .order("created_at", { ascending: false })
+
+  // Apply search filter
+  if (searchQuery) {
+    query = query.or(`title.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%`)
+  }
+
+  // Apply status filter
+  if (statusFilter && statusFilter !== "all") {
+    query = query.eq("status", statusFilter)
+  }
+
+  // Apply priority filter
+  if (priorityFilter && priorityFilter !== "all") {
+    query = query.eq("priority", priorityFilter)
+  }
+
+  const { data: cases, error } = await query
 
   if (error) {
     console.error("Error fetching cases:", error)
     return []
   }
 
-  return cases || []
+  return cases as Case[] || []
 }
 
 function getStatusColor(status: string) {
@@ -51,6 +94,21 @@ function getStatusColor(status: string) {
       return "destructive"
     default:
       return "outline"
+  }
+}
+
+function getStatusLabel(status: string) {
+  switch (status) {
+    case "active":
+      return "Activo"
+    case "pending":
+      return "Pendiente"
+    case "closed":
+      return "Cerrado"
+    case "archived":
+      return "Archivado"
+    default:
+      return status
   }
 }
 
@@ -69,11 +127,35 @@ function getPriorityColor(priority: string) {
   }
 }
 
-export default async function CasesPage() {
-  const cases = await getCases()
+function getPriorityLabel(priority: string) {
+  switch (priority) {
+    case "urgent":
+      return "Urgente"
+    case "high":
+      return "Alta"
+    case "medium":
+      return "Media"
+    case "low":
+      return "Baja"
+    default:
+      return priority
+  }
+}
+
+export default async function CasesPage({
+  searchParams,
+}: {
+  searchParams?: { q?: string; status?: string; priority?: string };
+}) {
+  const resolvedSearchParams = await searchParams
+  const searchQuery = resolvedSearchParams?.q || ""
+  const statusFilter = resolvedSearchParams?.status || "all"
+  const priorityFilter = resolvedSearchParams?.priority || "all"
+  const cases = await getCases(searchQuery, statusFilter, priorityFilter)
 
   return (
     <div className="space-y-6">
+      <SuccessToast />
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -95,34 +177,13 @@ export default async function CasesPage() {
         </CardHeader>
         <CardContent>
           <div className="flex flex-col sm:flex-row gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input placeholder="Buscar casos..." className="pl-9" />
+            <div className="flex-1">
+              <SearchBar placeholder="Buscar por título o descripción..." />
             </div>
-            <Select defaultValue="all">
-              <SelectTrigger className="w-full sm:w-48">
-                <SelectValue placeholder="Estado" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos los estados</SelectItem>
-                <SelectItem value="active">Activo</SelectItem>
-                <SelectItem value="pending">Pendiente</SelectItem>
-                <SelectItem value="closed">Cerrado</SelectItem>
-                <SelectItem value="archived">Archivado</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select defaultValue="all">
-              <SelectTrigger className="w-full sm:w-48">
-                <SelectValue placeholder="Prioridad" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todas las prioridades</SelectItem>
-                <SelectItem value="urgent">Urgente</SelectItem>
-                <SelectItem value="high">Alta</SelectItem>
-                <SelectItem value="medium">Media</SelectItem>
-                <SelectItem value="low">Baja</SelectItem>
-              </SelectContent>
-            </Select>
+            <CaseFilters 
+              defaultStatus={statusFilter}
+              defaultPriority={priorityFilter}
+            />
           </div>
         </CardContent>
       </Card>
@@ -152,9 +213,9 @@ export default async function CasesPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-3 mb-2">
                       <h3 className="text-lg font-semibold truncate">{case_.title}</h3>
-                      <Badge variant={getStatusColor(case_.status)}>{case_.status}</Badge>
+                      <Badge variant={getStatusColor(case_.status)}>{getStatusLabel(case_.status)}</Badge>
                       <Badge className={getPriorityColor(case_.priority)} variant="outline">
-                        {case_.priority}
+                        {getPriorityLabel(case_.priority)}
                       </Badge>
                     </div>
                     <p className="text-muted-foreground mb-3 line-clamp-2">{case_.description}</p>

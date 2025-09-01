@@ -1,49 +1,29 @@
 "use client"
 
 import type React from "react"
+import { useEffect } from "react"
+import { useActionState } from "react"
+import { loginAction } from "./actions"
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
-import Link from "next/link"
-import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Loader2, Scale } from "lucide-react"
+import { Scale } from "lucide-react"
+import { toast } from "sonner"
 
 export default function LoginPage() {
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState("")
-  const router = useRouter()
-  const supabase = createClient()
+  const [state, formAction, isPending] = useActionState(loginAction, {
+    message: "",
+  })
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    setError("")
-
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+  useEffect(() => {
+    if (state.message && state.message !== "Error de validación.") {
+      toast.error("Error de autenticación", {
+        description: state.message,
       })
-
-      if (error) {
-        setError(error.message)
-      } else if (data.user) {
-        router.push("/dashboard")
-        router.refresh()
-      }
-    } catch (err) {
-      setError("Error inesperado. Intenta nuevamente.")
-    } finally {
-      setLoading(false)
     }
-  }
+  }, [state])
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-4">
@@ -57,55 +37,37 @@ export default function LoginPage() {
           <CardTitle className="text-2xl font-bold">Iniciar Sesión</CardTitle>
           <CardDescription>Accede a tu cuenta del estudio jurídico</CardDescription>
         </CardHeader>
-        <form onSubmit={handleLogin}>
+        <form action={formAction}>
           <CardContent className="space-y-4">
-            {error && (
-              <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
                 id="email"
+                name="email"
                 type="email"
                 placeholder="tu@email.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                disabled={isPending}
                 required
-                disabled={loading}
               />
+              {state.errors?.email && <p className="text-sm text-red-500">{state.errors.email[0]}</p>}
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Contraseña</Label>
               <Input
                 id="password"
+                name="password"
                 type="password"
                 placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                disabled={isPending}
                 required
-                disabled={loading}
               />
+              {state.errors?.password && <p className="text-sm text-red-500">{state.errors.password[0]}</p>}
             </div>
           </CardContent>
-          <CardFooter className="flex flex-col space-y-4">
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Iniciando sesión...
-                </>
-              ) : (
-                "Iniciar Sesión"
-              )}
+          <CardFooter>
+            <Button type="submit" className="w-full" disabled={isPending}>
+              {isPending ? "Iniciando sesión..." : "Iniciar Sesión"}
             </Button>
-            <p className="text-sm text-center text-muted-foreground">
-              ¿No tienes cuenta?{" "}
-              <Link href="/register" className="text-primary hover:underline">
-                Regístrate aquí
-              </Link>
-            </p>
           </CardFooter>
         </form>
       </Card>

@@ -76,7 +76,8 @@ function getPriorityColor(priority: string) {
 }
 
 export default async function ClientDetailPage({ params }: { params: { id: string } }) {
-  const client = await getClient(params.id)
+  const resolvedParams = await params
+  const client = await getClient(resolvedParams.id)
 
   if (!client) {
     notFound()

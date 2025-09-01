@@ -1,15 +1,34 @@
--- Legal Office MVP - Row Level Security Policies
--- Run after functions.sql
+-- Script para reiniciar políticas RLS y corregir recursión infinita
+-- Ejecutar en Supabase SQL Editor
 
--- Enable RLS on all tables
-ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.clients ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.cases ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.case_members ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.tasks ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.documents ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.notes ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.time_entries ENABLE ROW LEVEL SECURITY;
+-- 1. Eliminar todas las políticas existentes
+DROP POLICY IF EXISTS "Users can view their own profile" ON public.users;
+DROP POLICY IF EXISTS "Users can update their own profile" ON public.users;
+DROP POLICY IF EXISTS "Authenticated users can view clients" ON public.clients;
+DROP POLICY IF EXISTS "Authenticated users can create clients" ON public.clients;
+DROP POLICY IF EXISTS "Authenticated users can update clients" ON public.clients;
+DROP POLICY IF EXISTS "Users can view cases they are members of" ON public.cases;
+DROP POLICY IF EXISTS "Authenticated users can create cases" ON public.cases;
+DROP POLICY IF EXISTS "Case members can update cases" ON public.cases;
+DROP POLICY IF EXISTS "Users can view case members for their cases" ON public.case_members;
+DROP POLICY IF EXISTS "Case owners can manage members" ON public.case_members;
+DROP POLICY IF EXISTS "Users can view their own case memberships" ON public.case_members;
+DROP POLICY IF EXISTS "Users can insert case members for cases they create" ON public.case_members;
+DROP POLICY IF EXISTS "Case creators can manage members" ON public.case_members;
+DROP POLICY IF EXISTS "Case creators can delete members" ON public.case_members;
+DROP POLICY IF EXISTS "Users can view tasks for their cases" ON public.tasks;
+DROP POLICY IF EXISTS "Authenticated users can create tasks" ON public.tasks;
+DROP POLICY IF EXISTS "Users can update tasks for their cases" ON public.tasks;
+DROP POLICY IF EXISTS "Users can view documents for their cases" ON public.documents;
+DROP POLICY IF EXISTS "Authenticated users can upload documents" ON public.documents;
+DROP POLICY IF EXISTS "Users can view notes for their cases/clients" ON public.notes;
+DROP POLICY IF EXISTS "Authenticated users can create notes" ON public.notes;
+DROP POLICY IF EXISTS "Users can update their own notes" ON public.notes;
+DROP POLICY IF EXISTS "Users can view time entries for their cases" ON public.time_entries;
+DROP POLICY IF EXISTS "Users can create their own time entries" ON public.time_entries;
+DROP POLICY IF EXISTS "Users can update their own time entries" ON public.time_entries;
+
+-- 2. Recrear las políticas corregidas
 
 -- Users policies
 CREATE POLICY "Users can view their own profile" ON public.users
@@ -48,8 +67,7 @@ CREATE POLICY "Case members can update cases" ON public.cases
     )
   );
 
--- Case members policies
--- Allow users to see their own memberships and memberships in cases they belong to
+-- Case members policies (CORREGIDAS - sin recursión)
 CREATE POLICY "Users can view their own case memberships" ON public.case_members
   FOR SELECT TO authenticated USING (user_id = auth.uid());
 
