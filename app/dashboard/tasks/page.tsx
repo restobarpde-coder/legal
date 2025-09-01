@@ -29,7 +29,7 @@ async function getTasks() {
         full_name
       )
     `)
-    .or(`assigned_to.eq.${user.id},created_by.eq.${user.id}`)
+    .or(`assigned_to.eq.${user.id},created_by.eq.${user.id},assigned_to.is.null`)
     .order("created_at", { ascending: false })
 
   if (error) {

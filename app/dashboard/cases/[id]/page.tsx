@@ -307,7 +307,7 @@ export default async function CaseDetailPage({ params }: { params: { id: string 
                   <div className="flex items-center justify-between">
                     <CardTitle>Documentos del Caso</CardTitle>
                     <Button size="sm" asChild>
-                      <Link href={`/dashboard/documents/new?case_id=${case_.id}`}>
+                      <Link href={`/dashboard/documents/upload?case=${case_.id}`}>
                         <FileText className="h-4 w-4 mr-2" />
                         Subir Documento
                       </Link>
@@ -322,7 +322,7 @@ export default async function CaseDetailPage({ params }: { params: { id: string 
                         <h3 className="text-lg font-semibold mb-2">No hay documentos</h3>
                         <p className="text-muted-foreground mb-4">Sube el primer documento para este caso</p>
                         <Button asChild>
-                          <Link href={`/dashboard/documents/new?case_id=${case_.id}`}>
+                          <Link href={`/dashboard/documents/upload?case=${case_.id}`}>
                             Subir Documento
                           </Link>
                         </Button>

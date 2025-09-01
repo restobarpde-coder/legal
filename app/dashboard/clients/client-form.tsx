@@ -3,7 +3,7 @@
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { clientSchema, type ClientFormState } from './actions'
+import { clientSchema, type ClientFormState } from './validation'
 import { useActionState } from 'react'
 import { useEffect } from 'react'
 import { toast } from 'sonner'

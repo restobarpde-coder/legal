@@ -23,7 +23,8 @@ async function getClients() {
   return clients || []
 }
 
-export default async function NewCasePage() {
+export default async function NewCasePage({ searchParams }: { searchParams: Promise<{ client?: string }> }) {
+  const params = await searchParams
   const clients = await getClients()
 
   if (clients.length === 0) {
@@ -74,7 +75,7 @@ export default async function NewCasePage() {
         </div>
       </div>
       
-      <CaseForm clients={clients} formAction={createCase} />
+      <CaseForm clients={clients} formAction={createCase} preselectedClientId={params.client} />
     </div>
   )
 }

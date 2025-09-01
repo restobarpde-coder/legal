@@ -21,7 +21,7 @@ interface Case {
   clients: { name: string }
 }
 
-export default function UploadDocumentPage() {
+export default function UploadDocumentPage({ searchParams }: { searchParams?: { case?: string } }) {
   const [file, setFile] = useState<File | null>(null)
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
@@ -50,11 +50,15 @@ export default function UploadDocumentPage() {
         console.error("Error fetching cases:", error)
       } else {
         setCases(data || [])
+        // Set preselected case if provided in URL
+        if (searchParams?.case) {
+          setCaseId(searchParams.case)
+        }
       }
     }
 
     fetchCases()
-  }, [supabase])
+  }, [supabase, searchParams])
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0]
@@ -86,7 +90,9 @@ export default function UploadDocumentPage() {
       // Upload file to storage
       const fileExt = file.name.split(".").pop()
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`
-      const filePath = `documents/${fileName}`
+      // Organize files by user and optionally by case
+      const folderPath = caseId && caseId !== 'none' ? `${userData.user.id}/cases/${caseId}` : `${userData.user.id}/general`
+      const filePath = `${folderPath}/${fileName}`
 
       const { error: uploadError } = await supabase.storage.from("documents").upload(filePath, file)
 
@@ -103,7 +109,7 @@ export default function UploadDocumentPage() {
         file_size: file.size,
         mime_type: file.type,
         document_type: documentType,
-        case_id: caseId || null,
+        case_id: caseId === 'none' || !caseId ? null : caseId,
         uploaded_by: userData.user.id,
       }
 
@@ -245,7 +251,7 @@ export default function UploadDocumentPage() {
                     <SelectValue placeholder="Selecciona un caso" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Sin caso asignado</SelectItem>
+                    <SelectItem value="none">Sin caso asignado</SelectItem>
                     {cases.map((case_) => (
                       <SelectItem key={case_.id} value={case_.id}>
                         {case_.title} - {case_.clients?.name}

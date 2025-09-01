@@ -90,8 +90,8 @@ export default function NewTaskPage() {
       const taskData = {
         title,
         description,
-        case_id: caseId || null,
-        assigned_to: assignedTo || null,
+        case_id: caseId === "none" || !caseId ? null : caseId,
+        assigned_to: assignedTo === "none" || !assignedTo ? null : assignedTo,
         priority,
         due_date: dueDate ? new Date(dueDate).toISOString() : null,
         created_by: userData.user.id,
@@ -171,7 +171,7 @@ export default function NewTaskPage() {
                   <SelectValue placeholder="Selecciona un caso" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Sin caso asignado</SelectItem>
+                  <SelectItem value="none">Sin caso asignado</SelectItem>
                   {cases.map((case_) => (
                     <SelectItem key={case_.id} value={case_.id}>
                       {case_.title} - {case_.clients?.name}
@@ -188,7 +188,7 @@ export default function NewTaskPage() {
                   <SelectValue placeholder="Selecciona un usuario" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Sin asignar</SelectItem>
+                  <SelectItem value="none">Sin asignar</SelectItem>
                   {users.map((user) => (
                     <SelectItem key={user.id} value={user.id}>
                       {user.full_name} ({user.role})

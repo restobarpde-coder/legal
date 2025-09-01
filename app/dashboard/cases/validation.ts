@@ -12,10 +12,16 @@ export const caseSchema = z.object({
   client_id: z.string().uuid({ message: 'Debe seleccionar un cliente válido.' }),
   status: z.enum(['active', 'pending', 'closed', 'archived']).default('active'),
   priority: z.enum(['low', 'medium', 'high', 'urgent']).default('medium'),
-  start_date: z.string().refine(isValidDate, {
+  start_date: z.string().optional().refine((date) => {
+    if (!date || date.trim() === '') return true; // Allow empty strings
+    return isValidDate(date);
+  }, {
     message: 'Fecha de inicio inválida.'
   }),
-  end_date: z.string().optional().refine(isValidOptionalDate, { 
+  end_date: z.string().optional().refine((date) => {
+    if (!date || date.trim() === '') return true; // Allow empty strings
+    return isValidDate(date);
+  }, { 
     message: 'Fecha de finalización inválida.' 
   }),
   estimated_hours: z.string().optional().refine(isValidOptionalHours, { 

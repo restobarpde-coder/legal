@@ -27,9 +27,10 @@ type CaseFormProps = {
   case?: z.infer<typeof caseSchema> & { id: string }
   clients: Client[]
   formAction: (prevState: CaseFormState, formData: FormData) => Promise<CaseFormState>
+  preselectedClientId?: string
 }
 
-export function CaseForm({ case: caseData, clients, formAction }: CaseFormProps) {
+export function CaseForm({ case: caseData, clients, formAction, preselectedClientId }: CaseFormProps) {
   const [state, dispatch] = useActionState(formAction, { message: '', errors: {} })
 
   const {
@@ -40,6 +41,7 @@ export function CaseForm({ case: caseData, clients, formAction }: CaseFormProps)
   } = useForm<z.infer<typeof caseSchema>>({
     resolver: zodResolver(caseSchema),
     defaultValues: caseData || {
+      client_id: preselectedClientId || '',
       status: 'active',
       priority: 'medium',
       start_date: new Date().toISOString().split('T')[0]
@@ -182,7 +184,7 @@ export function CaseForm({ case: caseData, clients, formAction }: CaseFormProps)
           {/* Fechas */}
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="start_date">Fecha de Inicio*</Label>
+              <Label htmlFor="start_date">Fecha de Inicio</Label>
               <Input 
                 id="start_date" 
                 type="date" 

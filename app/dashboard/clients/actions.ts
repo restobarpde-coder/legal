@@ -1,26 +1,12 @@
 'use server'
 
-import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { requireAuth } from '@/lib/auth'
+import { clientSchema, type ClientFormState } from './validation'
 
-export const clientSchema = z.object({
-    name: z.string().min(2, { message: 'El nombre debe tener al menos 2 caracteres.' }),
-    email: z.string().email({ message: 'Email inválido.' }).optional().or(z.literal('')),
-    phone: z.string().optional(),
-    address: z.string().optional(),
-    company: z.string().optional(),
-    notes: z.string().optional(),
-})
-
-export type ClientFormState = {
-    message: string
-    errors?: z.ZodError<z.infer<typeof clientSchema>>['formErrors']['fieldErrors']
-}
-
-export async function createClient(
+export async function createClientAction(
     prevState: ClientFormState,
     formData: FormData
 ): Promise<ClientFormState> {
@@ -38,9 +24,20 @@ export async function createClient(
         }
     }
 
+    // Clean up empty strings to null for optional fields
+    const clientData = {
+        ...validatedFields.data,
+        email: validatedFields.data.email || null,
+        phone: validatedFields.data.phone || null,
+        address: validatedFields.data.address || null,
+        company: validatedFields.data.company || null,
+        notes: validatedFields.data.notes || null,
+        created_by: user.id
+    }
+
     const { error } = await supabase
         .from('clients')
-        .insert({ ...validatedFields.data, created_by: user.id })
+        .insert(clientData)
 
     if (error) {
         console.error('Create client error:', error)
