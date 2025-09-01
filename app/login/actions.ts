@@ -21,21 +21,33 @@ export async function loginAction(
 
     const { email, password } = validatedFields.data
 
-    const supabase = await createClient()
+    try {
+        const supabase = await createClient()
+        
+        const { error } = await supabase.auth.signInWithPassword({
+            email,
+            password,
+        })
 
-    const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-    })
+        if (error) {
+            console.error('Login error:', error.message)
+            return {
+                message: 'Credenciales inválidas. Por favor, intenta de nuevo.',
+            }
+        }
 
-    if (error) {
-        console.error('Login error:', error.message)
+        // Authentication successful, redirect to dashboard
+        redirect('/')
+        
+    } catch (criticalError: any) {
+        // NEXT_REDIRECT is expected when using redirect()
+        if (criticalError?.message === 'NEXT_REDIRECT') {
+            throw criticalError // Re-throw for Next.js to handle redirection
+        }
+        
+        console.error('Critical login error:', criticalError)
         return {
-            message: 'Credenciales inválidas. Por favor, intenta de nuevo.',
+            message: 'Error interno del servidor. Intenta de nuevo.',
         }
     }
-
-    // On success, the middleware will handle the redirection after the cookie is set.
-    // We can also explicitly redirect here.
-    redirect('/')
 }
