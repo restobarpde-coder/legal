@@ -1,62 +1,78 @@
+"use client"
+
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { createClient } from "@/lib/supabase/server"
-import { requireAuth } from "@/lib/auth"
-import { notFound } from "next/navigation"
-import { ArrowLeft, Edit, Users, FileText, CheckSquare, Clock, Mail, Phone, Building, StickyNote } from "lucide-react"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { createClient } from "@/lib/supabase/client"
+import { ArrowLeft, Edit, Users, FileText, CheckSquare, Clock, Mail, Phone, Building, StickyNote, Trash2, MoreVertical } from "lucide-react"
 import Link from "next/link"
+import { NoteModal } from "@/components/modals/note-modal"
+import { TaskModal } from "@/components/modals/task-modal"
+import { DocumentModal } from "@/components/modals/document-modal"
+import { TimeEntryModal } from "@/components/modals/time-entry-modal"
+import { DeleteConfirmationModal } from "@/components/delete-confirmation-modal"
+import { toast } from "sonner"
 
-async function getCase(id: string) {
-  const supabase = await createClient()
-  const user = await requireAuth()
-
-  const { data: case_, error } = await supabase
-    .from("cases")
-    .select(`
-      *,
-      clients (
-        id,
-        name,
-        email,
-        phone,
-        company,
-        address
-      ),
-      case_members!inner (
-        user_id,
-        role,
-        users (
-          full_name,
-          email,
-          role
-        )
-      )
-    `)
-    .eq("id", id)
-    .eq("case_members.user_id", user.id)
-    .single()
-
-  if (error || !case_) {
+async function getCase(id: string, supabase: any) {
+  const { data: userData } = await supabase.auth.getUser()
+  if (!userData.user) {
     return null
   }
 
-  // Get related data
-  const [tasksResult, documentsResult, notesResult, timeEntriesResult] = await Promise.all([
-    supabase.from("tasks").select("*").eq("case_id", id).order("created_at", { ascending: false }),
-    supabase.from("documents").select("*").eq("case_id", id).order("created_at", { ascending: false }),
-    supabase.from("notes").select("*").eq("case_id", id).order("created_at", { ascending: false }),
-    supabase.from("time_entries").select("*, users(full_name)").eq("case_id", id).order("date", { ascending: false }),
-  ])
+  try {
+    // Simple query - let RLS handle the access control
+    const { data: case_, error } = await supabase
+      .from("cases")
+      .select(`
+        *,
+        clients (
+          id,
+          name,
+          email,
+          phone,
+          company,
+          address
+        ),
+        case_members (
+          user_id,
+          role,
+          users (
+            full_name,
+            email,
+            role
+          )
+        )
+      `)
+      .eq("id", id)
+      .single()
 
-  return {
-    case: case_,
-    tasks: tasksResult.data || [],
-    documents: documentsResult.data || [],
-    notes: notesResult.data || [],
-    timeEntries: timeEntriesResult.data || [],
+    if (error || !case_) {
+      console.log('Error getting case or case not found:', error)
+      return null
+    }
+
+    // Get related data - RLS will automatically filter these based on the policies
+    const [tasksResult, documentsResult, notesResult, timeEntriesResult] = await Promise.all([
+      supabase.from("tasks").select("*").eq("case_id", id).order("created_at", { ascending: false }),
+      supabase.from("documents").select("*").eq("case_id", id).order("created_at", { ascending: false }),
+      supabase.from("notes").select("*").eq("case_id", id).order("created_at", { ascending: false }),
+      supabase.from("time_entries").select("*, users(full_name)").eq("case_id", id).order("date", { ascending: false }),
+    ])
+
+    return {
+      case: case_,
+      tasks: tasksResult.data || [],
+      documents: documentsResult.data || [],
+      notes: notesResult.data || [],
+      timeEntries: timeEntriesResult.data || [],
+    }
+  } catch (error) {
+    console.error('Error in getCase:', error)
+    return null
   }
 }
 
@@ -120,12 +136,197 @@ function getPriorityLabel(priority: string) {
   }
 }
 
-export default async function CaseDetailPage({ params }: { params: { id: string } }) {
-  const resolvedParams = await params
-  const data = await getCase(resolvedParams.id)
+export default function CaseDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const [caseId, setCaseId] = useState("")
+  const [data, setData] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [noteModalOpen, setNoteModalOpen] = useState(false)
+  const [taskModalOpen, setTaskModalOpen] = useState(false)
+  const [documentModalOpen, setDocumentModalOpen] = useState(false)
+  const [timeModalOpen, setTimeModalOpen] = useState(false)
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<{type: string, id: string, name: string} | null>(null)
+  const [deleteLoading, setDeleteLoading] = useState(false)
+  const supabase = createClient()
+
+  useEffect(() => {
+    async function loadData() {
+      const resolvedParams = await params
+      setCaseId(resolvedParams.id)
+      const result = await getCase(resolvedParams.id, supabase)
+      setData(result)
+      setLoading(false)
+    }
+    loadData()
+  }, [params])
+
+  const refreshData = async () => {
+    if (caseId) {
+      console.log('🔄 Refrescando datos del caso:', caseId)
+      const result = await getCase(caseId, supabase)
+      console.log('📊 Nuevos datos obtenidos:', result)
+      setData(result)
+      console.log('✅ Estado actualizado')
+    } else {
+      console.warn('⚠️ No hay caseId para refrescar')
+    }
+  }
+
+  const handleDelete = async (type: string, id: string, name: string) => {
+    setDeleteTarget({ type, id, name })
+    setDeleteModalOpen(true)
+  }
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return
+    
+    console.log('🗑️ Iniciando eliminación:', deleteTarget)
+    setDeleteLoading(true)
+    
+    try {
+      // Check authentication first
+      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      if (authError || !user) {
+        console.error('❌ Usuario no autenticado:', authError)
+        toast.error('Debes estar autenticado para eliminar elementos')
+        return
+      }
+      
+      console.log('✅ Usuario autenticado:', user.email)
+      
+      let deleteResult = null
+      
+      // Special handling for documents - need to delete from storage too
+      if (deleteTarget.type === 'documents') {
+        console.log('📄 Eliminando documento...')
+        
+        // First get the document to find the file_path
+        const { data: document, error: fetchError } = await supabase
+          .from('documents')
+          .select('file_path')
+          .eq('id', deleteTarget.id)
+          .single()
+
+        if (fetchError) {
+          console.error('❌ Error fetching document:', fetchError)
+          toast.error('Error al obtener información del documento')
+          return
+        }
+        
+        console.log('📁 Documento encontrado:', document)
+
+        // Delete file from storage if it exists
+        if (document?.file_path) {
+          console.log('🗂️ Eliminando archivo del storage:', document.file_path)
+          const { error: storageError } = await supabase.storage
+            .from('documents')
+            .remove([document.file_path])
+
+          if (storageError) {
+            console.error('⚠️ Storage delete error (continuando):', storageError)
+            // Continue with database deletion even if storage fails
+          } else {
+            console.log('✅ Archivo eliminado del storage')
+          }
+        }
+
+        // Delete from database
+        console.log('🗄️ Eliminando de la base de datos...')
+        deleteResult = await supabase
+          .from('documents')
+          .delete()
+          .eq('id', deleteTarget.id)
+          .select() // Return deleted data to verify
+
+        console.log('📊 Resultado de eliminación documento:', deleteResult)
+        
+        if (deleteResult.error) {
+          console.error('❌ Database delete error:', deleteResult.error)
+          toast.error(`Error al eliminar documento: ${deleteResult.error.message}`)
+          return
+        }
+        
+        // Check if anything was actually deleted
+        if (!deleteResult.data || deleteResult.data.length === 0) {
+          console.warn('⚠️ No se eliminó ningún documento - posible problema de permisos')
+          toast.error('No se pudo eliminar el documento. Verifica tus permisos.')
+          return
+        }
+      } else {
+        // Regular deletion for other types
+        console.log(`🔄 Eliminando ${deleteTarget.type}...`)
+        deleteResult = await supabase
+          .from(deleteTarget.type)
+          .delete()
+          .eq('id', deleteTarget.id)
+          .select() // Return deleted data to verify
+          
+        console.log(`📊 Resultado de eliminación ${deleteTarget.type}:`, deleteResult)
+
+        if (deleteResult.error) {
+          console.error('❌ Delete error:', deleteResult.error)
+          toast.error(`Error al eliminar ${deleteTarget.type}: ${deleteResult.error.message}`)
+          return
+        }
+        
+        // Check if anything was actually deleted
+        if (!deleteResult.data || deleteResult.data.length === 0) {
+          console.warn(`⚠️ No se eliminó ningún ${deleteTarget.type} - posible problema de permisos`)
+          toast.error(`No se pudo eliminar ${deleteTarget.type}. Verifica tus permisos.`)
+          return
+        }
+      }
+
+      console.log('✅ Eliminación confirmada - elemento(s) eliminado(s):', deleteResult.data.length)
+      
+      // Success - show message and refresh
+      const entityNames = {
+        'tasks': 'tarea',
+        'documents': 'documento', 
+        'notes': 'nota',
+        'time_entries': 'entrada de tiempo'
+      }
+      const entityName = entityNames[deleteTarget.type as keyof typeof entityNames] || deleteTarget.type
+      
+      console.log('🔄 Refrescando datos...')
+      await refreshData()
+      console.log('✅ Datos refrescados')
+      
+      toast.success(`${entityName.charAt(0).toUpperCase() + entityName.slice(1)} eliminado exitosamente`)
+      
+    } catch (error: any) {
+      console.error('❌ Error inesperado al eliminar:', error)
+      toast.error(`Error inesperado: ${error.message || 'Error desconocido'}`)
+    } finally {
+      setDeleteLoading(false)
+      setDeleteModalOpen(false)
+      setDeleteTarget(null)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto mb-4"></div>
+          <p>Cargando caso...</p>
+        </div>
+      </div>
+    )
+  }
 
   if (!data) {
-    notFound()
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold mb-2">Caso no encontrado</h2>
+          <p className="text-muted-foreground mb-4">El caso que buscas no existe o no tienes permisos para verlo.</p>
+          <Button asChild>
+            <Link href="/dashboard/cases">Volver a Casos</Link>
+          </Button>
+        </div>
+      </div>
+    )
   }
 
   const { case: case_, tasks, documents, notes, timeEntries } = data
@@ -254,11 +455,9 @@ export default async function CaseDetailPage({ params }: { params: { id: string 
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <CardTitle>Tareas del Caso</CardTitle>
-                    <Button size="sm" asChild>
-                      <Link href={`/dashboard/tasks/new?case_id=${case_.id}`}>
-                        <CheckSquare className="h-4 w-4 mr-2" />
-                        Nueva Tarea
-                      </Link>
+                    <Button size="sm" onClick={() => setTaskModalOpen(true)}>
+                      <CheckSquare className="h-4 w-4 mr-2" />
+                      Nueva Tarea
                     </Button>
                   </div>
                 </CardHeader>
@@ -269,10 +468,8 @@ export default async function CaseDetailPage({ params }: { params: { id: string 
                         <CheckSquare className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                         <h3 className="text-lg font-semibold mb-2">No hay tareas</h3>
                         <p className="text-muted-foreground mb-4">Comienza creando la primera tarea para este caso</p>
-                        <Button asChild>
-                          <Link href={`/dashboard/tasks/new?case_id=${case_.id}`}>
-                            Nueva Tarea
-                          </Link>
+                        <Button onClick={() => setTaskModalOpen(true)}>
+                          Nueva Tarea
                         </Button>
                       </div>
                     ) : (
@@ -292,6 +489,22 @@ export default async function CaseDetailPage({ params }: { params: { id: string 
                             <Badge variant={task.status === "completed" ? "default" : "secondary"}>
                               {task.status}
                             </Badge>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon">
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                  onClick={() => handleDelete('tasks', task.id, task.title)}
+                                  className="text-red-600"
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Eliminar
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </div>
                         </div>
                       ))
@@ -306,11 +519,9 @@ export default async function CaseDetailPage({ params }: { params: { id: string 
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <CardTitle>Documentos del Caso</CardTitle>
-                    <Button size="sm" asChild>
-                      <Link href={`/dashboard/documents/upload?case=${case_.id}`}>
-                        <FileText className="h-4 w-4 mr-2" />
-                        Subir Documento
-                      </Link>
+                    <Button size="sm" onClick={() => setDocumentModalOpen(true)}>
+                      <FileText className="h-4 w-4 mr-2" />
+                      Subir Documento
                     </Button>
                   </div>
                 </CardHeader>
@@ -321,10 +532,8 @@ export default async function CaseDetailPage({ params }: { params: { id: string 
                         <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                         <h3 className="text-lg font-semibold mb-2">No hay documentos</h3>
                         <p className="text-muted-foreground mb-4">Sube el primer documento para este caso</p>
-                        <Button asChild>
-                          <Link href={`/dashboard/documents/upload?case=${case_.id}`}>
-                            Subir Documento
-                          </Link>
+                        <Button onClick={() => setDocumentModalOpen(true)}>
+                          Subir Documento
                         </Button>
                       </div>
                     ) : (
@@ -339,7 +548,25 @@ export default async function CaseDetailPage({ params }: { params: { id: string 
                               </p>
                             </div>
                           </div>
-                          <Button size="sm" variant="outline">Descargar</Button>
+                          <div className="flex items-center gap-2">
+                            <Button size="sm" variant="outline">Descargar</Button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon">
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                  onClick={() => handleDelete('documents', doc.id, doc.name)}
+                                  className="text-red-600"
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Eliminar
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
                         </div>
                       ))
                     )}
@@ -353,11 +580,9 @@ export default async function CaseDetailPage({ params }: { params: { id: string 
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <CardTitle>Notas del Caso</CardTitle>
-                    <Button size="sm" asChild>
-                      <Link href={`/dashboard/cases/${case_.id}/notes/new`}>
-                        <StickyNote className="h-4 w-4 mr-2" />
-                        Nueva Nota
-                      </Link>
+                    <Button size="sm" onClick={() => setNoteModalOpen(true)}>
+                      <StickyNote className="h-4 w-4 mr-2" />
+                      Nueva Nota
                     </Button>
                   </div>
                 </CardHeader>
@@ -368,21 +593,39 @@ export default async function CaseDetailPage({ params }: { params: { id: string 
                         <StickyNote className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                         <h3 className="text-lg font-semibold mb-2">No hay notas</h3>
                         <p className="text-muted-foreground mb-4">Agrega la primera nota para este caso</p>
-                        <Button asChild>
-                          <Link href={`/dashboard/cases/${case_.id}/notes/new`}>
-                            Nueva Nota
-                          </Link>
+                        <Button onClick={() => setNoteModalOpen(true)}>
+                          Nueva Nota
                         </Button>
                       </div>
                     ) : (
                       notes.map((note) => (
                         <div key={note.id} className="p-4 border rounded-lg">
-                          {note.title && <h4 className="font-medium mb-2">{note.title}</h4>}
-                          <p className="text-sm whitespace-pre-wrap">{note.content}</p>
-                          <p className="text-xs text-muted-foreground mt-2">
-                            {new Date(note.created_at).toLocaleDateString("es-ES")} - 
-                            {note.is_private && <span className="text-amber-600"> Privada</span>}
-                          </p>
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              {note.title && <h4 className="font-medium mb-2">{note.title}</h4>}
+                              <p className="text-sm whitespace-pre-wrap">{note.content}</p>
+                              <p className="text-xs text-muted-foreground mt-2">
+                                {new Date(note.created_at).toLocaleDateString("es-ES")} - 
+                                {note.is_private && <span className="text-amber-600"> Privada</span>}
+                              </p>
+                            </div>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon">
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                  onClick={() => handleDelete('notes', note.id, note.title || 'Nota sin título')}
+                                  className="text-red-600"
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Eliminar
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
                         </div>
                       ))
                     )}
@@ -396,11 +639,9 @@ export default async function CaseDetailPage({ params }: { params: { id: string 
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <CardTitle>Registro de Tiempo</CardTitle>
-                    <Button size="sm" asChild>
-                      <Link href={`/dashboard/time/new?case_id=${case_.id}`}>
-                        <Clock className="h-4 w-4 mr-2" />
-                        Registrar Tiempo
-                      </Link>
+                    <Button size="sm" onClick={() => setTimeModalOpen(true)}>
+                      <Clock className="h-4 w-4 mr-2" />
+                      Registrar Tiempo
                     </Button>
                   </div>
                 </CardHeader>
@@ -430,10 +671,8 @@ export default async function CaseDetailPage({ params }: { params: { id: string 
                         <Clock className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                         <h3 className="text-lg font-semibold mb-2">No hay tiempo registrado</h3>
                         <p className="text-muted-foreground mb-4">Comienza registrando el tiempo trabajado en este caso</p>
-                        <Button asChild>
-                          <Link href={`/dashboard/time/new?case_id=${case_.id}`}>
-                            Registrar Tiempo
-                          </Link>
+                        <Button onClick={() => setTimeModalOpen(true)}>
+                          Registrar Tiempo
                         </Button>
                       </div>
                     ) : (
@@ -445,11 +684,29 @@ export default async function CaseDetailPage({ params }: { params: { id: string 
                               {entry.users?.full_name} • {new Date(entry.date).toLocaleDateString("es-ES")}
                             </p>
                           </div>
-                          <div className="text-right">
-                            <p className="font-medium">{entry.hours}h</p>
-                            <p className="text-sm text-muted-foreground">
-                              {entry.billable ? 'Facturable' : 'No facturable'}
-                            </p>
+                          <div className="flex items-center gap-3">
+                            <div className="text-right">
+                              <p className="font-medium">{entry.hours}h</p>
+                              <p className="text-sm text-muted-foreground">
+                                {entry.billable ? 'Facturable' : 'No facturable'}
+                              </p>
+                            </div>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon">
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                  onClick={() => handleDelete('time_entries', entry.id, entry.description)}
+                                  className="text-red-600"
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Eliminar
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </div>
                         </div>
                       ))
@@ -551,6 +808,46 @@ export default async function CaseDetailPage({ params }: { params: { id: string 
           </Card>
         </div>
       </div>
+
+      {/* Modales */}
+      <NoteModal
+        isOpen={noteModalOpen}
+        onClose={() => setNoteModalOpen(false)}
+        caseId={case_.id}
+        onSuccess={refreshData}
+      />
+      
+      <TaskModal
+        isOpen={taskModalOpen}
+        onClose={() => setTaskModalOpen(false)}
+        caseId={case_.id}
+        onSuccess={refreshData}
+      />
+      
+      <DocumentModal
+        isOpen={documentModalOpen}
+        onClose={() => setDocumentModalOpen(false)}
+        caseId={case_.id}
+        onSuccess={refreshData}
+      />
+      
+      <TimeEntryModal
+        isOpen={timeModalOpen}
+        onClose={() => setTimeModalOpen(false)}
+        caseId={case_.id}
+        defaultRate={case_.hourly_rate || 0}
+        onSuccess={refreshData}
+      />
+      
+      <DeleteConfirmationModal
+        isOpen={deleteModalOpen}
+        onClose={() => setDeleteModalOpen(false)}
+        onConfirm={confirmDelete}
+        title="Confirmar eliminación"
+        description="Esta acción no se puede deshacer."
+        itemName={deleteTarget?.name}
+        loading={deleteLoading}
+      />
     </div>
   )
 }

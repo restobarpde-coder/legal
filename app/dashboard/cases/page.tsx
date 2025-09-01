@@ -40,46 +40,52 @@ async function getCases(
   const supabase = await createClient()
   await requireAuth()
 
-  let query = supabase
-    .from("cases")
-    .select(`
-      *,
-      clients (
-        id,
-        name,
-        email,
-        company
-      ),
-      case_members!inner (
-        user_id,
-        role
-      )
-    `)
-    .order("created_at", { ascending: false })
+  try {
+    // Simple query - let RLS handle the access control
+    let query = supabase
+      .from("cases")
+      .select(`
+        *,
+        clients (
+          id,
+          name,
+          email,
+          company
+        ),
+        case_members (
+          user_id,
+          role
+        )
+      `)
+      .order("created_at", { ascending: false })
 
-  // Apply search filter
-  if (searchQuery) {
-    query = query.or(`title.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%`)
-  }
+    // Apply search filter
+    if (searchQuery) {
+      query = query.or(`title.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%`)
+    }
 
-  // Apply status filter
-  if (statusFilter && statusFilter !== "all") {
-    query = query.eq("status", statusFilter)
-  }
+    // Apply status filter
+    if (statusFilter && statusFilter !== "all") {
+      query = query.eq("status", statusFilter)
+    }
 
-  // Apply priority filter
-  if (priorityFilter && priorityFilter !== "all") {
-    query = query.eq("priority", priorityFilter)
-  }
+    // Apply priority filter
+    if (priorityFilter && priorityFilter !== "all") {
+      query = query.eq("priority", priorityFilter)
+    }
 
-  const { data: cases, error } = await query
+    const { data: cases, error } = await query
 
-  if (error) {
-    console.error("Error fetching cases:", error)
+    if (error) {
+      console.error("Error fetching cases:", error)
+      return []
+    }
+
+    return cases as Case[] || []
+  } catch (error) {
+    console.error("Error in getCases:", error)
     return []
   }
-
-  return cases as Case[] || []
 }
 
 function getStatusColor(status: string) {
