@@ -64,7 +64,7 @@ export function CaseMembersManager({ caseData, assignableUsers, canManage }: Cas
                     Gestionar Equipo
                 </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="min-w-[700px] max-w-[600px] w-full sm:max-w-[600px]">
                 <DialogHeader>
                     <DialogTitle>Gestionar Equipo del Caso: {caseData.title}</DialogTitle>
                 </DialogHeader>
