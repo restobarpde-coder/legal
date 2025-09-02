@@ -3,6 +3,7 @@
 import type React from "react"
 import { useEffect } from "react"
 import { useActionState } from "react"
+import { useSearchParams } from "next/navigation"
 import { loginAction } from "./actions"
 
 import { Button } from "@/components/ui/button"
@@ -17,6 +18,8 @@ export default function LoginPage() {
   const [state, formAction, isPending] = useActionState(loginAction, {
     message: "",
   })
+  const searchParams = useSearchParams()
+  const message = searchParams.get('message')
 
   useEffect(() => {
     if (state.message && state.message !== "Error de validación.") {
@@ -25,6 +28,14 @@ export default function LoginPage() {
       })
     }
   }, [state])
+
+  useEffect(() => {
+    if (message) {
+      toast.error("Error de autenticación", {
+        description: message,
+      })
+    }
+  }, [message])
 
     return (
         <div className="relative min-h-screen flex items-center justify-center p-4 overflow-hidden" 
