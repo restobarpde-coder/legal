@@ -72,31 +72,7 @@ interface ChatwootWebhookPayload {
   changed_attributes?: Record<string, any>;
 }
 
-// Función para verificar la autenticidad del webhook
-function verifyWebhookSignature(payload: string, signature: string, secret: string): boolean {
-  if (!signature || !secret) {
-    return false;
-  }
-  
-  try {
-    const crypto = require('crypto');
-    const expectedSignature = crypto.createHmac('sha256', secret).update(payload, 'utf8').digest('hex');
-    
-    // Chatwoot puede enviar la firma con o sin el prefijo "sha256="
-    const receivedSignature = signature.startsWith('sha256=') 
-      ? signature.slice(7) 
-      : signature;
-    
-    // Comparación segura para evitar timing attacks
-    return crypto.timingSafeEqual(
-      Buffer.from(expectedSignature, 'hex'),
-      Buffer.from(receivedSignature, 'hex')
-    );
-  } catch (error) {
-    console.error('Error verificando firma de webhook:', error);
-    return false;
-  }
-}
+// Chatwoot no requiere verificación de firma según su documentación oficial
 
 // Función para procesar conversación nueva o actualizada
 async function processConversation(conversation: ChatwootConversation, eventType: string) {
@@ -265,40 +241,8 @@ export async function POST(request: NextRequest) {
     
     webhookLogId = logData?.id || null;
     
-    // Verificar headers si es necesario
-    const headersList = await headers();
-    const webhookSignature = headersList.get('x-chatwoot-hmac-sha256');
-    
-    // TEMPORAL: Verificación de firma desactivada para testing
-    // TODO: Reactivar cuando se configure el secret en Chatwoot
-    /*
-    if (process.env.CHATWOOT_WEBHOOK_SECRET && webhookSignature) {
-      if (!verifyWebhookSignature(body, webhookSignature, process.env.CHATWOOT_WEBHOOK_SECRET)) {
-        console.error('Firma de webhook inválida');
-        
-        if (webhookLogId) {
-          await supabase
-            .from('chatwoot_webhook_logs')
-            .update({
-              status: 'error',
-              error_message: 'Invalid webhook signature',
-              processed_at: new Date().toISOString(),
-              processing_duration_ms: Date.now() - startTime
-            })
-            .eq('id', webhookLogId);
-        }
-        
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-      }
-    }
-    */
-    
-    console.log('⚠️  Verificación de firma desactivada - Solo para testing');
-    if (webhookSignature) {
-      console.log('📝 Firma recibida:', webhookSignature);
-    } else {
-      console.log('📝 No se recibió firma en el webhook');
-    }
+    // Chatwoot no usa firma/secret en sus webhooks según documentación oficial
+    console.log('✅ Webhook recibido de Chatwoot - Sin verificación de firma necesaria');
 
     console.log(`Webhook recibido: ${payload.event} para cuenta ${payload.account.name}`);
 
