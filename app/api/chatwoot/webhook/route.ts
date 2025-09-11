@@ -1,0 +1,345 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@/lib/supabase/server';
+import { headers } from 'next/headers';
+
+// Tipos para los eventos de Chatwoot
+interface ChatwootContact {
+  id: number;
+  name: string;
+  email?: string;
+  phone_number?: string;
+  identifier?: string;
+  thumbnail?: string;
+  custom_attributes?: Record<string, any>;
+}
+
+interface ChatwootConversation {
+  id: number;
+  messages: any[];
+  contact: ChatwootContact;
+  inbox: {
+    id: number;
+    name: string;
+    channel_type: string;
+  };
+  status: 'open' | 'resolved' | 'pending';
+  assignee?: {
+    id: number;
+    name: string;
+    email: string;
+  };
+  team?: {
+    id: number;
+    name: string;
+  };
+  meta?: Record<string, any>;
+  custom_attributes?: Record<string, any>;
+  created_at: string;
+  updated_at: string;
+}
+
+interface ChatwootMessage {
+  id: number;
+  content: string;
+  message_type: 'incoming' | 'outgoing' | 'activity' | 'template';
+  created_at: string;
+  conversation_id: number;
+  attachments?: Array<{
+    id: number;
+    file_url: string;
+    file_type: string;
+    file_size: number;
+  }>;
+  sender?: {
+    id: number;
+    name: string;
+    email?: string;
+    type: 'contact' | 'user';
+  };
+  content_attributes?: Record<string, any>;
+}
+
+interface ChatwootWebhookPayload {
+  event: string;
+  account: {
+    id: number;
+    name: string;
+  };
+  conversation?: ChatwootConversation;
+  message?: ChatwootMessage;
+  contact?: ChatwootContact;
+  inbox?: any;
+  changed_attributes?: Record<string, any>;
+}
+
+// Función para verificar la autenticidad del webhook
+function verifyWebhookSignature(payload: string, signature: string, secret: string): boolean {
+  if (!signature || !secret) {
+    return false;
+  }
+  
+  try {
+    const crypto = require('crypto');
+    const expectedSignature = crypto.createHmac('sha256', secret).update(payload, 'utf8').digest('hex');
+    
+    // Chatwoot puede enviar la firma con o sin el prefijo "sha256="
+    const receivedSignature = signature.startsWith('sha256=') 
+      ? signature.slice(7) 
+      : signature;
+    
+    // Comparación segura para evitar timing attacks
+    return crypto.timingSafeEqual(
+      Buffer.from(expectedSignature, 'hex'),
+      Buffer.from(receivedSignature, 'hex')
+    );
+  } catch (error) {
+    console.error('Error verificando firma de webhook:', error);
+    return false;
+  }
+}
+
+// Función para procesar conversación nueva o actualizada
+async function processConversation(conversation: ChatwootConversation, eventType: string) {
+  const supabase = await createClient();
+  
+  try {
+    // Verificar si ya existe la conversación
+    const { data: existingConversation } = await supabase
+      .from('chatwoot_conversations')
+      .select('*')
+      .eq('chatwoot_id', conversation.id)
+      .single();
+
+    const conversationData = {
+      chatwoot_id: conversation.id,
+      contact_name: conversation.contact.name,
+      contact_email: conversation.contact.email || null,
+      contact_phone: conversation.contact.phone_number || null,
+      contact_identifier: conversation.contact.identifier || null,
+      status: conversation.status,
+      inbox_name: conversation.inbox.name,
+      inbox_channel_type: conversation.inbox.channel_type,
+      assignee_name: conversation.assignee?.name || null,
+      assignee_email: conversation.assignee?.email || null,
+      team_name: conversation.team?.name || null,
+      custom_attributes: conversation.custom_attributes || {},
+      meta: conversation.meta || {},
+      chatwoot_created_at: conversation.created_at,
+      chatwoot_updated_at: conversation.updated_at,
+      updated_at: new Date().toISOString()
+    };
+
+    if (existingConversation) {
+      // Actualizar conversación existente
+      await supabase
+        .from('chatwoot_conversations')
+        .update(conversationData)
+        .eq('id', existingConversation.id);
+      
+      console.log(`Conversación actualizada: ${conversation.id}`);
+    } else {
+      // Crear nueva conversación
+      await supabase
+        .from('chatwoot_conversations')
+        .insert({
+          ...conversationData,
+          created_at: new Date().toISOString()
+        });
+      
+      console.log(`Nueva conversación creada: ${conversation.id}`);
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error procesando conversación:', error);
+    return false;
+  }
+}
+
+// Función para procesar mensaje nuevo
+async function processMessage(message: ChatwootMessage, conversation?: ChatwootConversation) {
+  const supabase = await createClient();
+  
+  try {
+    const messageData = {
+      chatwoot_id: message.id,
+      conversation_chatwoot_id: message.conversation_id,
+      content: message.content,
+      message_type: message.message_type,
+      sender_name: message.sender?.name || null,
+      sender_email: message.sender?.email || null,
+      sender_type: message.sender?.type || null,
+      attachments: message.attachments || [],
+      content_attributes: message.content_attributes || {},
+      chatwoot_created_at: message.created_at,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    await supabase
+      .from('chatwoot_messages')
+      .insert(messageData);
+    
+    console.log(`Nuevo mensaje guardado: ${message.id} para conversación ${message.conversation_id}`);
+    return true;
+  } catch (error) {
+    console.error('Error procesando mensaje:', error);
+    return false;
+  }
+}
+
+export async function POST(request: NextRequest) {
+  const startTime = Date.now();
+  let webhookLogId: string | null = null;
+  
+  try {
+    const body = await request.text();
+    const payload: ChatwootWebhookPayload = JSON.parse(body);
+    
+    // Crear log de webhook recibido
+    const supabase = await createClient();
+    const { data: logData } = await supabase
+      .from('chatwoot_webhook_logs')
+      .insert({
+        event_type: payload.event,
+        chatwoot_account_id: payload.account.id,
+        chatwoot_account_name: payload.account.name,
+        raw_payload: payload,
+        status: 'received'
+      })
+      .select('id')
+      .single();
+    
+    webhookLogId = logData?.id || null;
+    
+    // Verificar headers si es necesario
+    const headersList = await headers();
+    const webhookSignature = headersList.get('x-chatwoot-hmac-sha256');
+    
+    // Opcional: verificar la firma del webhook
+    if (process.env.CHATWOOT_WEBHOOK_SECRET && webhookSignature) {
+      if (!verifyWebhookSignature(body, webhookSignature, process.env.CHATWOOT_WEBHOOK_SECRET)) {
+        console.error('Firma de webhook inválida');
+        
+        // Actualizar log con error
+        if (webhookLogId) {
+          await supabase
+            .from('chatwoot_webhook_logs')
+            .update({
+              status: 'error',
+              error_message: 'Invalid webhook signature',
+              processed_at: new Date().toISOString(),
+              processing_duration_ms: Date.now() - startTime
+            })
+            .eq('id', webhookLogId);
+        }
+        
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
+    }
+
+    console.log(`Webhook recibido: ${payload.event} para cuenta ${payload.account.name}`);
+
+    // Procesar según el tipo de evento
+    switch (payload.event) {
+      case 'conversation_created':
+        if (payload.conversation) {
+          await processConversation(payload.conversation, 'created');
+        }
+        break;
+
+      case 'conversation_updated':
+        if (payload.conversation) {
+          await processConversation(payload.conversation, 'updated');
+        }
+        break;
+
+      case 'conversation_status_changed':
+        if (payload.conversation) {
+          await processConversation(payload.conversation, 'status_changed');
+        }
+        break;
+
+      case 'message_created':
+        if (payload.message) {
+          await processMessage(payload.message, payload.conversation);
+        }
+        break;
+
+      case 'message_updated':
+        if (payload.message) {
+          // Actualizar mensaje existente
+          const supabase = await createClient();
+          await supabase
+            .from('chatwoot_messages')
+            .update({
+              content: payload.message.content,
+              content_attributes: payload.message.content_attributes || {},
+              updated_at: new Date().toISOString()
+            })
+            .eq('chatwoot_id', payload.message.id);
+        }
+        break;
+
+      case 'contact_created':
+      case 'contact_updated':
+        // Procesar contacto si es necesario
+        console.log(`Evento de contacto: ${payload.event}`);
+        break;
+
+      default:
+        console.log(`Evento no manejado: ${payload.event}`);
+    }
+
+    // Actualizar log con éxito
+    if (webhookLogId) {
+      await supabase
+        .from('chatwoot_webhook_logs')
+        .update({
+          status: 'processed',
+          processed_at: new Date().toISOString(),
+          processing_duration_ms: Date.now() - startTime
+        })
+        .eq('id', webhookLogId);
+    }
+
+    return NextResponse.json({ 
+      success: true, 
+      message: `Webhook ${payload.event} procesado correctamente` 
+    });
+
+  } catch (error) {
+    console.error('Error procesando webhook de Chatwoot:', error);
+    
+    // Actualizar log con error si existe
+    if (webhookLogId) {
+      try {
+        const supabase = await createClient();
+        await supabase
+          .from('chatwoot_webhook_logs')
+          .update({
+            status: 'error',
+            error_message: error instanceof Error ? error.message : 'Unknown error',
+            processed_at: new Date().toISOString(),
+            processing_duration_ms: Date.now() - startTime
+          })
+          .eq('id', webhookLogId);
+      } catch (logError) {
+        console.error('Error updating webhook log:', logError);
+      }
+    }
+    
+    return NextResponse.json(
+      { error: 'Error interno del servidor' }, 
+      { status: 500 }
+    );
+  }
+}
+
+// Método GET para verificar que el endpoint está funcionando
+export async function GET() {
+  return NextResponse.json({ 
+    status: 'Chatwoot webhook endpoint funcionando',
+    timestamp: new Date().toISOString() 
+  });
+}

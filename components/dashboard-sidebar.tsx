@@ -19,6 +19,7 @@ import {
   Menu,
   User,
   Calendar,
+  MessageSquare,
 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
@@ -58,6 +59,11 @@ const navigation = [
     name: "Tiempo",
     href: "/dashboard/time",
     icon: Clock,
+  },
+  {
+    name: "Chatwoot",
+    href: "/dashboard/chatwoot",
+    icon: MessageSquare,
   },
 ]
 

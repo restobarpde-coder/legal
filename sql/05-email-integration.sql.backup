@@ -1,0 +1,110 @@
+-- Email Integration Tables
+-- This script creates the necessary tables for email integration functionality
+
+-- Table to store encrypted email credentials for users
+CREATE TABLE IF NOT EXISTS email_credentials (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    email_password_encrypted TEXT NOT NULL,
+    encryption_key_id TEXT NOT NULL,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    
+    -- Ensure one active credential per user
+    UNIQUE(user_id)
+);
+
+-- Table to cache email metadata for faster access
+CREATE TABLE IF NOT EXISTS email_cache (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    message_id TEXT NOT NULL,
+    subject TEXT,
+    sender_email TEXT,
+    sender_name TEXT,
+    recipient_emails TEXT[], -- Array of recipient emails
+    email_date TIMESTAMP WITH TIME ZONE,
+    has_attachments BOOLEAN DEFAULT false,
+    is_read BOOLEAN DEFAULT false,
+    folder TEXT DEFAULT 'INBOX',
+    email_size INTEGER,
+    priority TEXT,
+    labels TEXT[], -- Array of custom labels
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    
+    -- Ensure unique message per user
+    UNIQUE(user_id, message_id)
+);
+
+-- Table to track email sync status
+CREATE TABLE IF NOT EXISTS email_sync_status (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    last_sync_at TIMESTAMP WITH TIME ZONE,
+    sync_status TEXT CHECK (sync_status IN ('pending', 'syncing', 'completed', 'error')) DEFAULT 'pending',
+    error_message TEXT,
+    emails_synced INTEGER DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    
+    -- One sync status per user
+    UNIQUE(user_id)
+);
+
+-- Indexes for better performance
+CREATE INDEX IF NOT EXISTS idx_email_credentials_user_id ON email_credentials(user_id);
+CREATE INDEX IF NOT EXISTS idx_email_cache_user_id ON email_cache(user_id);
+CREATE INDEX IF NOT EXISTS idx_email_cache_message_id ON email_cache(message_id);
+CREATE INDEX IF NOT EXISTS idx_email_cache_email_date ON email_cache(email_date DESC);
+CREATE INDEX IF NOT EXISTS idx_email_cache_is_read ON email_cache(is_read);
+CREATE INDEX IF NOT EXISTS idx_email_cache_folder ON email_cache(folder);
+CREATE INDEX IF NOT EXISTS idx_email_sync_status_user_id ON email_sync_status(user_id);
+
+-- Function to update updated_at timestamp
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = timezone('utc'::text, now());
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+-- Triggers to automatically update updated_at
+CREATE TRIGGER update_email_credentials_updated_at
+    BEFORE UPDATE ON email_credentials
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_email_cache_updated_at
+    BEFORE UPDATE ON email_cache
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_email_sync_status_updated_at
+    BEFORE UPDATE ON email_sync_status
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+-- Row Level Security (RLS) policies
+ALTER TABLE email_credentials ENABLE ROW LEVEL SECURITY;
+ALTER TABLE email_cache ENABLE ROW LEVEL SECURITY;
+ALTER TABLE email_sync_status ENABLE ROW LEVEL SECURITY;
+
+-- Policies for email_credentials
+CREATE POLICY "Users can only access their own email credentials" ON email_credentials
+    FOR ALL USING (auth.uid() = user_id);
+
+-- Policies for email_cache
+CREATE POLICY "Users can only access their own email cache" ON email_cache
+    FOR ALL USING (auth.uid() = user_id);
+
+-- Policies for email_sync_status
+CREATE POLICY "Users can only access their own sync status" ON email_sync_status
+    FOR ALL USING (auth.uid() = user_id);
+
+-- Comments for documentation
+COMMENT ON TABLE email_credentials IS 'Stores encrypted email credentials for IMAP/SMTP access';
+COMMENT ON TABLE email_cache IS 'Caches email metadata for faster access and offline capabilities';
+COMMENT ON TABLE email_sync_status IS 'Tracks the synchronization status of user emails';

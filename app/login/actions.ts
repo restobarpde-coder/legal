@@ -35,8 +35,8 @@ export async function loginAction(
                 message: 'Credenciales inválidas. Por favor, intenta de nuevo.',
             }
         }
-
-        // Authentication successful, redirect to dashboard
+        
+        // Redirect to dashboard
         redirect('/')
         
     } catch (criticalError: any) {
@@ -51,3 +51,4 @@ export async function loginAction(
         }
     }
 }
+
