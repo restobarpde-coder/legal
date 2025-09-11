@@ -110,6 +110,57 @@ async function processConversation(conversation: ChatwootConversation, eventType
       .eq('chatwoot_id', conversation.id)
       .single();
 
+    // Asignar usuario automáticamente basado en el inbox
+    let assignedUserId = null;
+    let assignmentReason = 'sin_asignar';
+    
+    // Mapeo de emails del estudio a user_ids (datos reales)
+    const emailToUserMapping: { [key: string]: string } = {
+      'admin@legal.com': '1824785b-6260-479a-88b5-4fbcb266a23f',
+      'fernando@centrodeasesoramiento.com': 'e325f4f3-2b11-424e-a696-1c4a8112460b',
+      'gonzalo@centrodeasesoramiento.com': '3c5e7b32-1871-452d-8b08-ede5e5ccec70'
+    };
+    
+    if (eventType === 'created') {
+      // 1. Asignación por inbox de email personal
+      if (conversation.inbox.channel_type.includes('Email')) {
+        // El inbox name debería contener el email del abogado
+        const inboxEmail = Object.keys(emailToUserMapping).find(email => 
+          conversation.inbox.name.toLowerCase().includes(email.toLowerCase())
+        );
+        
+        if (inboxEmail && emailToUserMapping[inboxEmail]) {
+          assignedUserId = emailToUserMapping[inboxEmail];
+          assignmentReason = `inbox_email_${inboxEmail}`;
+        }
+      }
+      
+      // 2. Si no se asignó por inbox, buscar por cliente existente
+      if (!assignedUserId && conversation.contact.email) {
+        const { data: existingClient } = await supabase
+          .from('clients')
+          .select('user_id, id, email')
+          .eq('email', conversation.contact.email)
+          .single();
+        
+        if (existingClient) {
+          assignedUserId = existingClient.user_id;
+          assignmentReason = `cliente_existente_${existingClient.email}`;
+        }
+      }
+      
+      // 3. Para WhatsApp, por ahora no asignar automáticamente (todos pueden ver)
+      if (conversation.inbox.channel_type.includes('WhatsApp')) {
+        assignmentReason = 'whatsapp_compartido';
+      }
+      
+      if (assignedUserId) {
+        console.log(`Auto-asignada conversación ${conversation.id} al usuario ${assignedUserId} por: ${assignmentReason}`);
+      } else {
+        console.log(`Conversación ${conversation.id} sin asignar. Razón: ${assignmentReason}`);
+      }
+    }
+
     const conversationData = {
       chatwoot_id: conversation.id,
       contact_name: conversation.contact.name,
@@ -126,7 +177,9 @@ async function processConversation(conversation: ChatwootConversation, eventType
       meta: conversation.meta || {},
       chatwoot_created_at: conversation.created_at,
       chatwoot_updated_at: conversation.updated_at,
-      updated_at: new Date().toISOString()
+      updated_at: new Date().toISOString(),
+      // Asignación automática
+      auto_assigned_user_id: assignedUserId
     };
 
     if (existingConversation) {

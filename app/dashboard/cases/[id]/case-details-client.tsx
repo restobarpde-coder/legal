@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { ArrowLeft, Edit, Users, FileText, CheckSquare, Clock, Mail, Phone, Building, StickyNote, Trash2, MoreVertical, Calendar, User, Shield, Activity } from 'lucide-react'
+import { ArrowLeft, Edit, Users, FileText, CheckSquare, Clock, Mail, Phone, Building, StickyNote, Trash2, MoreVertical, Calendar, User, Shield, Activity, Eye, Download } from 'lucide-react'
 import Link from 'next/link'
 import { NoteModal } from '@/components/modals/note-modal'
 import { TaskModal } from '@/components/modals/task-modal'
@@ -79,6 +79,47 @@ export function CaseDetailsClient({ caseId }: CaseDetailsClientProps) {
     
     // Fetch case details using React Query
     const { data: caseDetails, isLoading, error, refetch } = useCaseDetails(caseId)
+    
+    const handleViewDocument = async (documentId: string) => {
+        try {
+            const response = await fetch(`/api/documents/${documentId}/view`)
+            
+            if (!response.ok) {
+                const errorData = await response.json()
+                throw new Error(errorData.error || 'Error al cargar documento')
+            }
+            
+            const data = await response.json()
+            
+            // Abrir documento en nueva pestaña
+            window.open(data.viewUrl, '_blank')
+            
+        } catch (err) {
+            console.error('Error viewing document:', err)
+            toast.error(err instanceof Error ? err.message : 'Error al abrir documento')
+        }
+    }
+    
+    const handleDownloadDocument = async (documentId: string, documentName: string) => {
+        try {
+            const response = await fetch(`/api/documents/${documentId}/download`)
+            
+            if (!response.ok) {
+                const errorData = await response.json()
+                throw new Error(errorData.error || 'Error al descargar documento')
+            }
+            
+            const data = await response.json()
+            
+            // Abrir descarga en nueva pestaña
+            window.open(data.downloadUrl, '_blank')
+            
+            toast.success('Descarga iniciada en nueva pestaña')
+        } catch (err) {
+            console.error('Error downloading document:', err)
+            toast.error(err instanceof Error ? err.message : 'Error al descargar documento')
+        }
+    }
 
     const handleDelete = async (type: string, id: string, name: string) => {
         setDeleteTarget({ type, id, name })
@@ -615,7 +656,22 @@ export function CaseDetailsClient({ caseId }: CaseDetailsClientProps) {
                                                         </div>
                                                     </div>
                                                     <div className="flex items-center gap-2">
-                                                        <Button size="sm" variant="outline">Descargar</Button>
+                                                        <Button 
+                                                            size="sm" 
+                                                            variant="outline" 
+                                                            onClick={() => handleViewDocument(doc.id)}
+                                                        >
+                                                            <Eye className="h-4 w-4 mr-1" />
+                                                            Ver
+                                                        </Button>
+                                                        <Button 
+                                                            size="sm" 
+                                                            variant="outline"
+                                                            onClick={() => handleDownloadDocument(doc.id, doc.name)}
+                                                        >
+                                                            <Download className="h-4 w-4 mr-1" />
+                                                            Descargar
+                                                        </Button>
                                                         <DropdownMenu>
                                                             <DropdownMenuTrigger asChild>
                                                                 <Button variant="ghost" size="icon">
