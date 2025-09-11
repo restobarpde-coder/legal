@@ -79,6 +79,22 @@ async function processConversation(conversation: ChatwootConversation, eventType
   const supabase = await createClient();
   
   try {
+    // Validación de conversación
+    if (!conversation || !conversation.id) {
+      console.error('❌ Conversación inválida:', conversation);
+      return false;
+    }
+    
+    if (!conversation.contact) {
+      console.error('❌ Conversación sin contacto:', conversation.id);
+      return false;
+    }
+    
+    if (!conversation.inbox) {
+      console.error('❌ Conversación sin inbox:', conversation.id);
+      return false;
+    }
+    
     // Verificar si ya existe la conversación
     const { data: existingConversation } = await supabase
       .from('chatwoot_conversations')
@@ -190,6 +206,12 @@ async function processMessage(message: ChatwootMessage, conversation?: ChatwootC
   const supabase = await createClient();
   
   try {
+    // Validación de mensaje
+    if (!message || !message.id || !message.conversation_id) {
+      console.error('❌ Mensaje inválido:', message);
+      return false;
+    }
+    
     const messageData = {
       chatwoot_id: message.id,
       conversation_chatwoot_id: message.conversation_id,
@@ -225,14 +247,20 @@ export async function POST(request: NextRequest) {
     const body = await request.text();
     const payload: ChatwootWebhookPayload = JSON.parse(body);
     
+    // Validación defensiva del payload
+    if (!payload || !payload.event) {
+      console.error('❌ Payload inválido - no tiene evento:', payload);
+      return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
+    }
+    
     // Crear log de webhook recibido
     const supabase = await createClient();
     const { data: logData } = await supabase
       .from('chatwoot_webhook_logs')
       .insert({
         event_type: payload.event,
-        chatwoot_account_id: payload.account.id,
-        chatwoot_account_name: payload.account.name,
+        chatwoot_account_id: payload.account?.id || null,
+        chatwoot_account_name: payload.account?.name || 'Unknown',
         raw_payload: payload,
         status: 'received'
       })
@@ -241,16 +269,29 @@ export async function POST(request: NextRequest) {
     
     webhookLogId = logData?.id || null;
     
-    // Chatwoot no usa firma/secret en sus webhooks según documentación oficial
-    console.log('✅ Webhook recibido de Chatwoot - Sin verificación de firma necesaria');
+    // Debug: Log detallado del webhook
+    const headersList = await headers();
+    const allHeaders = Object.fromEntries(headersList.entries());
+    
+    console.log('🔍 DEBUG WEBHOOK COMPLETO:');
+    console.log('📅 Timestamp:', new Date().toISOString());
+    console.log('🗺 Headers recibidos:', JSON.stringify(allHeaders, null, 2));
+    console.log('📝 Body size:', body.length);
+    
+    // Log del payload para debugging
+    console.log('📦 Payload recibido:', JSON.stringify(payload, null, 2));
+    
+    console.log('✅ Procesando webhook de Chatwoot...');
 
-    console.log(`Webhook recibido: ${payload.event} para cuenta ${payload.account.name}`);
+    console.log(`Webhook recibido: ${payload.event} para cuenta ${payload.account?.name || 'Unknown'}`);
 
     // Procesar según el tipo de evento
     switch (payload.event) {
       case 'conversation_created':
         if (payload.conversation) {
           await processConversation(payload.conversation, 'created');
+        } else {
+          console.warn('Evento conversation_created sin conversación:', payload);
         }
         break;
 
@@ -269,6 +310,8 @@ export async function POST(request: NextRequest) {
       case 'message_created':
         if (payload.message) {
           await processMessage(payload.message, payload.conversation);
+        } else {
+          console.warn('Evento message_created sin mensaje:', payload);
         }
         break;
 
