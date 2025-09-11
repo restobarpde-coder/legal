@@ -40,7 +40,11 @@ export function CaseForm({ case: caseData, clients, formAction, preselectedClien
     formState: { isSubmitting, errors: formErrors },
   } = useForm<z.infer<typeof caseSchema>>({
     resolver: zodResolver(caseSchema),
-    defaultValues: caseData || {
+    defaultValues: caseData ? {
+      ...caseData,
+      start_date: caseData.start_date ? new Date(caseData.start_date).toISOString().split('T')[0] : undefined,
+      end_date: caseData.end_date ? new Date(caseData.end_date).toISOString().split('T')[0] : undefined,
+    } : {
       client_id: preselectedClientId || '',
       status: 'active',
       priority: 'medium',
@@ -110,6 +114,36 @@ export function CaseForm({ case: caseData, clients, formAction, preselectedClien
               {(formErrors.client_id || serverErrors?.client_id) && (
                 <p className="text-sm text-red-500">
                   {formErrors.client_id?.message || serverErrors?.client_id?.[0]}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Contraparte */}
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="counterparty_name">Nombre de la Contraparte</Label>
+              <Input 
+                id="counterparty_name" 
+                {...register('counterparty_name')} 
+                placeholder="Ej: Juan Pérez"
+              />
+              {(formErrors.counterparty_name || serverErrors?.counterparty_name) && (
+                <p className="text-sm text-red-500">
+                  {formErrors.counterparty_name?.message || serverErrors?.counterparty_name?.[0]}
+                </p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="counterparty_lawyer">Abogado de la Contraparte</Label>
+              <Input 
+                id="counterparty_lawyer" 
+                {...register('counterparty_lawyer')} 
+                placeholder="Ej: Estudio Jurídico & Asociados"
+              />
+              {(formErrors.counterparty_lawyer || serverErrors?.counterparty_lawyer) && (
+                <p className="text-sm text-red-500">
+                  {formErrors.counterparty_lawyer?.message || serverErrors?.counterparty_lawyer?.[0]}
                 </p>
               )}
             </div>

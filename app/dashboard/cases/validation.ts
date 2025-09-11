@@ -10,6 +10,8 @@ export const caseSchema = z.object({
   title: z.string().min(2, { message: 'El título debe tener al menos 2 caracteres.' }),
   description: z.string().optional(),
   client_id: z.string().uuid({ message: 'Debe seleccionar un cliente válido.' }),
+  counterparty_name: z.string().optional(),
+  counterparty_lawyer: z.string().optional(),
   status: z.enum(['active', 'pending', 'closed', 'archived']).default('active'),
   priority: z.enum(['low', 'medium', 'high', 'urgent']).default('medium'),
   start_date: z.string().optional().refine((date) => {

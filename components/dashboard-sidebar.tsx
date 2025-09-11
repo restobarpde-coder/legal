@@ -18,6 +18,7 @@ import {
   LogOut,
   Menu,
   User,
+  Calendar,
 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
@@ -37,6 +38,11 @@ const navigation = [
     name: "Clientes",
     href: "/dashboard/clients",
     icon: Users,
+  },
+  {
+    name: "Calendario",
+    href: "/dashboard/calendar",
+    icon: Calendar,
   },
   {
     name: "Tareas",
@@ -77,9 +83,8 @@ function SidebarContent({ user }: DashboardSidebarProps) {
   return (
     <div className="flex h-full flex-col bg-sidebar">
       {/* Logo */}
-      <div className="flex h-16 items-center gap-2 border-b border-sidebar-border px-6">
-        <Scale className="h-8 w-8 text-sidebar-primary" />
-        <span className="text-lg font-semibold text-sidebar-foreground">Estudio Jurídico</span>
+      <div className="flex h-16 items-center justify-center border-b border-sidebar-border px-6">
+        <span className="text-2xl font-bold text-sidebar-foreground">CA</span>
       </div>
 
       {/* Navigation */}

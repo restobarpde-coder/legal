@@ -45,6 +45,8 @@ export async function createCase(
   // Convert string numbers to appropriate types and handle optional dates
   const caseData = {
     ...data,
+    counterparty_name: data.counterparty_name || null,
+    counterparty_lawyer: data.counterparty_lawyer || null,
     estimated_hours: data.estimated_hours ? parseInt(data.estimated_hours) : null,
     hourly_rate: data.hourly_rate ? parseFloat(data.hourly_rate) : null,
     start_date: data.start_date && data.start_date.trim() !== '' ? data.start_date : null,
@@ -109,6 +111,8 @@ export async function updateCase(
   // Convert string numbers to appropriate types and handle optional dates
   const caseData = {
     ...data,
+    counterparty_name: data.counterparty_name || null,
+    counterparty_lawyer: data.counterparty_lawyer || null,
     estimated_hours: data.estimated_hours ? parseInt(data.estimated_hours) : null,
     hourly_rate: data.hourly_rate ? parseFloat(data.hourly_rate) : null,
     start_date: data.start_date && data.start_date.trim() !== '' ? data.start_date : null,

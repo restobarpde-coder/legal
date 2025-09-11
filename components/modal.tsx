@@ -1,7 +1,7 @@
 "use client"
 
 import { ReactNode } from "react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { X } from "lucide-react"
 
@@ -9,11 +9,12 @@ interface ModalProps {
   isOpen: boolean
   onClose: () => void
   title: string
+  description?: string
   children: ReactNode
   maxWidth?: "sm" | "md" | "lg" | "xl" | "2xl"
 }
 
-export function Modal({ isOpen, onClose, title, children, maxWidth = "lg" }: ModalProps) {
+export function Modal({ isOpen, onClose, title, description, children, maxWidth = "lg" }: ModalProps) {
   const maxWidthClasses = {
     sm: "max-w-sm",
     md: "max-w-md", 
@@ -37,6 +38,7 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = "lg" }: Mod
               <X className="h-4 w-4" />
             </Button>
           </DialogTitle>
+          {description && <DialogDescription>{description}</DialogDescription>}
         </DialogHeader>
         {children}
       </DialogContent>

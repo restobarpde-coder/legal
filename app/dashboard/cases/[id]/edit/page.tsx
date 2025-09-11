@@ -65,6 +65,8 @@ export default async function EditCasePage({ params }: { params: { id: string } 
     title: caseData.title,
     description: caseData.description || '',
     client_id: caseData.client_id,
+    counterparty_name: caseData.counterparty_name || '',
+    counterparty_lawyer: caseData.counterparty_lawyer || '',
     status: caseData.status,
     priority: caseData.priority,
     start_date: caseData.start_date,

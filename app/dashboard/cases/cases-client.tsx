@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -11,7 +12,7 @@ import { SearchBar } from "@/components/search-bar"
 import { CaseFilters } from "./case-filters"
 import { SuccessToast } from "./success-toast"
 import { useCases } from "@/hooks/use-cases"
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams, useRouter } from 'next/navigation'
 
 function getStatusColor(status: string) {
   switch (status) {
@@ -78,12 +79,25 @@ type CasesClientProps = {
 }
 
 export function CasesClient({ userCanCreateCases }: CasesClientProps) {
+  const router = useRouter()
   const searchParams = useSearchParams()
+  const queryClient = useQueryClient()
   const [searchQuery, setSearchQuery] = useState(searchParams.get('q') || '')
   const [statusFilter, setStatusFilter] = useState(searchParams.get('status') || 'all')
   const [priorityFilter, setPriorityFilter] = useState(searchParams.get('priority') || 'all')
 
   const { data: cases = [], isLoading, error } = useCases(searchQuery, statusFilter, priorityFilter)
+
+  useEffect(() => {
+    const successParam = searchParams.get('success')
+    if (successParam === 'case-created' || successParam === 'case-updated') {
+      queryClient.invalidateQueries({ queryKey: ['cases'] })
+      // Remove the success param from the URL without reloading the page
+      const newParams = new URLSearchParams(searchParams.toString())
+      newParams.delete('success')
+      router.replace(`/dashboard/cases?${newParams.toString()}`, { scroll: false })
+    }
+  }, [searchParams, queryClient, router])
 
   if (isLoading) {
     return (
@@ -93,21 +107,6 @@ export function CasesClient({ userCanCreateCases }: CasesClientProps) {
             <h1 className="text-3xl font-bold tracking-tight">Casos</h1>
             <p className="text-muted-foreground">Cargando casos...</p>
           </div>
-        </div>
-        <div className="grid gap-4">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Card key={i} className="animate-pulse">
-              <CardContent className="p-6">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="h-6 bg-gray-200 rounded mb-2 w-3/4"></div>
-                    <div className="h-4 bg-gray-200 rounded mb-3 w-full"></div>
-                    <div className="h-4 bg-gray-200 rounded w-1/2"></div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
         </div>
       </div>
     )
@@ -224,6 +223,20 @@ export function CasesClient({ userCanCreateCases }: CasesClientProps) {
                         </span>
                       )}
                     </div>
+                    {(case_.counterparty_name || case_.counterparty_lawyer) && (
+                      <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700 flex items-center gap-4 text-sm text-muted-foreground">
+                        {case_.counterparty_name && (
+                          <span>
+                            <strong>Contraparte:</strong> {case_.counterparty_name}
+                          </span>
+                        )}
+                        {case_.counterparty_lawyer && (
+                          <span>
+                            <strong>Abogado Contraparte:</strong> {case_.counterparty_lawyer}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>

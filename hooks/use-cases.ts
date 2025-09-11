@@ -7,6 +7,8 @@ type Case = {
   id: string;
   title: string;
   description: string | null;
+  counterparty_name: string | null;
+  counterparty_lawyer: string | null;
   status: string;
   priority: string;
   start_date: string;

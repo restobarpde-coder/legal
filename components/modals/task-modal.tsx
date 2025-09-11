@@ -31,6 +31,7 @@ export function TaskModal({ isOpen, onClose, caseId, onSuccess }: TaskModalProps
   const [description, setDescription] = useState("")
   const [assignedTo, setAssignedTo] = useState("")
   const [priority, setPriority] = useState<"low" | "medium" | "high" | "urgent">("medium")
+  const [status, setStatus] = useState<"pending" | "in_progress" | "completed" | "cancelled">("pending")
   const [dueDate, setDueDate] = useState("")
   const [users, setUsers] = useState<User[]>([])
   const supabase = createClient()
@@ -69,7 +70,7 @@ export function TaskModal({ isOpen, onClose, caseId, onSuccess }: TaskModalProps
         title: title.trim(),
         description: description.trim() || undefined,
         priority,
-        status: 'pending',
+        status,
         dueDate: dueDate || undefined,
       },
       {
@@ -81,6 +82,7 @@ export function TaskModal({ isOpen, onClose, caseId, onSuccess }: TaskModalProps
           setDescription("")
           setAssignedTo("")
           setPriority("medium")
+          setStatus("pending")
           setDueDate("")
           
           // Close modal
@@ -102,6 +104,7 @@ export function TaskModal({ isOpen, onClose, caseId, onSuccess }: TaskModalProps
       setDescription("")
       setAssignedTo("")
       setPriority("medium")
+      setStatus("pending")
       setDueDate("")
       onClose()
     }
@@ -176,6 +179,25 @@ export function TaskModal({ isOpen, onClose, caseId, onSuccess }: TaskModalProps
                   <SelectItem value="medium">Media</SelectItem>
                   <SelectItem value="high">Alta</SelectItem>
                   <SelectItem value="urgent">Urgente</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="status">Estado Inicial</Label>
+              <Select 
+                value={status} 
+                onValueChange={(value) => setStatus(value as any)}
+                disabled={createTaskMutation.isPending}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="pending">Pendiente</SelectItem>
+                  <SelectItem value="in_progress">En Progreso</SelectItem>
+                  <SelectItem value="completed">Completada</SelectItem>
+                  <SelectItem value="cancelled">Cancelada</SelectItem>
                 </SelectContent>
               </Select>
             </div>

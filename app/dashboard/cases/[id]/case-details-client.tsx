@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { ArrowLeft, Edit, Users, FileText, CheckSquare, Clock, Mail, Phone, Building, StickyNote, Trash2, MoreVertical, Calendar, User } from 'lucide-react'
+import { ArrowLeft, Edit, Users, FileText, CheckSquare, Clock, Mail, Phone, Building, StickyNote, Trash2, MoreVertical, Calendar, User, Shield, Activity } from 'lucide-react'
 import Link from 'next/link'
 import { NoteModal } from '@/components/modals/note-modal'
 import { TaskModal } from '@/components/modals/task-modal'
@@ -17,6 +17,10 @@ import { DeleteConfirmationModal } from '@/components/delete-confirmation-modal'
 import { toast } from 'sonner'
 import { CaseMembersManager } from '../case-members-manager'
 import { useCaseDetails } from '@/hooks/use-case-details'
+import { CaseTimeline } from '@/components/case-timeline'
+import { TaskStatusSelect, TaskStatusBadge } from '@/components/task-status-select'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { useRouter } from 'next/navigation'
 
 type CaseDetailsClientProps = {
     caseId: string;
@@ -71,9 +75,10 @@ export function CaseDetailsClient({ caseId }: CaseDetailsClientProps) {
     const [deleteModalOpen, setDeleteModalOpen] = useState(false)
     const [deleteTarget, setDeleteTarget] = useState<{ type: string, id: string, name: string } | null>(null)
     const [deleteLoading, setDeleteLoading] = useState(false)
+    const router = useRouter()
     
     // Fetch case details using React Query
-    const { data: caseDetails, isLoading, error } = useCaseDetails(caseId)
+    const { data: caseDetails, isLoading, error, refetch } = useCaseDetails(caseId)
 
     const handleDelete = async (type: string, id: string, name: string) => {
         setDeleteTarget({ type, id, name })
@@ -81,7 +86,70 @@ export function CaseDetailsClient({ caseId }: CaseDetailsClientProps) {
     }
 
     const confirmDelete = async () => {
-        // ... (keep existing delete logic)
+        if (!deleteTarget) return
+        
+        setDeleteLoading(true)
+        try {
+            let endpoint = ''
+            switch (deleteTarget.type) {
+                case 'task':
+                    endpoint = `/api/tasks/${deleteTarget.id}`
+                    break
+                case 'document':
+                    endpoint = `/api/documents/${deleteTarget.id}`
+                    break
+                case 'note':
+                    endpoint = `/api/notes/${deleteTarget.id}`
+                    break
+                case 'time':
+                    endpoint = `/api/time-entries/${deleteTarget.id}`
+                    break
+                default:
+                    throw new Error('Tipo no válido')
+            }
+            
+            console.log('Deleting:', deleteTarget.type, deleteTarget.id)
+            
+            const response = await fetch(endpoint, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            })
+            
+    let responseData
+    try {
+      responseData = await response.json()
+    } catch (e) {
+      console.error('Failed to parse response:', e)
+      responseData = { error: 'Error al procesar respuesta' }
+    }
+    
+    console.log('Delete response:', response.status, responseData)
+    
+    if (!response.ok) {
+      console.error('Delete failed with details:', responseData)
+      throw new Error(responseData.error || responseData.message || 'Error al eliminar')
+    }
+            
+            toast.success(`${deleteTarget.name} eliminado correctamente`)
+            
+            // Refrescar los datos usando React Query
+            await refetch()
+            
+            // Forzar actualización de la página si refetch no funciona
+            setTimeout(() => {
+                router.refresh()
+            }, 500)
+            
+        } catch (error) {
+            console.error('Error deleting:', error)
+            toast.error(error instanceof Error ? error.message : 'Error al eliminar')
+        } finally {
+            setDeleteLoading(false)
+            setDeleteModalOpen(false)
+            setDeleteTarget(null)
+        }
     }
 
     if (isLoading) {
@@ -94,11 +162,10 @@ export function CaseDetailsClient({ caseId }: CaseDetailsClientProps) {
                         </Link>
                     </Button>
                     <div className="flex-1">
-                        <div className="h-8 bg-gray-200 rounded w-1/3 mb-2"></div>
-                        <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+                        <h1 className="text-3xl font-bold tracking-tight">Caso</h1>
+                        <p className="text-muted-foreground">Cargando detalles del caso...</p>
                     </div>
                 </div>
-                <div className="text-center py-8">Cargando detalles del caso...</div>
             </div>
         )
     }
@@ -278,12 +345,16 @@ export function CaseDetailsClient({ caseId }: CaseDetailsClientProps) {
                 {/* Main content with tabs */}
                 <div className="lg:col-span-3">
                     <Tabs defaultValue="overview" className="space-y-6">
-                        <TabsList className="grid w-full grid-cols-5">
+                        <TabsList className="grid w-full grid-cols-6">
                             <TabsTrigger value="overview">Resumen</TabsTrigger>
                             <TabsTrigger value="tasks">Tareas ({tasks.length})</TabsTrigger>
                             <TabsTrigger value="documents">Documentos ({documents.length})</TabsTrigger>
                             <TabsTrigger value="notes">Notas ({notes.length})</TabsTrigger>
                             <TabsTrigger value="time">Tiempo ({timeEntries.length})</TabsTrigger>
+                            <TabsTrigger value="timeline" className="flex items-center gap-1">
+                                <Shield className="h-3 w-3" />
+                                Historial
+                            </TabsTrigger>
                         </TabsList>
 
                         <TabsContent value="overview" className="space-y-6">
@@ -425,7 +496,16 @@ export function CaseDetailsClient({ caseId }: CaseDetailsClientProps) {
                             </Card>
                         </TabsContent>
 
-                        <TabsContent value="tasks">
+                        {/* Historial completo con auditoría */}
+                        <TabsContent value="timeline" className="space-y-4">
+                            <CaseTimeline 
+                                caseId={caseId}
+                                showDeleted={true}
+                                maxHeight="600px"
+                            />
+                        </TabsContent>
+
+                        <TabsContent value="tasks" className="space-y-4">
                             <Card>
                                 <CardHeader>
                                     <div className="flex items-center justify-between">
@@ -449,21 +529,32 @@ export function CaseDetailsClient({ caseId }: CaseDetailsClientProps) {
                                             </div>
                                         ) : (
                                             tasks.map((task) => (
-                                                <div key={task.id} className="flex items-center justify-between p-4 border rounded-lg">
+                                                <div key={task.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent/50 transition-colors">
                                                     <div className="flex-1">
                                                         <h4 className="font-medium">{task.title}</h4>
                                                         <p className="text-sm text-muted-foreground">{task.description}</p>
-                                                        <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
-                                                            <span>Prioridad: {task.priority}</span>
+                                                        <div className="flex items-center gap-4 mt-2">
+                                                            <Badge variant="outline" className="text-xs">
+                                                                {task.priority === 'urgent' && '🔴 Urgente'}
+                                                                {task.priority === 'high' && '🟠 Alta'}
+                                                                {task.priority === 'medium' && '🟡 Media'}
+                                                                {task.priority === 'low' && '🟢 Baja'}
+                                                            </Badge>
                                                             {task.due_date && (
-                                                                <span>Vence: {new Date(task.due_date).toLocaleDateString("es-ES")}</span>
+                                                                <span className="text-xs text-muted-foreground">
+                                                                    Vence: {new Date(task.due_date).toLocaleDateString("es-ES")}
+                                                                </span>
                                                             )}
                                                         </div>
                                                     </div>
                                                     <div className="flex items-center gap-2">
-                                                        <Badge variant={task.status === "completed" ? "default" : "secondary"}>
-                                                            {task.status}
-                                                        </Badge>
+                                                        <TaskStatusSelect
+                                                            taskId={task.id}
+                                                            caseId={caseId}
+                                                            currentStatus={task.status as any}
+                                                            showAsSelect={false}
+                                                            onStatusChange={() => refetch()}
+                                                        />
                                                         <DropdownMenu>
                                                             <DropdownMenuTrigger asChild>
                                                                 <Button variant="ghost" size="icon">
@@ -472,7 +563,7 @@ export function CaseDetailsClient({ caseId }: CaseDetailsClientProps) {
                                                             </DropdownMenuTrigger>
                                                             <DropdownMenuContent align="end">
                                                                 <DropdownMenuItem
-                                                                    onClick={() => handleDelete('tasks', task.id, task.title)}
+                                                                    onClick={() => handleDelete('task', task.id, task.title)}
                                                                     className="text-red-600"
                                                                 >
                                                                     <Trash2 className="h-4 w-4 mr-2" />
@@ -533,7 +624,7 @@ export function CaseDetailsClient({ caseId }: CaseDetailsClientProps) {
                                                             </DropdownMenuTrigger>
                                                             <DropdownMenuContent align="end">
                                                                 <DropdownMenuItem
-                                                                    onClick={() => handleDelete('documents', doc.id, doc.name)}
+                                                                    onClick={() => handleDelete('document', doc.id, doc.name)}
                                                                     className="text-red-600"
                                                                 >
                                                                     <Trash2 className="h-4 w-4 mr-2" />
@@ -592,7 +683,7 @@ export function CaseDetailsClient({ caseId }: CaseDetailsClientProps) {
                                                             </DropdownMenuTrigger>
                                                             <DropdownMenuContent align="end">
                                                                 <DropdownMenuItem
-                                                                    onClick={() => handleDelete('notes', note.id, note.title || 'Nota sin título')}
+                                                                    onClick={() => handleDelete('note', note.id, note.title || 'Nota sin título')}
                                                                     className="text-red-600"
                                                                 >
                                                                     <Trash2 className="h-4 w-4 mr-2" />
@@ -674,7 +765,7 @@ export function CaseDetailsClient({ caseId }: CaseDetailsClientProps) {
                                                             </DropdownMenuTrigger>
                                                             <DropdownMenuContent align="end">
                                                                 <DropdownMenuItem
-                                                                    onClick={() => handleDelete('time_entries', entry.id, entry.description)}
+                                                                    onClick={() => handleDelete('time', entry.id, entry.description)}
                                                                     className="text-red-600"
                                                                 >
                                                                     <Trash2 className="h-4 w-4 mr-2" />
@@ -735,6 +826,32 @@ export function CaseDetailsClient({ caseId }: CaseDetailsClientProps) {
                             </div>
                         </CardContent>
                     </Card>
+
+                    {/* Counterparty info */}
+                    {(caseData.counterparty_name || caseData.counterparty_lawyer) && (
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="flex items-center gap-2">
+                                    <Users className="h-5 w-5" />
+                                    Contraparte
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-3">
+                                {caseData.counterparty_name && (
+                                    <div>
+                                        <p className="text-sm text-muted-foreground">Nombre</p>
+                                        <p className="font-medium">{caseData.counterparty_name}</p>
+                                    </div>
+                                )}
+                                {caseData.counterparty_lawyer && (
+                                    <div>
+                                        <p className="text-sm text-muted-foreground">Abogado</p>
+                                        <p className="font-medium">{caseData.counterparty_lawyer}</p>
+                                    </div>
+                                )}
+                            </CardContent>
+                        </Card>
+                    )}
 
                     {/* Time tracking */}
                     <Card>
