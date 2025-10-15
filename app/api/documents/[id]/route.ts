@@ -5,16 +5,17 @@ import { NextRequest, NextResponse } from 'next/server'
 // GET - Obtener un documento específico
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const supabase = await createClient()
     const user = await requireAuth()
     
     const { data: document, error } = await supabase
       .from('documents')
       .select('*')
-      .eq('id', params.id)
+      .eq('id', id)
       .single()
     
     if (error) {
@@ -49,9 +50,10 @@ export async function GET(
 // PUT - Actualizar un documento
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const supabase = await createClient()
     const user = await requireAuth()
     const body = await request.json()
@@ -60,7 +62,7 @@ export async function PUT(
     const { data: existingDoc } = await supabase
       .from('documents')
       .select('case_id, uploaded_by')
-      .eq('id', params.id)
+      .eq('id', id)
       .single()
     
     if (!existingDoc) {
@@ -90,7 +92,7 @@ export async function PUT(
         document_type: body.document_type,
         updated_at: new Date().toISOString()
       })
-      .eq('id', params.id)
+      .eq('id', id)
       .select()
       .single()
     
@@ -255,13 +257,6 @@ export async function DELETE(
       error: 'El documento no se pudo eliminar', 
       warning: 'Ningún método de eliminación funcionó' 
     }, { status: 500 })
-    
-    if (error) {
-      console.error('Error deleting document:', error)
-      return NextResponse.json({ error: 'Error al eliminar' }, { status: 500 })
-    }
-    
-    return NextResponse.json({ message: 'Documento eliminado correctamente', success: true }, { status: 200 })
   } catch (error) {
     console.error('Error:', error)
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Error del servidor' }, { status: 500 })
