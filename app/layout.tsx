@@ -3,6 +3,7 @@ import type { Metadata } from "next"
 import { GeistSans } from "geist/font/sans"
 import { GeistMono } from "geist/font/mono"
 import { Analytics } from "@vercel/analytics/next"
+import { SpeedInsights } from "@vercel/speed-insights/next"
 import { ThemeProvider } from "@/components/theme-provider"
 import { QueryProvider } from "@/components/providers/query-provider"
 import { NavigationProgress } from "@/components/navigation-progress"
@@ -34,6 +35,7 @@ export default function RootLayout({
           </QueryProvider>
         </Suspense>
         <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   )

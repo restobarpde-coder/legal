@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
+import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import {
   Scale,
   LayoutDashboard,
@@ -127,7 +127,6 @@ function SidebarContent({ user }: DashboardSidebarProps) {
         <nav className="space-y-2">
           {navigation.map((item) => {
             const isActive = isCurrentRoute(item.href)
-            const isLoading = isPending && pathname !== item.href
             
             return (
               <Button
@@ -138,14 +137,11 @@ function SidebarContent({ user }: DashboardSidebarProps) {
                 onFocus={() => prefetchRoute(item.href)} // Prefetch al focus
                 className={cn(
                   "w-full justify-start gap-3 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-all duration-200",
-                  isActive && "bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary/90",
-                  isLoading && "opacity-70"
+                  isActive && "bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary/90"
                 )}
               >
                 <item.icon className="h-5 w-5" />
-                <span className="transition-opacity duration-200">
-                  {item.name}
-                </span>
+                <span>{item.name}</span>
               </Button>
             )
           })}
@@ -199,6 +195,7 @@ export function MobileDashboardSidebar({ user }: DashboardSidebarProps) {
         </Button>
       </SheetTrigger>
       <SheetContent side="left" className="p-0 w-64">
+        <SheetTitle className="sr-only">Menú de navegación</SheetTitle>
         <SidebarContent user={user} />
       </SheetContent>
     </Sheet>
