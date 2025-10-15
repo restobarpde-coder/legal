@@ -5,16 +5,17 @@ import { NextRequest, NextResponse } from 'next/server'
 // GET - Obtener una tarea específica
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const supabase = await createClient()
     const user = await requireAuth()
     
     const { data: task, error } = await supabase
       .from('tasks')
       .select('*')
-      .eq('id', params.id)
+      .eq('id', id)
       .single()
     
     if (error) {
@@ -145,9 +146,10 @@ export async function PATCH(
 // PUT - Actualizar una tarea
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const supabase = await createClient()
     const user = await requireAuth()
     const body = await request.json()
@@ -155,8 +157,8 @@ export async function PUT(
     // Verificar que la tarea existe
     const { data: existingTask } = await supabase
       .from('tasks')
-      .select('case_id, created_by, assigned_to')
-      .eq('id', params.id)
+      .select('case_id, created_by, assigned_to, status')
+      .eq('id', id)
       .single()
     
     if (!existingTask) {
@@ -204,7 +206,7 @@ export async function PUT(
     const { data, error } = await supabase
       .from('tasks')
       .update(updateData)
-      .eq('id', params.id)
+      .eq('id', id)
       .select()
       .single()
     

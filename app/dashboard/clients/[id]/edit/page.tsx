@@ -22,7 +22,7 @@ async function getClient(id: string) {
   return data
 }
 
-export default async function EditClientPage({ params }: { params: { id: string } }) {
+export default async function EditClientPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = await params
   const client = await getClient(resolvedParams.id)
   const updateClientWithId = updateClient.bind(null, client.id)

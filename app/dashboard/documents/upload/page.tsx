@@ -21,7 +21,7 @@ interface Case {
   clients: { name: string }
 }
 
-export default function UploadDocumentPage({ searchParams }: { searchParams?: { case?: string } }) {
+export default function UploadDocumentPage({ searchParams }: { searchParams?: Promise<{ case?: string }> }) {
   const [file, setFile] = useState<File | null>(null)
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
@@ -51,8 +51,11 @@ export default function UploadDocumentPage({ searchParams }: { searchParams?: { 
       } else {
         setCases(data || [])
         // Set preselected case if provided in URL
-        if (searchParams?.case) {
-          setCaseId(searchParams.case)
+        if (searchParams) {
+          const resolvedSearchParams = await searchParams
+          if (resolvedSearchParams?.case) {
+            setCaseId(resolvedSearchParams.case)
+          }
         }
       }
     }

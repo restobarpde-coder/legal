@@ -157,8 +157,8 @@ export async function GET(
     }
 
     // Fetch assignable users (users not already members)
-    const memberUserIds = caseData.case_members?.map(m => m.user_id) || []
-    let assignableUsers = []
+    const memberUserIds = caseData.case_members?.map((m: any) => m.user_id) || []
+    let assignableUsers: any[] = []
     
     if (memberUserIds.length > 0) {
       const { data: users, error: usersError } = await supabase

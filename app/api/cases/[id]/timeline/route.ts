@@ -307,7 +307,7 @@ export async function GET(
       }
       
       if (currentData) {
-        event.currentData = currentData
+        (event as any).currentData = currentData
       }
       
       return event

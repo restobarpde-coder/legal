@@ -5,16 +5,17 @@ import { NextRequest, NextResponse } from 'next/server'
 // GET - Obtener un registro de tiempo específico
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const supabase = await createClient()
     const user = await requireAuth()
     
     const { data: timeEntry, error } = await supabase
       .from('time_entries')
       .select('*')
-      .eq('id', params.id)
+      .eq('id', id)
       .single()
     
     if (error) {
@@ -51,9 +52,10 @@ export async function GET(
 // PUT - Actualizar un registro de tiempo
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const supabase = await createClient()
     const user = await requireAuth()
     const body = await request.json()
@@ -62,7 +64,7 @@ export async function PUT(
     const { data: existingEntry } = await supabase
       .from('time_entries')
       .select('case_id, user_id')
-      .eq('id', params.id)
+      .eq('id', id)
       .single()
     
     if (!existingEntry) {
@@ -94,7 +96,7 @@ export async function PUT(
         billable: body.billable,
         updated_at: new Date().toISOString()
       })
-      .eq('id', params.id)
+      .eq('id', id)
       .select()
       .single()
     
@@ -113,9 +115,10 @@ export async function PUT(
 // DELETE - Eliminar un registro de tiempo
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const supabase = await createClient()
     const user = await requireAuth()
     
@@ -123,7 +126,7 @@ export async function DELETE(
     const { data: existingEntry } = await supabase
       .from('time_entries')
       .select('case_id, user_id')
-      .eq('id', params.id)
+      .eq('id', id)
       .single()
     
     if (!existingEntry) {
@@ -148,7 +151,7 @@ export async function DELETE(
     const { error } = await supabase
       .from('time_entries')
       .delete()
-      .eq('id', params.id)
+      .eq('id', id)
     
     if (error) {
       console.error('Error deleting time entry:', error)

@@ -48,7 +48,7 @@ async function getClients() {
   return clients || []
 }
 
-export default async function EditCasePage({ params }: { params: { id: string } }) {
+export default async function EditCasePage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = await params
   const [caseData, clients] = await Promise.all([
     getCase(resolvedParams.id),

@@ -25,7 +25,7 @@ export async function GET(
         users ( full_name ),
         cases ( id, status, title, created_at )
       `)
-      .eq('id', params.id)
+      .eq('id', (await params).id)
       .single()
 
     if (error) {
@@ -68,7 +68,7 @@ export async function PUT(
     const { data: client, error } = await supabase
       .from('clients')
       .update(clientData)
-      .eq('id', params.id)
+      .eq('id', (await params).id)
       .select()
       .single()
 
@@ -102,7 +102,7 @@ export async function DELETE(
     const { data: activeCases, error: casesError } = await supabase
       .from('cases')
       .select('id, status')
-      .eq('client_id', params.id)
+      .eq('client_id', (await params).id)
       .eq('status', 'active')
 
     if (casesError) {
@@ -123,7 +123,7 @@ export async function DELETE(
     const { error } = await supabase
       .from('clients')
       .delete()
-      .eq('id', params.id)
+      .eq('id', (await params).id)
 
     if (error) {
       console.error('Error deleting client:', error)

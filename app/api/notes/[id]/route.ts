@@ -5,16 +5,17 @@ import { NextRequest, NextResponse } from 'next/server'
 // GET - Obtener una nota específica
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const supabase = await createClient()
     const user = await requireAuth()
     
     const { data: note, error } = await supabase
       .from('notes')
       .select('*')
-      .eq('id', params.id)
+      .eq('id', id)
       .single()
     
     if (error) {
@@ -51,9 +52,10 @@ export async function GET(
 // PUT - Actualizar una nota
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const supabase = await createClient()
     const user = await requireAuth()
     const body = await request.json()
@@ -62,7 +64,7 @@ export async function PUT(
     const { data: existingNote } = await supabase
       .from('notes')
       .select('case_id, client_id, created_by')
-      .eq('id', params.id)
+      .eq('id', id)
       .single()
     
     if (!existingNote) {
@@ -92,7 +94,7 @@ export async function PUT(
         is_private: body.is_private,
         updated_at: new Date().toISOString()
       })
-      .eq('id', params.id)
+      .eq('id', id)
       .select()
       .single()
     
@@ -215,13 +217,6 @@ export async function DELETE(
       error: 'La nota no se pudo eliminar', 
       warning: 'Ningún método de eliminación funcionó' 
     }, { status: 500 })
-    
-    if (error) {
-      console.error('Error deleting note:', error)
-      return NextResponse.json({ error: 'Error al eliminar' }, { status: 500 })
-    }
-    
-    return NextResponse.json({ message: 'Nota eliminada correctamente', success: true }, { status: 200 })
   } catch (error) {
     console.error('Error:', error)
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Error del servidor' }, { status: 500 })
