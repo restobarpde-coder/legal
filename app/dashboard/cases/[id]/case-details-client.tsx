@@ -244,7 +244,7 @@ export function CaseDetailsClient({ caseId }: CaseDetailsClientProps) {
                 title: task.title,
                 description: task.description,
                 date: task.created_at,
-                updatedAt: task.updated_at,
+                updatedAt: task.updated_at || task.created_at,
                 status: task.status,
                 priority: task.priority,
                 assignedTo: task.assigned_to,

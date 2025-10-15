@@ -13,6 +13,7 @@ export type Task = {
   assigned_to: string
   created_by: string
   created_at: string
+  updated_at: string
 }
 
 // Fetch tasks for a case
