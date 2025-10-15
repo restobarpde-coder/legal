@@ -31,24 +31,28 @@ export async function GET(request: NextRequest) {
       return NextResponse.json([])
     }
 
-    // Now query cases with those IDs
+    // Now query cases with those IDs (optimized select)
     let query = supabase
       .from('cases')
       .select(`
-        *,
-        clients (
+        id,
+        title,
+        description,
+        status,
+        priority,
+        start_date,
+        end_date,
+        created_at,
+        client_id,
+        clients!inner (
           id,
           name,
-          email,
           company
-        ),
-        case_members (
-          user_id,
-          role
         )
       `)
       .in('id', caseIds)
       .order('created_at', { ascending: false })
+      .limit(50)
 
     // Apply search filter
     if (searchQuery) {
@@ -72,7 +76,16 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Error fetching cases' }, { status: 500 })
     }
 
-    return NextResponse.json(cases || [])
+    const response = NextResponse.json(cases || [])
+    
+    // Cache headers para optimizar performance
+    response.headers.set(
+      'Cache-Control',
+      'public, s-maxage=300, stale-while-revalidate=600'
+    )
+    response.headers.set('Vary', 'Authorization')
+    
+    return response
   } catch (error) {
     console.error('Error in cases API:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

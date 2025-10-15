@@ -45,6 +45,14 @@ export function useClients(searchQuery?: string) {
       }
       return response.json() as Promise<Client[]>
     },
+    staleTime: 1000 * 60 * 10, // 10min - datos frescos por más tiempo
+    select: (data) => {
+      // Transformar datos para optimizar renders
+      return data.map(client => ({
+        ...client,
+        displayName: client.company ? `${client.name} (${client.company})` : client.name
+      }))
+    },
   })
 }
 

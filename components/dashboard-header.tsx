@@ -39,11 +39,11 @@ export function DashboardHeader({ user, title }: DashboardHeaderProps) {
         <div className="flex-1" />
 
         {/* Search */}
-        <div className="relative hidden md:block">
+        <div className="relative hidden lg:block">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input 
             placeholder="Buscar..." 
-            className="pl-9 w-64" 
+            className="pl-9 w-48 lg:w-64 xl:w-80" 
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onKeyDown={handleSearch}

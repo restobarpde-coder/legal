@@ -3,10 +3,11 @@ import { createClient } from '@/lib/supabase/server';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const conversationId = params.id;
+    const resolvedParams = await params;
+    const conversationId = resolvedParams.id;
     const supabase = await createClient();
     
     // Obtener mensajes de la conversación

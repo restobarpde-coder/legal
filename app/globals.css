@@ -156,7 +156,62 @@
   * {
     @apply border-border outline-ring/50;
   }
+  
   body {
     @apply bg-background text-foreground;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    text-rendering: optimizeSpeed;
+  }
+  
+  /* Performance optimizations */
+  img, video {
+    content-visibility: auto;
+  }
+  
+  /* Smooth scrolling with performance consideration */
+  @media (prefers-reduced-motion: no-preference) {
+    html {
+      scroll-behavior: smooth;
+    }
+  }
+  
+  /* GPU acceleration for commonly animated elements */
+  .animate-spin,
+  .animate-pulse,
+  .animate-bounce {
+    transform: translateZ(0);
+    will-change: transform;
+  }
+  
+  /* Optimize focus styles */
+  :focus-visible {
+    outline: 2px solid rgb(var(--ring));
+    outline-offset: 2px;
+  }
+  
+  /* Navigation Progress Bar Styles */
+  #nprogress {
+    pointer-events: none;
+  }
+  
+  #nprogress .bar {
+    background: rgb(var(--primary));
+    position: fixed;
+    z-index: 1031;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 2px;
+  }
+  
+  #nprogress .peg {
+    display: block;
+    position: absolute;
+    right: 0px;
+    width: 100px;
+    height: 100%;
+    box-shadow: 0 0 10px rgb(var(--primary)), 0 0 5px rgb(var(--primary));
+    opacity: 1.0;
+    transform: rotate(3deg) translate(0px, -4px);
   }
 }

@@ -19,14 +19,14 @@ export default async function DashboardLayout({
   return (
     <div className="min-h-screen bg-background">
       {/* Desktop sidebar */}
-      <div className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0">
+      <div className="hidden lg:flex lg:w-64 lg:flex-col lg:fixed lg:inset-y-0">
         <DashboardSidebar user={profile} />
       </div>
 
       {/* Main content */}
-      <div className="md:pl-64">
+      <div className="lg:pl-64">
         <DashboardHeader user={profile} />
-        <main className="p-4 md:p-6">{children}</main>
+        <main className="p-4 sm:p-5 md:p-6 lg:p-8 xl:p-10">{children}</main>
       </div>
     </div>
   )

@@ -16,16 +16,12 @@ export async function GET(request: Request) {
         id,
         name,
         email,
-        phone,
         company,
-        address,
-        notes,
         created_at,
-        created_by,
-        users ( full_name ),
-        cases ( id, status )
+        users!inner ( full_name )
       `)
       .order('created_at', { ascending: false })
+      .limit(100)
 
     if (searchQuery) {
       query = query.or(`name.ilike.%${searchQuery}%,email.ilike.%${searchQuery}%,company.ilike.%${searchQuery}%`)
@@ -41,7 +37,16 @@ export async function GET(request: Request) {
       )
     }
 
-    return NextResponse.json(clients || [])
+    const response = NextResponse.json(clients || [])
+    
+    // Cache headers para optimizar performance
+    response.headers.set(
+      'Cache-Control',
+      'public, s-maxage=600, stale-while-revalidate=1200'
+    )
+    response.headers.set('Vary', 'Authorization')
+    
+    return response
   } catch (error) {
     console.error('Clients API error:', error)
     return NextResponse.json(

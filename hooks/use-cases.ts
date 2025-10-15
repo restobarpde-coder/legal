@@ -43,8 +43,7 @@ export function useCases(searchQuery?: string, statusFilter?: string, priorityFi
       }
       return response.json()
     },
-    refetchOnWindowFocus: true,
-    refetchInterval: 30000, // Refetch every 30 seconds for real-time updates
+    staleTime: 1000 * 60 * 10, // 10min para esta query específica
   })
 }
 

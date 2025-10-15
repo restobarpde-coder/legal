@@ -13,38 +13,38 @@ const AnimatedBackground = ({ mixBlendMode = 'lighten' }: AnimatedBackgroundProp
     setMounted(true);
   }, []);
 
-  // Animaciones CSS inline para Next.js
+  // Animaciones optimizadas para GPU (solo transform y opacity)
   const keyframeStyles = `
     @keyframes nextFloat0 {
-      0%, 100% { transform: translateY(0px) translateX(0px) scale(1); }
-      33% { transform: translateY(-15px) translateX(8px) scale(1.1); }
-      66% { transform: translateY(10px) translateX(-5px) scale(0.9); }
+      0%, 100% { transform: translate3d(0px, 0px, 0) scale(1); }
+      33% { transform: translate3d(8px, -15px, 0) scale(1.1); }
+      66% { transform: translate3d(-5px, 10px, 0) scale(0.9); }
     }
     @keyframes nextFloat1 {
-      0%, 100% { transform: translateY(0px) translateX(0px) scale(1); }
-      50% { transform: translateY(-20px) translateX(-10px) scale(1.2); }
+      0%, 100% { transform: translate3d(0px, 0px, 0) scale(1); }
+      50% { transform: translate3d(-10px, -20px, 0) scale(1.2); }
     }
     @keyframes nextFloat2 {
-      0%, 100% { transform: translateY(0px) translateX(0px) scale(1); }
-      25% { transform: translateY(-10px) translateX(12px) scale(0.8); }
-      75% { transform: translateY(15px) translateX(6px) scale(1.1); }
+      0%, 100% { transform: translate3d(0px, 0px, 0) scale(1); }
+      25% { transform: translate3d(12px, -10px, 0) scale(0.8); }
+      75% { transform: translate3d(6px, 15px, 0) scale(1.1); }
     }
     @keyframes nextFloat3 {
-      0%, 100% { transform: translateY(0px) translateX(0px) scale(1); }
-      40% { transform: translateY(-25px) translateX(-8px) scale(1.3); }
-      80% { transform: translateY(5px) translateX(15px) scale(0.7); }
+      0%, 100% { transform: translate3d(0px, 0px, 0) scale(1); }
+      40% { transform: translate3d(-8px, -25px, 0) scale(1.3); }
+      80% { transform: translate3d(15px, 5px, 0) scale(0.7); }
     }
     @keyframes nextPulse {
-      0%, 100% { opacity: 0.1; transform: scaleY(0.8); }
-      50% { opacity: 0.3; transform: scaleY(1.2); }
+      0%, 100% { opacity: 0.1; transform: scaleY(0.8) translateZ(0); }
+      50% { opacity: 0.3; transform: scaleY(1.2) translateZ(0); }
     }
     @keyframes nextSpin {
-      from { transform: rotate(0deg); }
-      to { transform: rotate(360deg); }
+      from { transform: rotate(0deg) translateZ(0); }
+      to { transform: rotate(360deg) translateZ(0); }
     }
     @keyframes nextSpinReverse {
-      from { transform: rotate(360deg); }
-      to { transform: rotate(0deg); }
+      from { transform: rotate(360deg) translateZ(0); }
+      to { transform: rotate(0deg) translateZ(0); }
     }
   `;
 
@@ -55,7 +55,13 @@ const AnimatedBackground = ({ mixBlendMode = 'lighten' }: AnimatedBackgroundProp
   }
 
   return (
-    <div className="w-full h-full relative overflow-hidden">
+    <div 
+      className="w-full h-full relative overflow-hidden"
+      style={{
+        contain: 'layout style paint',
+        willChange: 'transform, opacity'
+      }}
+    >
       {/* Inyectar estilos CSS */}
       <style dangerouslySetInnerHTML={{ __html: keyframeStyles }} />
       

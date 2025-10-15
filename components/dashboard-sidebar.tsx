@@ -23,6 +23,8 @@ import {
 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
+import { useQueryClient } from "@tanstack/react-query"
+import { useOptimizedNavigation } from "@/hooks/use-optimized-navigation"
 
 const navigation = [
   {
@@ -79,6 +81,33 @@ function SidebarContent({ user }: DashboardSidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
   const supabase = createClient()
+  const queryClient = useQueryClient()
+  const { navigateWithPrefetch, prefetchRoute, isPending, isCurrentRoute } = useOptimizedNavigation()
+  
+  // Prefetch functions for different routes
+  const prefetchData = {
+    '/dashboard/cases': () => {
+      queryClient.prefetchQuery({
+        queryKey: ['cases'],
+        queryFn: () => fetch('/api/cases').then(res => res.json()),
+        staleTime: 1000 * 60 * 5, // 5min
+      })
+    },
+    '/dashboard/clients': () => {
+      queryClient.prefetchQuery({
+        queryKey: ['clients'],
+        queryFn: () => fetch('/api/clients').then(res => res.json()),
+        staleTime: 1000 * 60 * 5,
+      })
+    },
+    '/dashboard/tasks': () => {
+      queryClient.prefetchQuery({
+        queryKey: ['tasks'],
+        queryFn: () => fetch('/api/tasks').then(res => res.json()),
+        staleTime: 1000 * 60 * 5,
+      })
+    }
+  }
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
@@ -97,20 +126,27 @@ function SidebarContent({ user }: DashboardSidebarProps) {
       <ScrollArea className="flex-1 px-3 py-4">
         <nav className="space-y-2">
           {navigation.map((item) => {
-            const isActive = pathname === item.href
+            const isActive = isCurrentRoute(item.href)
+            const isLoading = isPending && pathname !== item.href
+            
             return (
-              <Link key={item.name} href={item.href}>
-                <Button
-                  variant={isActive ? "secondary" : "ghost"}
-                  className={cn(
-                    "w-full justify-start gap-3 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                    isActive && "bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary/90",
-                  )}
-                >
-                  <item.icon className="h-5 w-5" />
+              <Button
+                key={item.name}
+                variant={isActive ? "secondary" : "ghost"}
+                onClick={() => navigateWithPrefetch(item.href)}
+                onMouseEnter={() => prefetchRoute(item.href)} // Prefetch al hover
+                onFocus={() => prefetchRoute(item.href)} // Prefetch al focus
+                className={cn(
+                  "w-full justify-start gap-3 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-all duration-200",
+                  isActive && "bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary/90",
+                  isLoading && "opacity-70"
+                )}
+              >
+                <item.icon className="h-5 w-5" />
+                <span className="transition-opacity duration-200">
                   {item.name}
-                </Button>
-              </Link>
+                </span>
+              </Button>
             )
           })}
         </nav>
@@ -158,7 +194,7 @@ export function MobileDashboardSidebar({ user }: DashboardSidebarProps) {
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
-        <Button variant="ghost" size="icon" className="md:hidden">
+        <Button variant="ghost" size="icon" className="lg:hidden">
           <Menu className="h-5 w-5" />
         </Button>
       </SheetTrigger>
