@@ -15,10 +15,10 @@ import { createClient } from "@/lib/supabase/client"
 import { Loader2, ArrowLeft, Upload, File } from "lucide-react"
 import Link from "next/link"
 
-interface Case {
+interface CaseInfo {
   id: string
   title: string
-  clients: { name: string }
+  clients: { name: string }[]
 }
 
 export default function UploadDocumentPage({ searchParams }: { searchParams?: Promise<{ case?: string }> }) {
@@ -29,7 +29,7 @@ export default function UploadDocumentPage({ searchParams }: { searchParams?: Pr
     "contract" | "brief" | "evidence" | "correspondence" | "court_filing" | "other"
   >("other")
   const [caseId, setCaseId] = useState("")
-  const [cases, setCases] = useState<Case[]>([])
+  const [cases, setCases] = useState<CaseInfo[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const router = useRouter()
@@ -257,7 +257,7 @@ export default function UploadDocumentPage({ searchParams }: { searchParams?: Pr
                     <SelectItem value="none">Sin caso asignado</SelectItem>
                     {cases.map((case_) => (
                       <SelectItem key={case_.id} value={case_.id}>
-                        {case_.title} - {case_.clients?.name}
+                        {case_.title} - {case_.clients?.[0]?.name || 'Sin cliente'}
                       </SelectItem>
                     ))}
                   </SelectContent>

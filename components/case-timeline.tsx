@@ -217,14 +217,14 @@ export function CaseTimeline({
           >
             <option value="all">Todos los tipos</option>
             {eventTypes.map(type => (
-              <option key={type} value={type}>
-                {type === 'task' && 'Tareas'}
-                {type === 'note' && 'Notas'}
-                {type === 'document' && 'Documentos'}
-                {type === 'time' && 'Tiempo'}
-                {type === 'case' && 'Caso'}
-                {type === 'member' && 'Miembros'}
-                {type === 'unknown' && 'Otros'}
+              <option key={String(type)} value={String(type)}>
+                {String(type) === 'task' && 'Tareas'}
+                {String(type) === 'note' && 'Notas'}
+                {String(type) === 'document' && 'Documentos'}
+                {String(type) === 'time' && 'Tiempo'}
+                {String(type) === 'case' && 'Caso'}
+                {String(type) === 'member' && 'Miembros'}
+                {!['task', 'note', 'document', 'time', 'case', 'member'].includes(String(type)) && 'Otros'}
               </option>
             ))}
           </select>

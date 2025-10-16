@@ -32,7 +32,7 @@ interface DocumentData {
 }
 
 export function DocumentViewer({ isOpen, onClose, documentId }: DocumentViewerProps) {
-  const [document, setDocument] = useState<DocumentData | null>(null)
+  const [documentData, setDocumentData] = useState<DocumentData | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -41,7 +41,7 @@ export function DocumentViewer({ isOpen, onClose, documentId }: DocumentViewerPr
     if (isOpen && documentId) {
       fetchDocument()
     } else {
-      setDocument(null)
+      setDocumentData(null)
       setError(null)
     }
   }, [isOpen, documentId])
@@ -61,7 +61,7 @@ export function DocumentViewer({ isOpen, onClose, documentId }: DocumentViewerPr
       }
 
       const data = await response.json()
-      setDocument(data)
+      setDocumentData(data)
     } catch (err) {
       console.error('Error fetching document:', err)
       setError(err instanceof Error ? err.message : 'Error al cargar documento')
@@ -84,12 +84,14 @@ export function DocumentViewer({ isOpen, onClose, documentId }: DocumentViewerPr
       const data = await response.json()
       
       // Crear enlace temporal y hacer click automático para descargar
-      const link = document.createElement('a')
-      link.href = data.downloadUrl
-      link.download = data.filename || 'documento'
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
+      if (typeof window !== 'undefined') {
+        const link = document.createElement('a')
+        link.href = data.downloadUrl
+        link.download = data.filename || 'documento'
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+      }
       
       toast.success('Descarga iniciada')
     } catch (err) {
@@ -99,8 +101,8 @@ export function DocumentViewer({ isOpen, onClose, documentId }: DocumentViewerPr
   }
 
   const openInNewTab = () => {
-    if (document?.viewUrl) {
-      window.open(document.viewUrl, '_blank')
+    if (documentData?.viewUrl) {
+      window.open(documentData.viewUrl, '_blank')
     }
   }
   
@@ -146,7 +148,7 @@ export function DocumentViewer({ isOpen, onClose, documentId }: DocumentViewerPr
   }
 
   const renderDocumentPreview = () => {
-    if (!document || !document.canView) {
+    if (!documentData || !documentData.canView) {
       return (
         <div className="flex flex-col items-center justify-center py-12 text-center">
           <FileText className="h-16 w-16 text-muted-foreground mb-4" />
@@ -162,12 +164,12 @@ export function DocumentViewer({ isOpen, onClose, documentId }: DocumentViewerPr
       )
     }
 
-    if (document.mime_type?.startsWith('image/')) {
+    if (documentData.mime_type?.startsWith('image/')) {
       return (
         <div className="flex justify-center items-center h-full">
           <img
-            src={document.viewUrl}
-            alt={document.name}
+            src={documentData.viewUrl}
+            alt={documentData.name}
             className="max-w-full max-h-full object-contain rounded-lg"
             onError={() => setError('Error al cargar la imagen')}
           />
@@ -175,27 +177,27 @@ export function DocumentViewer({ isOpen, onClose, documentId }: DocumentViewerPr
       )
     }
 
-    if (document.mime_type === 'application/pdf') {
+    if (documentData.mime_type === 'application/pdf') {
       return (
         <div className="h-full flex flex-col">
           <div className="border rounded-lg overflow-hidden bg-muted/10 flex-1 min-h-0">
             <iframe
-              src={`${document.viewUrl}#toolbar=1&navpanes=1&scrollbar=1&view=FitH`}
+              src={`${documentData.viewUrl}#toolbar=1&navpanes=1&scrollbar=1&view=FitH`}
               className="w-full h-full"
-              title={document.name}
+              title={documentData.name}
             />
           </div>
         </div>
       )
     }
 
-    if (document.mime_type === 'text/plain') {
+    if (documentData.mime_type === 'text/plain') {
       return (
         <div className="border rounded-lg p-4 bg-muted/10 h-full overflow-auto">
           <iframe
-            src={document.viewUrl}
+            src={documentData.viewUrl}
             className="w-full h-full"
-            title={document.name}
+            title={documentData.name}
           />
         </div>
       )
@@ -221,34 +223,34 @@ export function DocumentViewer({ isOpen, onClose, documentId }: DocumentViewerPr
       <DialogContent className="max-w-7xl w-[95vw] max-h-[95vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-3">
-            {document?.mime_type?.startsWith('image/') ? (
+            {documentData?.mime_type?.startsWith('image/') ? (
               <ImageIcon className="h-5 w-5" />
             ) : (
               <FileText className="h-5 w-5" />
             )}
-            {document?.name || 'Documento'}
+            {documentData?.name || 'Documento'}
           </DialogTitle>
-          {document && (
+          {documentData && (
             <div className="space-y-2">
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant="outline">
-                  {getDocumentTypeLabel(document.document_type)}
+                  {getDocumentTypeLabel(documentData.document_type)}
                 </Badge>
                 <span className="text-sm text-muted-foreground">
-                  {formatFileSize(document.file_size)}
+                  {formatFileSize(documentData.file_size)}
                 </span>
                 <span className="text-sm text-muted-foreground">
-                  {new Date(document.created_at).toLocaleDateString('es-ES')}
+                  {new Date(documentData.created_at).toLocaleDateString('es-ES')}
                 </span>
-                {document.case && (
+                {documentData.case && (
                   <Badge variant="secondary" className="text-xs">
-                    Caso: {document.case.title}
+                    Caso: {documentData.case.title}
                   </Badge>
                 )}
               </div>
-              {document.description && (
+              {documentData.description && (
                 <DialogDescription className="text-sm text-muted-foreground">
-                  {document.description}
+                  {documentData.description}
                 </DialogDescription>
               )}
             </div>
@@ -257,7 +259,7 @@ export function DocumentViewer({ isOpen, onClose, documentId }: DocumentViewerPr
 
         <div className="flex-1 flex flex-col min-h-0">
           {/* Action buttons at top */}
-          {document && (
+          {documentData && (
             <div className="flex justify-between items-center gap-2 pb-4 border-b mb-4">
               <div className="flex gap-2">
                 <Button onClick={openInNewTab} variant="outline">
@@ -290,7 +292,7 @@ export function DocumentViewer({ isOpen, onClose, documentId }: DocumentViewerPr
               </Alert>
             )}
 
-            {document && !loading && !error && renderDocumentPreview()}
+            {documentData && !loading && !error && renderDocumentPreview()}
           </div>
         </div>
       </DialogContent>

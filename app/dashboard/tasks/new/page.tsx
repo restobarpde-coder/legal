@@ -15,10 +15,10 @@ import { createClient } from "@/lib/supabase/client"
 import { Loader2, ArrowLeft } from "lucide-react"
 import Link from "next/link"
 
-interface Case {
+interface CaseInfo {
   id: string
   title: string
-  clients: { name: string }
+  clients: { name: string }[]
 }
 
 interface User {
@@ -34,7 +34,7 @@ export default function NewTaskPage() {
   const [assignedTo, setAssignedTo] = useState("")
   const [priority, setPriority] = useState<"low" | "medium" | "high" | "urgent">("medium")
   const [dueDate, setDueDate] = useState("")
-  const [cases, setCases] = useState<Case[]>([])
+  const [cases, setCases] = useState<CaseInfo[]>([])
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
@@ -174,7 +174,7 @@ export default function NewTaskPage() {
                   <SelectItem value="none">Sin caso asignado</SelectItem>
                   {cases.map((case_) => (
                     <SelectItem key={case_.id} value={case_.id}>
-                      {case_.title} - {case_.clients?.name}
+                      {case_.title} - {case_.clients?.[0]?.name || 'Sin cliente'}
                     </SelectItem>
                   ))}
                 </SelectContent>

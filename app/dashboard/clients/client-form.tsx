@@ -61,32 +61,32 @@ export function ClientForm({ client, formAction }: ClientFormProps) {
                     <div className="space-y-2">
                         <Label htmlFor="name">Nombre Completo</Label>
                         <Input id="name" {...register('name')} />
-                        {(formErrors.name || serverErrors?.name) && <p className="text-sm text-red-500">{formErrors.name?.message || serverErrors?.name?.[0]}</p>}
+                        {(formErrors.name || serverErrors?.name) && <p className="text-sm text-red-500">{String(formErrors.name?.message || '') || serverErrors?.name?.[0]}</p>}
                     </div>
                     <div className="space-y-2">
                         <Label htmlFor="company">Empresa</Label>
                         <Input id="company" {...register('company')} />
-                        {(formErrors.company || serverErrors?.company) && <p className="text-sm text-red-500">{formErrors.company?.message || serverErrors?.company?.[0]}</p>}
+                        {(formErrors.company || serverErrors?.company) && <p className="text-sm text-red-500">{String(formErrors.company?.message || '') || serverErrors?.company?.[0]}</p>}
                     </div>
                     <div className="space-y-2">
                         <Label htmlFor="email">Email</Label>
                         <Input id="email" type="email" {...register('email')} />
-                        {(formErrors.email || serverErrors?.email) && <p className="text-sm text-red-500">{formErrors.email?.message || serverErrors?.email?.[0]}</p>}
+                        {(formErrors.email || serverErrors?.email) && <p className="text-sm text-red-500">{String(formErrors.email?.message || '') || serverErrors?.email?.[0]}</p>}
                     </div>
                     <div className="space-y-2">
                         <Label htmlFor="phone">Teléfono</Label>
                         <Input id="phone" {...register('phone')} />
-                        {(formErrors.phone || serverErrors?.phone) && <p className="text-sm text-red-500">{formErrors.phone?.message || serverErrors?.phone?.[0]}</p>}
+                        {(formErrors.phone || serverErrors?.phone) && <p className="text-sm text-red-500">{String(formErrors.phone?.message || '') || serverErrors?.phone?.[0]}</p>}
                     </div>
                     <div className="space-y-2 md:col-span-2">
                         <Label htmlFor="address">Dirección</Label>
                         <Input id="address" {...register('address')} />
-                        {(formErrors.address || serverErrors?.address) && <p className="text-sm text-red-500">{formErrors.address?.message || serverErrors?.address?.[0]}</p>}
+                        {(formErrors.address || serverErrors?.address) && <p className="text-sm text-red-500">{String(formErrors.address?.message || '') || serverErrors?.address?.[0]}</p>}
                     </div>
                     <div className="space-y-2 md:col-span-2">
                         <Label htmlFor="notes">Notas Adicionales</Label>
                         <Textarea id="notes" {...register('notes')} />
-                        {(formErrors.notes || serverErrors?.notes) && <p className="text-sm text-red-500">{formErrors.notes?.message || serverErrors?.notes?.[0]}</p>}
+                        {(formErrors.notes || serverErrors?.notes) && <p className="text-sm text-red-500">{String(formErrors.notes?.message || '') || serverErrors?.notes?.[0]}</p>}
                     </div>
                 </CardContent>
                 <CardFooter className="flex justify-end gap-2">

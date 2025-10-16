@@ -6,23 +6,25 @@ export type CaseDetails = {
   caseData: {
     id: string
     title: string
-    description: string | null
+    description?: string
     counterparty_name: string | null
     counterparty_lawyer: string | null
     status: string
     priority: string
     start_date: string
-    end_date: string | null
-    hourly_rate: number | null
+    end_date?: string
+    hourly_rate?: number
+    estimated_hours?: number
+    client_id: string
     created_at: string
     created_by: string
     clients: {
       id: string
       name: string
-      email: string | null
-      phone: string | null
-      address: string | null
-      company: string | null
+      email?: string
+      phone?: string
+      address?: string
+      company?: string
     }
     case_members: {
       role: string
@@ -31,7 +33,7 @@ export type CaseDetails = {
         id: string
         full_name: string
         email: string
-        role: string
+        role: 'admin' | 'lawyer' | 'assistant'
       }
     }[]
   }
@@ -42,7 +44,10 @@ export type CaseDetails = {
     status: string
     priority: string
     due_date: string | null
+    assigned_to: string
+    created_by: string
     created_at: string
+    updated_at: string
   }[]
   documents: {
     id: string
@@ -52,14 +57,18 @@ export type CaseDetails = {
     mime_type: string
     document_type: string
     description: string | null
+    uploaded_by: string
     created_at: string
+    updated_at: string
   }[]
   notes: {
     id: string
     title: string | null
     content: string
     is_private: boolean
+    created_by: string
     created_at: string
+    updated_at: string
   }[]
   timeEntries: {
     id: string
@@ -68,7 +77,9 @@ export type CaseDetails = {
     rate: number | null
     billable: boolean
     date: string
+    user_id: string
     created_at: string
+    updated_at: string
     users: {
       id: string
       full_name: string
@@ -78,7 +89,7 @@ export type CaseDetails = {
     id: string
     full_name: string
     email: string
-    role: string
+    role: 'admin' | 'lawyer' | 'assistant'
   }[]
   canManage: boolean
 }

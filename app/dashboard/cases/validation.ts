@@ -3,8 +3,8 @@ import { z } from 'zod'
 // Validation functions (separate to avoid Server Action confusion)
 const isValidDate = (date: string) => !isNaN(Date.parse(date))
 const isValidOptionalDate = (date: string) => !date || !isNaN(Date.parse(date))
-const isValidOptionalHours = (hours: string) => !hours || (!isNaN(parseInt(hours)) && parseInt(hours) > 0)
-const isValidOptionalRate = (rate: string) => !rate || (!isNaN(parseFloat(rate)) && parseFloat(rate) >= 0)
+const isValidOptionalHours = (hours: string | undefined) => !hours || (!isNaN(parseInt(hours)) && parseInt(hours) > 0)
+const isValidOptionalRate = (rate: string | undefined) => !rate || (!isNaN(parseFloat(rate)) && parseFloat(rate) >= 0)
 
 export const caseSchema = z.object({
   title: z.string().min(2, { message: 'El título debe tener al menos 2 caracteres.' }),

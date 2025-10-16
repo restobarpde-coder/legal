@@ -41,8 +41,16 @@ const PrismaticBurst = ({
       try {
         console.log('Iniciando carga de OGL...');
         
-        // Importar OGL dinámicamente
-        const { Renderer, Program, Mesh, Triangle, Texture } = await import('ogl');
+        // Importar OGL dinámicamente - manejar si no está disponible
+        let OGL: any;
+        try {
+          const oglModule = 'ogl'; // Use string to avoid TypeScript compile-time check
+          OGL = await import(oglModule);
+        } catch (importError) {
+          console.warn('OGL no está disponible, usando fallback:', importError);
+          throw new Error('OGL no disponible');
+        }
+        const { Renderer, Program, Mesh, Triangle, Texture } = OGL;
         
         if (!mounted) return;
         

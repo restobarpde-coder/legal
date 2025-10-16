@@ -89,7 +89,7 @@ export function CaseForm({ case: caseData, clients, formAction, preselectedClien
               <Input id="title" {...register('title')} />
               {(formErrors.title || serverErrors?.title) && (
                 <p className="text-sm text-red-500">
-                  {formErrors.title?.message || serverErrors?.title?.[0]}
+                  {String(formErrors.title?.message || '') || serverErrors?.title?.[0]}
                 </p>
               )}
             </div>
@@ -113,7 +113,7 @@ export function CaseForm({ case: caseData, clients, formAction, preselectedClien
               <input type="hidden" {...register('client_id')} />
               {(formErrors.client_id || serverErrors?.client_id) && (
                 <p className="text-sm text-red-500">
-                  {formErrors.client_id?.message || serverErrors?.client_id?.[0]}
+                  {String(formErrors.client_id?.message || '') || serverErrors?.client_id?.[0]}
                 </p>
               )}
             </div>
@@ -130,7 +130,7 @@ export function CaseForm({ case: caseData, clients, formAction, preselectedClien
               />
               {(formErrors.counterparty_name || serverErrors?.counterparty_name) && (
                 <p className="text-sm text-red-500">
-                  {formErrors.counterparty_name?.message || serverErrors?.counterparty_name?.[0]}
+                  {String(formErrors.counterparty_name?.message || '') || serverErrors?.counterparty_name?.[0]}
                 </p>
               )}
             </div>
@@ -143,7 +143,7 @@ export function CaseForm({ case: caseData, clients, formAction, preselectedClien
               />
               {(formErrors.counterparty_lawyer || serverErrors?.counterparty_lawyer) && (
                 <p className="text-sm text-red-500">
-                  {formErrors.counterparty_lawyer?.message || serverErrors?.counterparty_lawyer?.[0]}
+                  {String(formErrors.counterparty_lawyer?.message || '') || serverErrors?.counterparty_lawyer?.[0]}
                 </p>
               )}
             </div>
@@ -160,7 +160,7 @@ export function CaseForm({ case: caseData, clients, formAction, preselectedClien
             />
             {(formErrors.description || serverErrors?.description) && (
               <p className="text-sm text-red-500">
-                {formErrors.description?.message || serverErrors?.description?.[0]}
+                {String(formErrors.description?.message || '') || serverErrors?.description?.[0]}
               </p>
             )}
           </div>
@@ -186,7 +186,7 @@ export function CaseForm({ case: caseData, clients, formAction, preselectedClien
               <input type="hidden" {...register('status')} />
               {(formErrors.status || serverErrors?.status) && (
                 <p className="text-sm text-red-500">
-                  {formErrors.status?.message || serverErrors?.status?.[0]}
+                  {String(formErrors.status?.message || '') || serverErrors?.status?.[0]}
                 </p>
               )}
             </div>
@@ -209,7 +209,7 @@ export function CaseForm({ case: caseData, clients, formAction, preselectedClien
               <input type="hidden" {...register('priority')} />
               {(formErrors.priority || serverErrors?.priority) && (
                 <p className="text-sm text-red-500">
-                  {formErrors.priority?.message || serverErrors?.priority?.[0]}
+                  {String(formErrors.priority?.message || '') || serverErrors?.priority?.[0]}
                 </p>
               )}
             </div>
@@ -226,7 +226,7 @@ export function CaseForm({ case: caseData, clients, formAction, preselectedClien
               />
               {(formErrors.start_date || serverErrors?.start_date) && (
                 <p className="text-sm text-red-500">
-                  {formErrors.start_date?.message || serverErrors?.start_date?.[0]}
+                  {String(formErrors.start_date?.message || '') || serverErrors?.start_date?.[0]}
                 </p>
               )}
             </div>
@@ -239,7 +239,7 @@ export function CaseForm({ case: caseData, clients, formAction, preselectedClien
               />
               {(formErrors.end_date || serverErrors?.end_date) && (
                 <p className="text-sm text-red-500">
-                  {formErrors.end_date?.message || serverErrors?.end_date?.[0]}
+                  {String(formErrors.end_date?.message || '') || serverErrors?.end_date?.[0]}
                 </p>
               )}
             </div>
@@ -258,7 +258,7 @@ export function CaseForm({ case: caseData, clients, formAction, preselectedClien
               />
               {(formErrors.estimated_hours || serverErrors?.estimated_hours) && (
                 <p className="text-sm text-red-500">
-                  {formErrors.estimated_hours?.message || serverErrors?.estimated_hours?.[0]}
+                  {String(formErrors.estimated_hours?.message || '') || serverErrors?.estimated_hours?.[0]}
                 </p>
               )}
             </div>
@@ -274,7 +274,7 @@ export function CaseForm({ case: caseData, clients, formAction, preselectedClien
               />
               {(formErrors.hourly_rate || serverErrors?.hourly_rate) && (
                 <p className="text-sm text-red-500">
-                  {formErrors.hourly_rate?.message || serverErrors?.hourly_rate?.[0]}
+                  {String(formErrors.hourly_rate?.message || '') || serverErrors?.hourly_rate?.[0]}
                 </p>
               )}
             </div>

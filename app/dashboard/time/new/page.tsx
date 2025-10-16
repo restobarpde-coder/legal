@@ -14,17 +14,17 @@ import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
 
-interface Case {
+interface CaseInfo {
   id: string
   title: string
   hourly_rate?: number
-  clients?: { name: string }
+  clients?: { name: string }[]
 }
 
 export default function NewTimeEntryPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
-  const [cases, setCases] = useState<Case[]>([])
+  const [cases, setCases] = useState<CaseInfo[]>([])
   const [formData, setFormData] = useState({
     case_id: "",
     description: "",
@@ -61,7 +61,7 @@ export default function NewTimeEntryPage() {
     if (name === "case_id" && typeof value === "string") {
       const selectedCase = cases.find(c => c.id === value)
       if (selectedCase?.hourly_rate && !formData.rate) {
-        setFormData(prev => ({ ...prev, rate: selectedCase.hourly_rate.toString() }))
+        setFormData(prev => ({ ...prev, rate: selectedCase.hourly_rate!.toString() }))
       }
     }
   }
@@ -151,7 +151,7 @@ export default function NewTimeEntryPage() {
                     <SelectContent>
                       {cases.map((case_) => (
                         <SelectItem key={case_.id} value={case_.id}>
-                          {case_.title} {case_.clients?.name && `- ${case_.clients.name}`}
+                          {case_.title} {case_.clients?.[0]?.name && `- ${case_.clients[0].name}`}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -256,7 +256,7 @@ export default function NewTimeEntryPage() {
                   <div className="p-3 bg-muted rounded-lg">
                     <p className="font-medium">{selectedCase.title}</p>
                     {selectedCase.clients && (
-                      <p className="text-sm text-muted-foreground">{selectedCase.clients.name}</p>
+                    <p className="text-sm text-muted-foreground">{selectedCase.clients[0].name}</p>
                     )}
                   </div>
                 </div>

@@ -13,15 +13,15 @@ import { createClient } from "@/lib/supabase/client"
 import { Loader2, ArrowLeft, StickyNote } from "lucide-react"
 import Link from "next/link"
 
-interface Case {
+interface CaseInfo {
   id: string
   title: string
-  clients: { name: string }
+  clients: { name: string }[]
 }
 
 export default function NewNotePage({ params }: { params: Promise<{ id: string }> }) {
   const [caseId, setCaseId] = useState("")
-  const [caseInfo, setCaseInfo] = useState<Case | null>(null)
+  const [caseInfo, setCaseInfo] = useState<CaseInfo | null>(null)
   const [title, setTitle] = useState("")
   const [content, setContent] = useState("")
   const [isPrivate, setIsPrivate] = useState(false)
