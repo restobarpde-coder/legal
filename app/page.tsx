@@ -7,45 +7,47 @@ import { Scale, Users, FileText, CheckSquare, AlertCircle, Plus } from "lucide-r
 import Link from "next/link"
 import { DashboardHeader } from "@/components/dashboard-header"
 import { DashboardSidebar } from "@/components/dashboard-sidebar"
+import { Suspense } from "react"
 
 async function getDashboardData() {
   const supabase = await createClient()
   const user = await requireAuth()
 
-  // Get user's cases
-  const { data: cases } = await supabase
-    .from("cases")
-    .select(`
-      *,
-      clients (name),
-      case_members!inner (user_id)
-    `)
-    .eq("case_members.user_id", user.id)
-
-  // Get recent tasks
-  const { data: tasks } = await supabase
-    .from("tasks")
-    .select(`
-      *,
-      cases (title, clients (name))
-    `)
-    .or(`assigned_to.eq.${user.id},created_by.eq.${user.id}`)
-    .order("created_at", { ascending: false })
-    .limit(5)
-
-  // Get clients count
-  const { count: clientsCount } = await supabase.from("clients").select("*", { count: "exact", head: true })
-
-  // Get documents count
-  const { count: documentsCount } = await supabase.from("documents").select("*", { count: "exact", head: true })
+  // Ejecutar todas las queries en paralelo para reducir TTFB
+  const [casesResult, tasksResult, clientsResult, documentsResult] = await Promise.all([
+    supabase
+      .from("cases")
+      .select(`
+        *,
+        clients (name),
+        case_members!inner (user_id)
+      `)
+      .eq("case_members.user_id", user.id),
+    supabase
+      .from("tasks")
+      .select(`
+        *,
+        cases (title, clients (name))
+      `)
+      .or(`assigned_to.eq.${user.id},created_by.eq.${user.id}`)
+      .order("created_at", { ascending: false })
+      .limit(5),
+    supabase.from("clients").select("*", { count: "exact", head: true }),
+    supabase.from("documents").select("*", { count: "exact", head: true }),
+  ])
 
   return {
-    cases: cases || [],
-    tasks: tasks || [],
-    clientsCount: clientsCount || 0,
-    documentsCount: documentsCount || 0,
+    cases: casesResult.data || [],
+    tasks: tasksResult.data || [],
+    clientsCount: clientsResult.count || 0,
+    documentsCount: documentsResult.count || 0,
   }
 }
+
+// Revalidar cada 5 minutos para reducir carga
+export const revalidate = 300
+// Generar dinámicamente pero con caché
+export const dynamic = 'force-dynamic'
 
 export default async function HomePage() {
   // Require authentication for the home page
@@ -81,6 +83,7 @@ export default async function HomePage() {
             </div>
 
             {/* Stats cards */}
+            <Suspense fallback={<StatsCardsSkeleton />}>
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -128,6 +131,7 @@ export default async function HomePage() {
                 </CardContent>
               </Card>
             </div>
+            </Suspense>
 
             <div className="grid gap-6 md:grid-cols-2">
               {/* Recent cases */}
@@ -214,6 +218,26 @@ export default async function HomePage() {
           </div>
         </main>
       </div>
+    </div>
+  )
+}
+
+// Skeleton para las stats cards
+function StatsCardsSkeleton() {
+  return (
+    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      {[...Array(4)].map((_, i) => (
+        <Card key={i}>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <div className="h-4 w-24 bg-muted animate-pulse rounded" />
+            <div className="h-4 w-4 bg-muted animate-pulse rounded" />
+          </CardHeader>
+          <CardContent>
+            <div className="h-8 w-16 bg-muted animate-pulse rounded mb-2" />
+            <div className="h-3 w-32 bg-muted animate-pulse rounded" />
+          </CardContent>
+        </Card>
+      ))}
     </div>
   )
 }

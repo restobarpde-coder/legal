@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import dynamic from 'next/dynamic'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -9,11 +10,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { ArrowLeft, Edit, Users, FileText, CheckSquare, Clock, Mail, Phone, Building, StickyNote, Trash2, MoreVertical, Calendar, User, Shield, Activity, Eye, Download } from 'lucide-react'
 import Link from 'next/link'
-import { NoteModal } from '@/components/modals/note-modal'
-import { TaskModal } from '@/components/modals/task-modal'
-import { DocumentModal } from '@/components/modals/document-modal'
-import { TimeEntryModal } from '@/components/modals/time-entry-modal'
-import { DeleteConfirmationModal } from '@/components/delete-confirmation-modal'
 import { toast } from 'sonner'
 import { CaseMembersManager } from '../case-members-manager'
 import { useCaseDetails } from '@/hooks/use-case-details'
@@ -21,6 +17,13 @@ import { CaseTimeline } from '@/components/case-timeline'
 import { TaskStatusSelect, TaskStatusBadge } from '@/components/task-status-select'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useRouter } from 'next/navigation'
+
+// Lazy load modales pesados solo cuando se necesiten
+const NoteModal = dynamic(() => import('@/components/modals/note-modal').then(mod => ({ default: mod.NoteModal })), { ssr: false })
+const TaskModal = dynamic(() => import('@/components/modals/task-modal').then(mod => ({ default: mod.TaskModal })), { ssr: false })
+const DocumentModal = dynamic(() => import('@/components/modals/document-modal').then(mod => ({ default: mod.DocumentModal })), { ssr: false })
+const TimeEntryModal = dynamic(() => import('@/components/modals/time-entry-modal').then(mod => ({ default: mod.TimeEntryModal })), { ssr: false })
+const DeleteConfirmationModal = dynamic(() => import('@/components/delete-confirmation-modal').then(mod => ({ default: mod.DeleteConfirmationModal })), { ssr: false })
 
 type CaseDetailsClientProps = {
     caseId: string;

@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { 
   MessageSquare, 
   Users, 
@@ -18,9 +19,15 @@ import {
   Mail,
   Phone,
   User,
-  MessageCircle
+  MessageCircle,
+  Send,
+  MoreVertical,
+  Archive,
+  Trash2
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { format, isToday, isYesterday, formatDistanceToNow } from 'date-fns'
+import { es } from 'date-fns/locale'
 
 interface ChatwootConversation {
   id: string
@@ -73,6 +80,15 @@ export default function ChatwootDashboard() {
     unprocessedConversations: 0,
     todayConversations: 0
   })
+  const [userInfo, setUserInfo] = useState<{
+    isAdmin: boolean,
+    syncEnabled: boolean,
+    chatwootEmail: string
+  } | null>(null)
+  const [newMessage, setNewMessage] = useState('')
+  const [sendingMessage, setSendingMessage] = useState(false)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   // Cargar conversaciones
   const fetchConversations = useCallback(async () => {
@@ -81,7 +97,17 @@ export default function ChatwootDashboard() {
       const response = await fetch('/api/chatwoot/conversations')
       if (response.ok) {
         const data = await response.json()
-        setConversations(data.conversations)
+        console.log('📦 Respuesta completa:', data)
+        console.log('👀 Conversaciones recibidas:', data.conversations?.length || 0)
+        console.log('📄 Primera conversación:', data.conversations?.[0])
+        setConversations(data.conversations || [])
+        
+        // Guardar info del usuario
+        setUserInfo({
+          isAdmin: data.is_admin,
+          syncEnabled: data.sync_enabled,
+          chatwootEmail: data.chatwoot_email
+        })
         
         // Calcular estadísticas
         const today = new Date().toISOString().split('T')[0]
@@ -111,11 +137,56 @@ export default function ChatwootDashboard() {
       if (response.ok) {
         const data = await response.json()
         setMessages(data.messages)
+        // Scroll al final después de cargar mensajes
+        setTimeout(() => scrollToBottom(), 100)
       }
     } catch (error) {
       console.error('Error loading messages:', error)
     }
   }, [])
+
+  // Auto-scroll al final
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }
+
+  // Enviar mensaje
+  const sendMessage = async () => {
+    if (!selectedConversation || !newMessage.trim()) return
+    
+    setSendingMessage(true)
+    const messageToSend = newMessage
+    setNewMessage('') // Limpiar inmediatamente para mejor UX
+    
+    try {
+      const response = await fetch(
+        `/api/chatwoot/conversations/${selectedConversation.chatwoot_id}/messages/send`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: messageToSend })
+        }
+      )
+      
+      if (response.ok) {
+        // Recargar mensajes
+        await fetchMessages(selectedConversation.id)
+        inputRef.current?.focus()
+      } else {
+        const error = await response.json()
+        setNewMessage(messageToSend) // Restaurar mensaje si falló
+        toast.error('Error enviando mensaje', {
+          description: error.error
+        })
+      }
+    } catch (error) {
+      console.error('Error:', error)
+      setNewMessage(messageToSend) // Restaurar mensaje si falló
+      toast.error('Error de conexión')
+    } finally {
+      setSendingMessage(false)
+    }
+  }
 
   // Marcar conversación como procesada
   const markAsProcessed = async (conversationId: string, notes?: string) => {
@@ -145,6 +216,17 @@ export default function ChatwootDashboard() {
     return () => clearInterval(interval)
   }, [fetchConversations])
 
+  // Auto-actualizar mensajes cuando hay una conversación seleccionada
+  useEffect(() => {
+    if (!selectedConversation) return
+    
+    const interval = setInterval(() => {
+      fetchMessages(selectedConversation.id)
+    }, 10000) // Actualizar mensajes cada 10 segundos
+    
+    return () => clearInterval(interval)
+  }, [selectedConversation, fetchMessages])
+
   // Filtrar conversaciones
   const filteredConversations = conversations.filter(conv => {
     const matchesSearch = !searchTerm || 
@@ -157,16 +239,38 @@ export default function ChatwootDashboard() {
     return matchesSearch && matchesStatus
   })
 
-  // Formatear fecha
-  const formatDate = (dateString: string) => {
+  // Formatear fecha para mensajes
+  const formatMessageTime = (dateString: string) => {
     const date = new Date(dateString)
-    const now = new Date()
-    const diffHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60))
-    
-    if (diffHours < 1) return 'Hace menos de 1 hora'
-    if (diffHours < 24) return `Hace ${diffHours} horas`
-    if (diffHours < 48) return 'Ayer'
-    return date.toLocaleDateString()
+    if (isToday(date)) {
+      return format(date, 'HH:mm', { locale: es })
+    }
+    if (isYesterday(date)) {
+      return `Ayer ${format(date, 'HH:mm', { locale: es })}`
+    }
+    return format(date, 'dd/MM/yyyy HH:mm', { locale: es })
+  }
+
+  // Formatear fecha para lista de conversaciones
+  const formatConversationTime = (dateString: string) => {
+    const date = new Date(dateString)
+    if (isToday(date)) {
+      return format(date, 'HH:mm', { locale: es })
+    }
+    if (isYesterday(date)) {
+      return 'Ayer'
+    }
+    return format(date, 'dd/MM/yy', { locale: es })
+  }
+
+  // Obtener iniciales para avatar
+  const getInitials = (name: string) => {
+    return name
+      .split(' ')
+      .map(n => n[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2)
   }
 
   const getStatusBadge = (status: string) => {
@@ -183,7 +287,7 @@ export default function ChatwootDashboard() {
   }
 
   return (
-    <div className="flex flex-col space-y-6">
+    <div className="flex flex-col h-[calc(100vh-12rem)] space-y-6">
       {/* Estadísticas */}
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
@@ -227,248 +331,276 @@ export default function ChatwootDashboard() {
         </Card>
       </div>
 
-      {/* Panel Principal */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Conversaciones de Chatwoot</CardTitle>
-              <CardDescription>
-                Gestiona las conversaciones recibidas desde Chatwoot
-              </CardDescription>
+      {/* Panel Principal - Layout tipo Chat */}
+      <div className="flex gap-4 flex-1 overflow-hidden">
+        {/* Lista de Conversaciones - Izquierda */}
+        <Card className="w-96 flex flex-col">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between mb-2">
+              <CardTitle className="text-lg">Chat</CardTitle>
+              <Button 
+                variant="ghost" 
+                size="icon"
+                onClick={fetchConversations}
+                disabled={loading}
+              >
+                <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              </Button>
             </div>
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={fetchConversations}
-              disabled={loading}
-            >
-              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-              Actualizar
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="conversations">Conversaciones</TabsTrigger>
-              <TabsTrigger value="details" disabled={!selectedConversation}>
-                Detalles {selectedConversation && `(${selectedConversation.contact_name})`}
-              </TabsTrigger>
-            </TabsList>
+            
+            {/* Búsqueda */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Buscar conversaciones..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-9 h-9"
+              />
+            </div>
+            
+            {/* Filtros */}
+            <div className="flex gap-1 mt-2">
+              {['all', 'open', 'pending', 'resolved'].map((status) => (
+                <Button
+                  key={status}
+                  variant={statusFilter === status ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => setStatusFilter(status as any)}
+                  className="h-7 text-xs flex-1"
+                >
+                  {status === 'all' ? 'Todos' : 
+                   status === 'open' ? 'Abiertos' :
+                   status === 'pending' ? 'Pendientes' : 'Resueltos'}
+                </Button>
+              ))}
+            </div>
+          </CardHeader>
 
-            <TabsContent value="conversations" className="mt-6">
-              {/* Filtros y búsqueda */}
-              <div className="flex flex-col md:flex-row gap-4 mb-6">
-                <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Buscar por nombre, email o inbox..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10"
-                  />
+          <CardContent className="flex-1 overflow-hidden p-0">
+            <ScrollArea className="h-full">
+              {loading ? (
+                <div className="flex items-center justify-center h-32">
+                  <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
                 </div>
-                <div className="flex gap-2">
-                  {['all', 'open', 'pending', 'resolved'].map((status) => (
-                    <Button
-                      key={status}
-                      variant={statusFilter === status ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => setStatusFilter(status as any)}
-                    >
-                      {status === 'all' ? 'Todos' : 
-                       status === 'open' ? 'Abiertos' :
-                       status === 'pending' ? 'Pendientes' : 'Resueltos'}
-                    </Button>
-                  ))}
+              ) : filteredConversations.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-32 text-muted-foreground">
+                  <MessageSquare className="h-8 w-8 mb-2" />
+                  <p className="text-sm">No hay conversaciones</p>
                 </div>
-              </div>
-
-              {/* Lista de conversaciones */}
-              <div className="space-y-3">
-                {loading ? (
-                  <div className="text-center py-8">
-                    <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4" />
-                    <p>Cargando conversaciones...</p>
-                  </div>
-                ) : filteredConversations.length === 0 ? (
-                  <div className="text-center py-8">
-                    <MessageSquare className="h-8 w-8 mx-auto mb-4 text-muted-foreground" />
-                    <p className="text-muted-foreground">No se encontraron conversaciones</p>
-                  </div>
-                ) : (
-                  filteredConversations.map((conversation) => (
-                    <Card 
-                      key={conversation.id} 
-                      className={`cursor-pointer transition-colors ${
-                        selectedConversation?.id === conversation.id ? 'ring-2 ring-blue-500' : 'hover:bg-muted/50'
+              ) : (
+                <div className="divide-y">
+                  {filteredConversations.map((conversation) => (
+                    <div
+                      key={conversation.id}
+                      className={`p-3 cursor-pointer transition-colors hover:bg-muted/50 ${
+                        selectedConversation?.id === conversation.id ? 'bg-muted' : ''
                       }`}
                       onClick={() => {
                         setSelectedConversation(conversation)
                         fetchMessages(conversation.id)
-                        setActiveTab('details')
                       }}
                     >
-                      <CardContent className="p-4">
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-2">
-                              <h4 className="font-medium">{conversation.contact_name}</h4>
-                              {getStatusBadge(conversation.status)}
-                              {!conversation.is_processed && (
-                                <Badge variant="outline" className="text-orange-600">
-                                  Sin procesar
-                                </Badge>
-                              )}
-                            </div>
-                            
-                            <div className="space-y-1 text-sm text-muted-foreground">
-                              {conversation.contact_email && (
-                                <div className="flex items-center gap-1">
-                                  <Mail className="h-3 w-3" />
-                                  {conversation.contact_email}
-                                </div>
-                              )}
-                              {conversation.contact_phone && (
-                                <div className="flex items-center gap-1">
-                                  <Phone className="h-3 w-3" />
-                                  {conversation.contact_phone}
-                                </div>
-                              )}
-                              <div className="flex items-center gap-1">
-                                <MessageCircle className="h-3 w-3" />
-                                {conversation.inbox_name} ({conversation.inbox_channel_type})
-                              </div>
-                              {conversation.assignee_name && (
-                                <div className="flex items-center gap-1">
-                                  <User className="h-3 w-3" />
-                                  Asignado a: {conversation.assignee_name}
-                                </div>
-                              )}
-                            </div>
+                      <div className="flex items-start gap-3">
+                        <Avatar className="h-10 w-10 flex-shrink-0">
+                          <AvatarFallback className="text-xs">
+                            {getInitials(conversation.contact_name)}
+                          </AvatarFallback>
+                        </Avatar>
+                        
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between mb-1">
+                            <h4 className="font-medium text-sm truncate">
+                              {conversation.contact_name}
+                            </h4>
+                            <span className="text-xs text-muted-foreground flex-shrink-0 ml-2">
+                              {formatConversationTime(conversation.chatwoot_updated_at)}
+                            </span>
                           </div>
                           
-                          <div className="text-right text-sm text-muted-foreground">
-                            <p>{formatDate(conversation.chatwoot_updated_at)}</p>
-                            {conversation.message_count && (
-                              <p className="mt-1">
-                                {conversation.message_count} mensajes
-                              </p>
+                          <div className="flex items-center gap-2">
+                            {getStatusBadge(conversation.status)}
+                            {!conversation.is_processed && (
+                              <Badge variant="outline" className="text-xs h-5">
+                                Nuevo
+                              </Badge>
                             )}
                           </div>
+                          
+                          {conversation.message_count && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {conversation.message_count} mensajes
+                            </p>
+                          )}
                         </div>
-                      </CardContent>
-                    </Card>
-                  ))
-                )}
-              </div>
-            </TabsContent>
-
-            <TabsContent value="details" className="mt-6">
-              {selectedConversation ? (
-                <div className="space-y-6">
-                  {/* Header de la conversación */}
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <h3 className="text-lg font-semibold">{selectedConversation.contact_name}</h3>
-                      <div className="flex items-center gap-2 mt-1">
-                        {getStatusBadge(selectedConversation.status)}
-                        <Badge variant="outline">{selectedConversation.inbox_name}</Badge>
                       </div>
                     </div>
-                    
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => window.open(`https://app.chatwoot.com/app/accounts/1/conversations/${selectedConversation.chatwoot_id}`, '_blank')}
-                      >
-                        <ExternalLink className="h-4 w-4 mr-2" />
-                        Ver en Chatwoot
-                      </Button>
-                      
-                      {!selectedConversation.is_processed && (
-                        <Button
-                          size="sm"
-                          onClick={() => markAsProcessed(selectedConversation.id)}
-                        >
-                          <CheckCircle className="h-4 w-4 mr-2" />
-                          Marcar como Procesado
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Información del contacto */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-base">Información del Contacto</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-2">
-                      <div><strong>Nombre:</strong> {selectedConversation.contact_name}</div>
-                      {selectedConversation.contact_email && (
-                        <div><strong>Email:</strong> {selectedConversation.contact_email}</div>
-                      )}
-                      {selectedConversation.contact_phone && (
-                        <div><strong>Teléfono:</strong> {selectedConversation.contact_phone}</div>
-                      )}
-                      {selectedConversation.contact_identifier && (
-                        <div><strong>Identificador:</strong> {selectedConversation.contact_identifier}</div>
-                      )}
-                    </CardContent>
-                  </Card>
-
-                  {/* Mensajes */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-base">Mensajes</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      {messages.length === 0 ? (
-                        <p className="text-muted-foreground">No hay mensajes disponibles</p>
-                      ) : (
-                        <div className="space-y-4 max-h-96 overflow-y-auto">
-                          {messages.map((message) => (
-                            <div 
-                              key={message.id}
-                              className={`p-3 rounded-lg ${
-                                message.message_type === 'incoming' 
-                                  ? 'bg-muted ml-0 mr-12' 
-                                  : 'bg-blue-50 ml-12 mr-0'
-                              }`}
-                            >
-                              <div className="flex items-center justify-between mb-1">
-                                <span className="text-sm font-medium">
-                                  {message.sender_name || (message.message_type === 'incoming' ? 'Cliente' : 'Agente')}
-                                </span>
-                                <span className="text-xs text-muted-foreground">
-                                  {formatDate(message.chatwoot_created_at)}
-                                </span>
-                              </div>
-                              <p className="text-sm">{message.content}</p>
-                              {message.attachments.length > 0 && (
-                                <div className="mt-2 text-xs text-muted-foreground">
-                                  📎 {message.attachments.length} archivo(s) adjunto(s)
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                </div>
-              ) : (
-                <div className="text-center py-8">
-                  <MessageSquare className="h-8 w-8 mx-auto mb-4 text-muted-foreground" />
-                  <p className="text-muted-foreground">Selecciona una conversación para ver los detalles</p>
+                  ))}
                 </div>
               )}
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
+            </ScrollArea>
+          </CardContent>
+        </Card>
+
+        {/* Panel de Chat - Derecha */}
+        <Card className="flex-1 flex flex-col">
+          {selectedConversation ? (
+            <>
+              {/* Header del Chat */}
+              <CardHeader className="border-b pb-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Avatar className="h-10 w-10">
+                      <AvatarFallback>
+                        {getInitials(selectedConversation.contact_name)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <h3 className="font-semibold">{selectedConversation.contact_name}</h3>
+                      <div className="flex items-center gap-2 mt-1">
+                        {selectedConversation.contact_email && (
+                          <span className="text-xs text-muted-foreground flex items-center gap-1">
+                            <Mail className="h-3 w-3" />
+                            {selectedConversation.contact_email}
+                          </span>
+                        )}
+                        {getStatusBadge(selectedConversation.status)}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="flex gap-2">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => window.open(`https://app.chatwoot.com/app/accounts/1/conversations/${selectedConversation.chatwoot_id}`, '_blank')}
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                    </Button>
+                    
+                    {!selectedConversation.is_processed && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => markAsProcessed(selectedConversation.id)}
+                        title="Marcar como procesado"
+                      >
+                        <CheckCircle className="h-4 w-4" />
+                      </Button>
+                    )}
+                    
+                    <Button variant="ghost" size="icon">
+                      <MoreVertical className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+
+              {/* Mensajes */}
+              <CardContent className="flex-1 overflow-hidden p-0">
+                <ScrollArea className="h-full px-4">
+                  <div className="py-4 space-y-4">
+                    {messages.length === 0 ? (
+                      <div className="flex items-center justify-center h-full text-muted-foreground">
+                        <p>No hay mensajes en esta conversación</p>
+                      </div>
+                    ) : (
+                      messages.map((message) => (
+                        <div 
+                          key={message.id}
+                          className={`flex ${
+                            message.message_type === 'outgoing' ? 'justify-end' : 'justify-start'
+                          }`}
+                        >
+                          <div className="flex items-end gap-2 max-w-[70%]">
+                            {message.message_type === 'incoming' && (
+                              <Avatar className="h-8 w-8">
+                                <AvatarFallback className="text-xs">
+                                  {getInitials(message.sender_name || selectedConversation.contact_name)}
+                                </AvatarFallback>
+                              </Avatar>
+                            )}
+                            
+                            <div
+                              className={`rounded-2xl px-4 py-2 ${
+                                message.message_type === 'outgoing'
+                                  ? 'bg-blue-600 text-white rounded-br-sm'
+                                  : 'bg-muted rounded-bl-sm'
+                              }`}
+                            >
+                              {message.sender_name && message.message_type === 'outgoing' && (
+                                <p className="text-xs opacity-80 mb-1">
+                                  {message.sender_name}
+                                </p>
+                              )}
+                              <p className="text-sm whitespace-pre-wrap break-words">
+                                {message.content}
+                              </p>
+                              {message.attachments.length > 0 && (
+                                <div className="mt-2 text-xs opacity-80">
+                                  📎 {message.attachments.length} archivo(s)
+                                </div>
+                              )}
+                              <p className={`text-xs mt-1 ${
+                                message.message_type === 'outgoing' ? 'text-blue-100' : 'text-muted-foreground'
+                              }`}>
+                                {formatMessageTime(message.chatwoot_created_at)}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                    <div ref={messagesEndRef} />
+                  </div>
+                </ScrollArea>
+              </CardContent>
+
+              {/* Input de Mensaje */}
+              <div className="border-t p-4">
+                <div className="flex items-end gap-2">
+                  <Input
+                    ref={inputRef}
+                    placeholder="Escribe un mensaje..."
+                    value={newMessage}
+                    onChange={(e) => setNewMessage(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault()
+                        sendMessage()
+                      }
+                    }}
+                    disabled={sendingMessage}
+                    className="flex-1"
+                  />
+                  <Button 
+                    onClick={sendMessage}
+                    disabled={sendingMessage || !newMessage.trim()}
+                    size="icon"
+                  >
+                    {sendingMessage ? (
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Send className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Presiona Enter para enviar
+                </p>
+              </div>
+            </>
+          ) : (
+            <div className="flex-1 flex items-center justify-center text-muted-foreground">
+              <div className="text-center">
+                <MessageSquare className="h-12 w-12 mx-auto mb-4" />
+                <p className="text-lg font-medium">Selecciona una conversación</p>
+                <p className="text-sm">Elige una conversación para comenzar a chatear</p>
+              </div>
+            </div>
+          )}
+        </Card>
+      </div>
     </div>
   )
 }

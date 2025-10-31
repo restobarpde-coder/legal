@@ -11,11 +11,18 @@ import { Toaster } from "@/components/ui/sonner"
 import { Suspense } from "react"
 import "./globals.css"
 
+// Configurar fuentes con display swap para evitar FOIT
+const geistSans = GeistSans
+const geistMono = GeistMono
+
 export const metadata: Metadata = {
   title: "Estudio Jurídico MVP",
   description: "Sistema de gestión para estudios jurídicos",
   generator: "v0.app",
 }
+
+// Revalidación para reducir carga del servidor
+export const revalidate = 300 // 5 minutos
 
 export default function RootLayout({
   children,
@@ -24,7 +31,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es" suppressHydrationWarning>
-      <body className={`font-sans ${GeistSans.variable} ${GeistMono.variable} antialiased`}>
+      <body className={`font-sans ${geistSans.variable} ${geistMono.variable} antialiased`}>
         <Suspense fallback={null}>
           <NavigationProgress />
           <QueryProvider>

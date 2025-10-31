@@ -1,5 +1,4 @@
 @import "tailwindcss";
-@import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -187,31 +186,5 @@
   :focus-visible {
     outline: 2px solid rgb(var(--ring));
     outline-offset: 2px;
-  }
-  
-  /* Navigation Progress Bar Styles */
-  #nprogress {
-    pointer-events: none;
-  }
-  
-  #nprogress .bar {
-    background: rgb(var(--primary));
-    position: fixed;
-    z-index: 1031;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 2px;
-  }
-  
-  #nprogress .peg {
-    display: block;
-    position: absolute;
-    right: 0px;
-    width: 100px;
-    height: 100%;
-    box-shadow: 0 0 10px rgb(var(--primary)), 0 0 5px rgb(var(--primary));
-    opacity: 1.0;
-    transform: rotate(3deg) translate(0px, -4px);
   }
 }
