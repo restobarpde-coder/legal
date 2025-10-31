@@ -147,7 +147,7 @@ export async function GET() {
         status: conv.status,
         inbox_name: conv.meta?.channel || `Inbox ${conv.inbox_id}`,
         inbox_channel_type: conv.meta?.channel || 'unknown',
-        assignee_name: assignee?.name || assignee?.available_name || null,
+        assignee_name: assignee?.name || null,
         assignee_email: assignee?.email || null,
         team_name: null,
         message_count: conv.messages?.length || 0,
