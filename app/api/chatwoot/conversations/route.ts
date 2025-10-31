@@ -32,7 +32,17 @@ interface ChatwootConversation {
       name: string;
       email: string;
     };
+    assignee?: {
+      id: number;
+      name: string;
+      email: string;
+      available_name?: string;
+    };
+    channel?: string;
   };
+  inbox_id?: number;
+  last_activity_at?: number;
+  updated_at?: number;
   created_at: number;
   timestamp: number;
 }
@@ -124,21 +134,21 @@ export async function GET() {
 
     // Transformar al formato esperado por el frontend
     const transformedConversations = conversations.map(conv => {
-      const sender = conv.meta?.sender || {};
-      const assignee = conv.meta?.assignee || conv.assignee || {};
+      const sender = conv.meta?.sender;
+      const assignee = conv.meta?.assignee || conv.assignee;
       
       return {
         id: conv.id.toString(),
         chatwoot_id: conv.id,
-        contact_name: sender.name || sender.email || 'Sin nombre',
-        contact_email: sender.email || null,
-        contact_phone: sender.phone_number || null,
-        contact_identifier: sender.identifier || null,
+        contact_name: sender?.name || sender?.email || conv.contact?.name || conv.contact?.email || 'Sin nombre',
+        contact_email: sender?.email || conv.contact?.email || null,
+        contact_phone: conv.contact?.phone_number || null,
+        contact_identifier: conv.contact?.identifier || null,
         status: conv.status,
         inbox_name: conv.meta?.channel || `Inbox ${conv.inbox_id}`,
         inbox_channel_type: conv.meta?.channel || 'unknown',
-        assignee_name: assignee.name || assignee.available_name || null,
-        assignee_email: assignee.email || null,
+        assignee_name: assignee?.name || assignee?.available_name || null,
+        assignee_email: assignee?.email || null,
         team_name: null,
         message_count: conv.messages?.length || 0,
         incoming_messages: conv.messages?.filter((m: any) => m.message_type === 0).length || 0,

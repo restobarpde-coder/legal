@@ -31,6 +31,9 @@ const nextConfig = {
     ],
   },
   
+  // External packages for server components
+  serverExternalPackages: ['@supabase/supabase-js'],
+  
   // Modularizar imports para reducir bundle size
   modularizeImports: {
     'lucide-react': {
