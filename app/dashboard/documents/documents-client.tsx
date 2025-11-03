@@ -146,7 +146,7 @@ const DocumentsClient = memo(function DocumentsClient() {
   // Filtrado optimizado con useMemo
   const filteredDocuments = useMemo(() => {
     const lowerSearch = searchTerm.toLowerCase()
-    return documents.filter(doc => {
+    return documents.filter((doc: Document) => {
       const matchesSearch = doc.name.toLowerCase().includes(lowerSearch) ||
                            (doc.description && doc.description.toLowerCase().includes(lowerSearch))
       const matchesType = typeFilter === "all" || doc.document_type === typeFilter
