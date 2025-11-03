@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useMemo, memo } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -33,24 +34,23 @@ interface Document {
   }
 }
 
-function getDocumentIcon(mimeType: string | null) {
+// Helper functions fuera del componente para evitar recreación
+const getDocumentIcon = (mimeType: string | null) => {
   if (!mimeType) return File
-
   if (mimeType.includes("pdf")) return FileText
   if (mimeType.includes("word")) return FileText
   if (mimeType.includes("image")) return File
   return File
 }
 
-function formatFileSize(bytes: number | null) {
+const formatFileSize = (bytes: number | null) => {
   if (!bytes) return "Desconocido"
-
   const sizes = ["Bytes", "KB", "MB", "GB"]
   const i = Math.floor(Math.log(bytes) / Math.log(1024))
   return Math.round((bytes / Math.pow(1024, i)) * 100) / 100 + " " + sizes[i]
 }
 
-function getDocumentTypeColor(type: string) {
+const getDocumentTypeColor = (type: string) => {
   switch (type) {
     case "contract":
       return "default"
@@ -67,7 +67,7 @@ function getDocumentTypeColor(type: string) {
   }
 }
 
-function getDocumentTypeLabel(type: string) {
+const getDocumentTypeLabel = (type: string) => {
   const types = {
     contract: 'Contrato',
     brief: 'Escrito',
@@ -79,36 +79,23 @@ function getDocumentTypeLabel(type: string) {
   return types[type as keyof typeof types] || type
 }
 
-export default function DocumentsClient() {
-  const [documents, setDocuments] = useState<Document[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+// Componente memoizado
+const DocumentsClient = memo(function DocumentsClient() {
   const [searchTerm, setSearchTerm] = useState("")
   const [typeFilter, setTypeFilter] = useState("all")
   const [documentViewerOpen, setDocumentViewerOpen] = useState(false)
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null)
 
-  useEffect(() => {
-    fetchDocuments()
-  }, [])
-
-  const fetchDocuments = async () => {
-    try {
+  // Usar React Query en vez de useState + useEffect
+  const { data: documents = [], isLoading, error, refetch } = useQuery({
+    queryKey: ['documents'],
+    queryFn: async () => {
       const response = await fetch('/api/documents')
-      
-      if (!response.ok) {
-        throw new Error('Error al cargar documentos')
-      }
-      
-      const data = await response.json()
-      setDocuments(data)
-    } catch (err) {
-      console.error('Error fetching documents:', err)
-      setError(err instanceof Error ? err.message : 'Error al cargar documentos')
-    } finally {
-      setLoading(false)
-    }
-  }
+      if (!response.ok) throw new Error('Error al cargar documentos')
+      return response.json()
+    },
+    staleTime: 1000 * 60 * 5, // 5 minutos
+  })
 
   const handleViewDocument = async (documentId: string) => {
     try {
@@ -156,17 +143,18 @@ export default function DocumentsClient() {
     setDocumentViewerOpen(true)
   }
 
-  // Filter documents based on search and type
-  const filteredDocuments = documents.filter(doc => {
-    const matchesSearch = doc.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         (doc.description && doc.description.toLowerCase().includes(searchTerm.toLowerCase()))
-    
-    const matchesType = typeFilter === "all" || doc.document_type === typeFilter
-    
-    return matchesSearch && matchesType
-  })
+  // Filtrado optimizado con useMemo
+  const filteredDocuments = useMemo(() => {
+    const lowerSearch = searchTerm.toLowerCase()
+    return documents.filter(doc => {
+      const matchesSearch = doc.name.toLowerCase().includes(lowerSearch) ||
+                           (doc.description && doc.description.toLowerCase().includes(lowerSearch))
+      const matchesType = typeFilter === "all" || doc.document_type === typeFilter
+      return matchesSearch && matchesType
+    })
+  }, [documents, searchTerm, typeFilter])
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-between">
@@ -195,8 +183,8 @@ export default function DocumentsClient() {
           </div>
         </div>
         <div className="text-center py-12">
-          <p className="text-red-600 mb-4">{error}</p>
-          <Button onClick={fetchDocuments}>Reintentar</Button>
+          <p className="text-red-600 mb-4">{error instanceof Error ? error.message : 'Error al cargar documentos'}</p>
+          <Button onClick={() => refetch()}>Reintentar</Button>
         </div>
       </div>
     )
@@ -357,4 +345,6 @@ export default function DocumentsClient() {
       />
     </div>
   )
-}
+})
+
+export default DocumentsClient

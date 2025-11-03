@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, memo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Plus, Search, Eye, Edit, MoreHorizontal, CheckSquare, Clock, User, Calendar, Briefcase, AlertCircle, Trash2 } from "lucide-react"
+import { Plus, Search, Eye, Edit, MoreHorizontal, CheckSquare, Clock, User, Calendar, Briefcase, AlertCircle, Trash2, Loader2 } from "lucide-react"
 import Link from "next/link"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { TaskStatusSelect, TaskStatusBadge } from '@/components/task-status-select'
@@ -14,19 +14,67 @@ import { toast } from 'sonner'
 import { format, isAfter, isBefore, isToday, isTomorrow, isPast } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { useRouter } from 'next/navigation'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { createClient } from '@/lib/supabase/client'
 
 interface TasksClientProps {
-  initialTasks: any[]
   currentUserId: string
 }
 
-export function TasksClient({ initialTasks, currentUserId }: TasksClientProps) {
-  const [tasks, setTasks] = useState(initialTasks)
+// Helper function fuera del componente
+const getPriorityBadge = (priority: string) => {
+  switch (priority) {
+    case 'urgent':
+      return <Badge variant="destructive" className="text-xs">🔴 Urgente</Badge>
+    case 'high':
+      return <Badge variant="outline" className="text-xs border-orange-500 text-orange-700">🟠 Alta</Badge>
+    case 'medium':
+      return <Badge variant="outline" className="text-xs border-yellow-500 text-yellow-700">🟡 Media</Badge>
+    case 'low':
+      return <Badge variant="outline" className="text-xs border-green-500 text-green-700">🟢 Baja</Badge>
+    default:
+      return null
+  }
+}
+
+// Componente memoizado
+export const TasksClient = memo(function TasksClient({ currentUserId }: TasksClientProps) {
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [priorityFilter, setPriorityFilter] = useState('all')
   const [assignmentFilter, setAssignmentFilter] = useState('all')
   const router = useRouter()
+  const queryClient = useQueryClient()
+  const supabase = createClient()
+
+  // Cargar tareas con React Query
+  const { data: tasks = [], isLoading } = useQuery({
+    queryKey: ['all-tasks', currentUserId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('tasks')
+        .select(`
+          *,
+          cases (
+            id,
+            title,
+            clients (name)
+          ),
+          assigned_user:users!tasks_assigned_to_fkey (
+            full_name
+          ),
+          created_user:users!tasks_created_by_fkey (
+            full_name
+          )
+        `)
+        .or(`assigned_to.eq.${currentUserId},created_by.eq.${currentUserId},assigned_to.is.null`)
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+      return data || []
+    },
+    refetchInterval: 30000, // Refrescar cada 30 segundos
+  })
 
   // Filtrar tareas
   const filteredTasks = useMemo(() => {
@@ -118,11 +166,15 @@ export function TasksClient({ initialTasks, currentUserId }: TasksClientProps) {
   }, [filteredTasks, tasksByStatus])
 
   const handleStatusChange = (taskId: string, newStatus: any) => {
-    setTasks(prevTasks => 
-      prevTasks.map(task => 
+    // Actualizar optimistamente
+    queryClient.setQueryData(['all-tasks', currentUserId], (old: any[] = []) =>
+      old.map(task => 
         task.id === taskId ? { ...task, status: newStatus } : task
       )
     )
+    // Refrescar después
+    queryClient.invalidateQueries({ queryKey: ['all-tasks', currentUserId] })
+    queryClient.invalidateQueries({ queryKey: ['user-tasks'] })
   }
 
   const handleDeleteTask = async (taskId: string, taskTitle: string) => {
@@ -140,27 +192,15 @@ export function TasksClient({ initialTasks, currentUserId }: TasksClientProps) {
       }
 
       toast.success('Tarea eliminada correctamente')
-      setTasks(prevTasks => prevTasks.filter(task => task.id !== taskId))
+      // Invalidar queries para refrescar
+      queryClient.invalidateQueries({ queryKey: ['all-tasks', currentUserId] })
+      queryClient.invalidateQueries({ queryKey: ['user-tasks'] })
     } catch (error) {
       toast.error('Error al eliminar la tarea')
       console.error(error)
     }
   }
 
-  const getPriorityBadge = (priority: string) => {
-    switch (priority) {
-      case 'urgent':
-        return <Badge variant="destructive" className="text-xs">🔴 Urgente</Badge>
-      case 'high':
-        return <Badge variant="outline" className="text-xs border-orange-500 text-orange-700">🟠 Alta</Badge>
-      case 'medium':
-        return <Badge variant="outline" className="text-xs border-yellow-500 text-yellow-700">🟡 Media</Badge>
-      case 'low':
-        return <Badge variant="outline" className="text-xs border-green-500 text-green-700">🟢 Baja</Badge>
-      default:
-        return null
-    }
-  }
 
   const getDueDateBadge = (dueDate: string) => {
     if (!dueDate) return null
@@ -178,6 +218,17 @@ export function TasksClient({ initialTasks, currentUserId }: TasksClientProps) {
     }
     
     return null
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
+          <p className="text-muted-foreground">Cargando tareas...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -432,4 +483,4 @@ export function TasksClient({ initialTasks, currentUserId }: TasksClientProps) {
       </div>
     </div>
   )
-}
+})

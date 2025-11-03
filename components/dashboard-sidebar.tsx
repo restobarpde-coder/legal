@@ -129,20 +129,19 @@ function SidebarContent({ user }: DashboardSidebarProps) {
             const isActive = isCurrentRoute(item.href)
             
             return (
-              <Button
+              <Link
                 key={item.name}
-                variant={isActive ? "secondary" : "ghost"}
-                onClick={() => navigateWithPrefetch(item.href)}
-                onMouseEnter={() => prefetchRoute(item.href)} // Prefetch al hover
-                onFocus={() => prefetchRoute(item.href)} // Prefetch al focus
+                href={item.href}
+                onMouseEnter={() => prefetchRoute(item.href)}
                 className={cn(
-                  "w-full justify-start gap-3 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-all duration-200",
+                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-all duration-75",
+                  "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                   isActive && "bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary/90"
                 )}
               >
                 <item.icon className="h-5 w-5" />
                 <span>{item.name}</span>
-              </Button>
+              </Link>
             )
           })}
         </nav>
@@ -163,7 +162,7 @@ function SidebarContent({ user }: DashboardSidebarProps) {
           <Button
             variant="ghost"
             size="sm"
-            className="w-full justify-start gap-2 text-sidebar-foreground hover:bg-sidebar-accent"
+            className="w-full justify-start gap-2 text-sidebar-foreground hover:bg-sidebar-accent transition-all duration-75"
           >
             <Settings className="h-4 w-4" />
             Configuración

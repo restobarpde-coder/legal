@@ -42,9 +42,12 @@ export async function GET(request: NextRequest) {
         priority,
         start_date,
         end_date,
+        hourly_rate,
+        counterparty_name,
+        counterparty_lawyer,
         created_at,
         client_id,
-        clients!inner (
+        clients (
           id,
           name,
           company

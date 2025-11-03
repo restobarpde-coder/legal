@@ -187,4 +187,26 @@
     outline: 2px solid rgb(var(--ring));
     outline-offset: 2px;
   }
+  
+  /* Touch and click optimizations */
+  button,
+  [role="button"],
+  [onclick] {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    user-select: none;
+  }
+  
+  /* Faster transitions for interactive elements */
+  .transition-all,
+  .transition-colors,
+  .transition-transform {
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  /* Improve scroll performance */
+  * {
+    -webkit-overflow-scrolling: touch;
+  }
 }

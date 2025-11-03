@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, memo } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -14,7 +14,8 @@ import { SuccessToast } from "./success-toast"
 import { useCases } from "@/hooks/use-cases"
 import { useSearchParams, useRouter } from 'next/navigation'
 
-function getStatusColor(status: string) {
+// Helper functions fuera del componente para evitar recreación
+const getStatusColor = (status: string) => {
   switch (status) {
     case "active":
       return "default"
@@ -29,7 +30,7 @@ function getStatusColor(status: string) {
   }
 }
 
-function getStatusLabel(status: string) {
+const getStatusLabel = (status: string) => {
   switch (status) {
     case "active":
       return "Activo"
@@ -44,7 +45,7 @@ function getStatusLabel(status: string) {
   }
 }
 
-function getPriorityColor(priority: string) {
+const getPriorityColor = (priority: string) => {
   switch (priority) {
     case "urgent":
       return "text-red-600 bg-red-50 dark:text-red-400 dark:bg-red-950"
@@ -59,7 +60,7 @@ function getPriorityColor(priority: string) {
   }
 }
 
-function getPriorityLabel(priority: string) {
+const getPriorityLabel = (priority: string) => {
   switch (priority) {
     case "urgent":
       return "Urgente"
@@ -78,7 +79,8 @@ type CasesClientProps = {
   userCanCreateCases: boolean;
 }
 
-export function CasesClient({ userCanCreateCases }: CasesClientProps) {
+// Componente memoizado para evitar re-renders innecesarios
+export const CasesClient = memo(function CasesClient({ userCanCreateCases }: CasesClientProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const queryClient = useQueryClient()
@@ -88,16 +90,16 @@ export function CasesClient({ userCanCreateCases }: CasesClientProps) {
 
   const { data: cases = [], isLoading, error } = useCases(searchQuery, statusFilter, priorityFilter)
 
+  // Optimizado: solo depender del valor que importa
+  const successParam = searchParams.get('success')
   useEffect(() => {
-    const successParam = searchParams.get('success')
     if (successParam === 'case-created' || successParam === 'case-updated') {
       queryClient.invalidateQueries({ queryKey: ['cases'] })
-      // Remove the success param from the URL without reloading the page
       const newParams = new URLSearchParams(searchParams.toString())
       newParams.delete('success')
       router.replace(`/dashboard/cases?${newParams.toString()}`, { scroll: false })
     }
-  }, [searchParams, queryClient, router])
+  }, [successParam, queryClient, router])
 
   if (isLoading) {
     return (
@@ -267,4 +269,4 @@ export function CasesClient({ userCanCreateCases }: CasesClientProps) {
       </div>
     </div>
   )
-}
+})

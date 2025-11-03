@@ -51,6 +51,8 @@ export async function createCase(
     hourly_rate: data.hourly_rate ? parseFloat(data.hourly_rate) : null,
     start_date: data.start_date && data.start_date.trim() !== '' ? data.start_date : null,
     end_date: data.end_date && data.end_date.trim() !== '' ? data.end_date : null,
+    numero_archivo: data.numero_archivo || null,
+    numero_carpeta: data.numero_carpeta || null,
     created_by: user.id
   }
 
@@ -117,6 +119,8 @@ export async function updateCase(
     hourly_rate: data.hourly_rate ? parseFloat(data.hourly_rate) : null,
     start_date: data.start_date && data.start_date.trim() !== '' ? data.start_date : null,
     end_date: data.end_date && data.end_date.trim() !== '' ? data.end_date : null,
+    numero_archivo: data.numero_archivo || null,
+    numero_carpeta: data.numero_carpeta || null,
   }
 
   const { error } = await supabase

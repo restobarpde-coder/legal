@@ -56,11 +56,11 @@ export function useOptimizedNavigation() {
     })
   }, [router, pathname, startTransition])
 
-  // Navegación con prefetch automático
+  // Navegación con prefetch automático - SIN delay
   const navigateWithPrefetch = useCallback((href: string, options?: { replace?: boolean }) => {
     prefetchRoute(href)
-    // Pequeño delay para permitir el prefetch
-    setTimeout(() => navigate(href, options), 50)
+    // Navegar inmediatamente, el prefetch ya se hizo en hover/focus
+    navigate(href, options)
   }, [navigate, prefetchRoute])
 
   return {

@@ -1,6 +1,8 @@
 'use client'
 
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect } from 'react'
+import { createClient } from '@/lib/supabase/client'
 
 export type CaseDetails = {
   caseData: {
@@ -96,6 +98,91 @@ export type CaseDetails = {
 
 // Fetch full case details
 export function useCaseDetails(caseId: string) {
+  const queryClient = useQueryClient()
+  const supabase = createClient()
+  
+  // Set up real-time subscriptions for instant updates
+  useEffect(() => {
+    if (!caseId) return
+
+    // Subscribe to changes in tasks
+    const tasksChannel = supabase
+      .channel(`tasks-${caseId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'tasks',
+          filter: `case_id=eq.${caseId}`,
+        },
+        () => {
+          // Invalidate the case query to trigger a refetch
+          queryClient.invalidateQueries({ queryKey: ['case', caseId] })
+        }
+      )
+      .subscribe()
+
+    // Subscribe to changes in documents
+    const documentsChannel = supabase
+      .channel(`documents-${caseId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'documents',
+          filter: `case_id=eq.${caseId}`,
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['case', caseId] })
+        }
+      )
+      .subscribe()
+
+    // Subscribe to changes in notes
+    const notesChannel = supabase
+      .channel(`notes-${caseId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'notes',
+          filter: `case_id=eq.${caseId}`,
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['case', caseId] })
+        }
+      )
+      .subscribe()
+
+    // Subscribe to changes in time entries
+    const timeEntriesChannel = supabase
+      .channel(`time-entries-${caseId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'time_entries',
+          filter: `case_id=eq.${caseId}`,
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['case', caseId] })
+        }
+      )
+      .subscribe()
+
+    // Cleanup subscriptions on unmount
+    return () => {
+      supabase.removeChannel(tasksChannel)
+      supabase.removeChannel(documentsChannel)
+      supabase.removeChannel(notesChannel)
+      supabase.removeChannel(timeEntriesChannel)
+    }
+  }, [caseId, queryClient, supabase])
+  
   return useQuery({
     queryKey: ['case', caseId],
     queryFn: async (): Promise<CaseDetails> => {
@@ -107,6 +194,7 @@ export function useCaseDetails(caseId: string) {
     },
     enabled: !!caseId,
     refetchOnWindowFocus: true,
-    refetchInterval: 30000, // Refetch every 30 seconds for real-time updates
+    refetchInterval: 30000, // Keep as fallback, but realtime will update instantly
+    staleTime: 0, // Always consider data stale for immediate updates
   })
 }

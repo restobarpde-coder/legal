@@ -5,8 +5,11 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { caseSchema, type CaseFormState } from './validation'
 import { useActionState } from 'react'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
+import { createClientInline } from '../clients/actions'
+import { ClientForm } from '../clients/client-form'
+import type { ClientFormState } from '../clients/validation'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -14,8 +17,12 @@ import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Loader2 } from 'lucide-react'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Loader2, Check, ChevronsUpDown, Plus } from 'lucide-react'
 import Link from 'next/link'
+import { cn } from '@/lib/utils'
 
 type Client = {
   id: string
@@ -30,8 +37,11 @@ type CaseFormProps = {
   preselectedClientId?: string
 }
 
-export function CaseForm({ case: caseData, clients, formAction, preselectedClientId }: CaseFormProps) {
+export function CaseForm({ case: caseData, clients: initialClients, formAction, preselectedClientId }: CaseFormProps) {
   const [state, dispatch] = useActionState(formAction, { message: '', errors: {} })
+  const [clients, setClients] = useState<Client[]>(initialClients)
+  const [openClientSelect, setOpenClientSelect] = useState(false)
+  const [openNewClientDialog, setOpenNewClientDialog] = useState(false)
 
   const {
     register,
@@ -55,6 +65,8 @@ export function CaseForm({ case: caseData, clients, formAction, preselectedClien
   const watchedClientId = watch('client_id')
   const watchedStatus = watch('status')
   const watchedPriority = watch('priority')
+  const watchedNumeroArchivo = watch('numero_archivo')
+  const watchedNumeroCarpeta = watch('numero_carpeta')
 
   useEffect(() => {
     if (state.message) {
@@ -69,6 +81,24 @@ export function CaseForm({ case: caseData, clients, formAction, preselectedClien
       }
     }
   }, [state])
+
+  const handleCreateClientInline = async (prevState: ClientFormState, formData: FormData): Promise<ClientFormState> => {
+    const name = formData.get('name') as string
+    const email = formData.get('email') as string
+    const company = formData.get('company') as string
+
+    const result = await createClientInline(name, email, company)
+
+    if (result.success && result.client) {
+      setClients([...clients, result.client])
+      setValue('client_id', result.client.id)
+      setOpenNewClientDialog(false)
+      toast.success('Cliente creado exitosamente')
+      return { message: '' }
+    } else {
+      return { message: result.message || 'Error al crear el cliente' }
+    }
+  }
 
   const serverErrors = state.errors
 
@@ -95,21 +125,77 @@ export function CaseForm({ case: caseData, clients, formAction, preselectedClien
             </div>
             <div className="space-y-2">
               <Label htmlFor="client_id">Cliente*</Label>
-              <Select
-                value={watchedClientId}
-                onValueChange={(value) => setValue('client_id', value)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar cliente" />
-                </SelectTrigger>
-                <SelectContent>
-                  {clients.map((client) => (
-                    <SelectItem key={client.id} value={client.id}>
-                      {client.name} {client.company && `(${client.company})`}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex gap-2 items-start">
+                <div className="flex-1">
+                  <Popover open={openClientSelect} onOpenChange={setOpenClientSelect}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={openClientSelect}
+                        className="w-full justify-between"
+                      >
+                        {watchedClientId
+                          ? clients.find((client) => client.id === watchedClientId)?.name +
+                            (clients.find((client) => client.id === watchedClientId)?.company
+                              ? ` (${clients.find((client) => client.id === watchedClientId)?.company})`
+                              : '')
+                          : "Seleccionar cliente..."}
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[400px] p-0" align="start">
+                      <Command>
+                        <CommandInput placeholder="Buscar cliente..." />
+                        <CommandList>
+                          <CommandEmpty>No se encontró ningún cliente.</CommandEmpty>
+                          <CommandGroup>
+                            {clients.map((client) => (
+                              <CommandItem
+                                key={client.id}
+                                value={`${client.name} ${client.company || ''}`}
+                                onSelect={() => {
+                                  setValue('client_id', client.id)
+                                  setOpenClientSelect(false)
+                                }}
+                              >
+                                <Check
+                                  className={cn(
+                                    "mr-2 h-4 w-4",
+                                    watchedClientId === client.id ? "opacity-100" : "opacity-0"
+                                  )}
+                                />
+                                {client.name} {client.company && `(${client.company})`}
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                <Dialog open={openNewClientDialog} onOpenChange={setOpenNewClientDialog}>
+                  <DialogTrigger asChild>
+                    <Button type="button" variant="outline" size="icon" className="shrink-0">
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Crear Nuevo Cliente</DialogTitle>
+                      <DialogDescription>
+                        Crea un nuevo cliente para asignarlo a este caso.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <ClientForm
+                      formAction={handleCreateClientInline}
+                      inline={true}
+                      onCancel={() => setOpenNewClientDialog(false)}
+                    />
+                  </DialogContent>
+                </Dialog>
+              </div>
               <input type="hidden" {...register('client_id')} />
               {(formErrors.client_id || serverErrors?.client_id) && (
                 <p className="text-sm text-red-500">
@@ -279,6 +365,43 @@ export function CaseForm({ case: caseData, clients, formAction, preselectedClien
               )}
             </div>
           </div>
+
+          {/* Número de Carpeta - Siempre visible */}
+          <div className="space-y-2">
+            <Label htmlFor="numero_carpeta">Número de Carpeta</Label>
+            <Input 
+              id="numero_carpeta" 
+              {...register('numero_carpeta')} 
+              placeholder="Ej: EST-A-15"
+            />
+            {(formErrors.numero_carpeta || serverErrors?.numero_carpeta) && (
+              <p className="text-sm text-red-500">
+                {String(formErrors.numero_carpeta?.message || '') || serverErrors?.numero_carpeta?.[0]}
+              </p>
+            )}
+          </div>
+
+          {/* Número de Archivo - Solo si el estado es 'archived' */}
+          {watchedStatus === 'archived' && (
+            <div className="border-t pt-6 mt-2">
+              <h3 className="text-lg font-semibold mb-4 text-muted-foreground">
+                Información de Archivo
+              </h3>
+              <div className="space-y-2">
+                <Label htmlFor="numero_archivo">Número de Archivo</Label>
+                <Input 
+                  id="numero_archivo" 
+                  {...register('numero_archivo')} 
+                  placeholder="Ej: ARC-2024-001"
+                />
+                {(formErrors.numero_archivo || serverErrors?.numero_archivo) && (
+                  <p className="text-sm text-red-500">
+                    {String(formErrors.numero_archivo?.message || '') || serverErrors?.numero_archivo?.[0]}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
         </CardContent>
         <CardFooter className="flex justify-end gap-2">
           <Button variant="ghost" asChild>

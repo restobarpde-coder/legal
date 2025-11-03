@@ -75,6 +75,10 @@ export function useCreateTask() {
       
       // If we're on the cases list, invalidate that too
       queryClient.invalidateQueries({ queryKey: ['cases'] })
+      
+      // Invalidar queries de calendario y lista de tareas
+      queryClient.invalidateQueries({ queryKey: ['user-tasks'] })
+      queryClient.invalidateQueries({ queryKey: ['all-tasks'] })
     },
   })
 }
@@ -105,6 +109,10 @@ export function useDeleteTask() {
       
       // If we're on the cases list, invalidate that too
       queryClient.invalidateQueries({ queryKey: ['cases'] })
+      
+      // Invalidar queries de calendario y lista de tareas
+      queryClient.invalidateQueries({ queryKey: ['user-tasks'] })
+      queryClient.invalidateQueries({ queryKey: ['all-tasks'] })
     },
   })
 }
@@ -147,6 +155,10 @@ export function useUpdateTask() {
       
       // If we're on the cases list, invalidate that too
       queryClient.invalidateQueries({ queryKey: ['cases'] })
+      
+      // Invalidar queries de calendario y lista de tareas
+      queryClient.invalidateQueries({ queryKey: ['user-tasks'] })
+      queryClient.invalidateQueries({ queryKey: ['all-tasks'] })
     },
   })
 }

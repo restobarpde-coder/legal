@@ -32,6 +32,8 @@ export const caseSchema = z.object({
   hourly_rate: z.string().optional().refine(isValidOptionalRate, { 
     message: 'La tarifa debe ser un número válido.' 
   }),
+  numero_archivo: z.string().optional(),
+  numero_carpeta: z.string().optional(),
 })
 
 export type CaseFormState = {

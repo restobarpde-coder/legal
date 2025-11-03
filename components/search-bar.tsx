@@ -38,9 +38,13 @@ export function SearchBar({ placeholder, value, onChange }: SearchBarProps) {
             <Input
                 type="search"
                 placeholder={placeholder}
-                onChange={(e) => handleSearch(e.target.value)}
-                value={value}
-                defaultValue={value === undefined ? searchParams.get("q")?.toString() : undefined}
+                onChange={(e) => {
+                    if (onChange) {
+                        onChange(e.target.value)
+                    }
+                    handleSearch(e.target.value)
+                }}
+                value={value ?? searchParams.get("q")?.toString() ?? ""}
                 className="pl-9 w-full"
             />
         </div>

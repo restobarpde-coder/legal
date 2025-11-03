@@ -26,7 +26,7 @@ export default async function DashboardLayout({
       {/* Main content */}
       <div className="lg:pl-64">
         <DashboardHeader user={profile} />
-        <main className="p-4 sm:p-5 md:p-6 lg:p-8 xl:p-10">{children}</main>
+        <main className="p-2 sm:p-3 md:p-4 lg:p-5">{children}</main>
       </div>
     </div>
   )

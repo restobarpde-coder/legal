@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { TaskCalendar } from '@/components/task-calendar'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Loader2 } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { useEffect, useState, useTransition } from 'react'
 
 interface User {
   id: string
@@ -14,63 +15,64 @@ interface User {
 }
 
 export default function CalendarPage() {
-  const [tasks, setTasks] = useState<any[]>([])
-  const [users, setUsers] = useState<User[]>([])
-  const [currentUser, setCurrentUser] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
   const router = useRouter()
   const supabase = createClient()
+  const [currentUser, setCurrentUser] = useState<any>(null)
+  const [isPending, startTransition] = useTransition()
 
+  // Obtener usuario actual
   useEffect(() => {
-    loadData()
-  }, [])
-
-  const loadData = async () => {
-    try {
-      // Obtener usuario actual
+    const getUser = async () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
         router.push('/login')
         return
       }
       setCurrentUser(user)
+    }
+    getUser()
+  }, [])
 
-      // Cargar tareas del usuario
-      const tasksResponse = await fetch('/api/tasks/user')
-      if (!tasksResponse.ok) {
-        const errorData = await tasksResponse.json().catch(() => ({}))
-        console.error('Error response:', errorData)
+  // Cargar tareas con React Query
+  const { data: tasks = [], isLoading: tasksLoading } = useQuery({
+    queryKey: ['user-tasks'],
+    queryFn: async () => {
+      const response = await fetch('/api/tasks/user')
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
         throw new Error(errorData.error || 'Error al cargar las tareas')
       }
-      const tasksData = await tasksResponse.json()
-      console.log('Tasks loaded:', tasksData.length, 'tasks')
-      setTasks(tasksData)
+      return response.json()
+    },
+    enabled: !!currentUser,
+    refetchInterval: 30000, // Refrescar cada 30 segundos
+  })
 
-      // Cargar lista de usuarios para el filtro
-      const { data: usersData, error: usersError } = await supabase
+  // Cargar usuarios con React Query
+  const { data: users = [], isLoading: usersLoading } = useQuery({
+    queryKey: ['users-list'],
+    queryFn: async () => {
+      const { data, error } = await supabase
         .from('users')
         .select('id, full_name, email')
         .order('full_name')
 
-      if (usersError) {
-        console.error('Error loading users:', usersError)
-      } else {
-        setUsers(usersData || [])
-      }
-    } catch (error) {
-      console.error('Error loading calendar data:', error)
-      toast.error('Error al cargar el calendario')
-    } finally {
-      setLoading(false)
+      if (error) throw error
+      return data || []
+    },
+    enabled: !!currentUser,
+  })
+
+  const handleTaskClick = (task: any) => {
+    // Navegar al caso de la tarea inmediatamente
+    if (task.case_id) {
+      startTransition(() => {
+        router.push(`/dashboard/cases/${task.case_id}`)
+      })
     }
   }
 
-  const handleTaskClick = (task: any) => {
-    // Navegar al caso de la tarea
-    if (task.case_id) {
-      router.push(`/dashboard/cases/${task.case_id}`)
-    }
-  }
+  const loading = tasksLoading || usersLoading || !currentUser
 
   if (loading) {
     return (
@@ -84,7 +86,7 @@ export default function CalendarPage() {
   }
 
   return (
-    <div className="container mx-auto py-6 px-4">
+    <div className="container mx-auto">
       <TaskCalendar
         tasks={tasks}
         currentUserId={currentUser?.id || ''}

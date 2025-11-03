@@ -48,6 +48,64 @@ export async function createClientAction(
     redirect('/dashboard/clients')
 }
 
+export async function createClientInline(
+    name: string,
+    email?: string,
+    company?: string
+): Promise<{ success: boolean; client?: any; message?: string }> {
+    try {
+        const user = await requireAuth()
+        const supabase = await createClient()
+
+        const validatedFields = clientSchema.safeParse({
+            name,
+            email: email || '',
+            company: company || '',
+        })
+
+        if (!validatedFields.success) {
+            return {
+                success: false,
+                message: 'Por favor, corrige los errores en el formulario.',
+            }
+        }
+
+        const clientData = {
+            name: validatedFields.data.name,
+            email: validatedFields.data.email || null,
+            phone: null,
+            address: null,
+            company: validatedFields.data.company || null,
+            notes: null,
+            created_by: user.id
+        }
+
+        const { data, error } = await supabase
+            .from('clients')
+            .insert(clientData)
+            .select('id, name, company')
+            .single()
+
+        if (error) {
+            console.error('Create client inline error:', error)
+            return {
+                success: false,
+                message: 'Error en la base de datos: No se pudo crear el cliente.'
+            }
+        }
+
+        revalidatePath('/dashboard/clients')
+        revalidatePath('/dashboard/cases/new')
+        return { success: true, client: data }
+    } catch (error) {
+        console.error('Create client inline unexpected error:', error)
+        return {
+            success: false,
+            message: 'Error inesperado al crear el cliente.'
+        }
+    }
+}
+
 export async function updateClient(
     clientId: string,
     prevState: ClientFormState,
