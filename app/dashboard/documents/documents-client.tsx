@@ -267,7 +267,7 @@ const DocumentsClient = memo(function DocumentsClient() {
             </CardContent>
           </Card>
         ) : (
-          filteredDocuments.map((document) => {
+          filteredDocuments.map((document: Document) => {
             const IconComponent = getDocumentIcon(document.mime_type)
             return (
               <Card key={document.id} className="hover:shadow-md transition-shadow">
