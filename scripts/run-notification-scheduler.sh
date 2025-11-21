@@ -37,4 +37,5 @@ fi
 
 echo ""
 echo "💡 Para ejecutar automáticamente cada 5 minutos, agrega este cron job:"
-echo "   */5 * * * * /ruta/al/proyecto/scripts/run-notification-scheduler.sh >> /var/log/notification-scheduler.log 2>&1"
+echo "   0 0 * * * /ruta/al/proyecto/scripts/run-notification-scheduler.sh >> /var/log/notification-scheduler.log 2>&1"
+echo "   # Note: For Vercel Hobby accounts, cron jobs are limited to once a day. The schedule '0 0 * * *' runs daily at midnight."

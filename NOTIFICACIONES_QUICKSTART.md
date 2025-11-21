@@ -83,7 +83,8 @@ Para que las notificaciones se envíen automáticamente cada 5 minutos:
 crontab -e
 
 # Agregar esta línea (ajustar la ruta)
-*/5 * * * * /home/fran/Documents/DTE/DEV/Centro\ de\ Asesoramiento/legal-studio-app/scripts/run-notification-scheduler.sh >> /tmp/notification-scheduler.log 2>&1
+0 0 * * * /home/fran/Documents/DTE/DEV/Centro\ de\ Asesoramiento/legal-studio-app/scripts/run-notification-scheduler.sh >> /tmp/notification-scheduler.log 2>&1
+Note: For Vercel Hobby accounts, cron jobs are limited to once a day. The schedule '0 0 * * *' runs daily at midnight.
 ```
 
 ## Visualización en el Header
