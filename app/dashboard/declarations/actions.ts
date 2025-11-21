@@ -170,7 +170,12 @@ export async function getCasesForSelection() {
       return []
     }
 
-    return cases || []
+    // Transform the data to match the expected type (clients as single object, not array)
+    return (cases || []).map(c => ({
+      id: c.id,
+      title: c.title,
+      clients: Array.isArray(c.clients) && c.clients.length > 0 ? c.clients[0] : null
+    }))
   } catch (error) {
     console.error('Error in getCasesForSelection:', error)
     return []
