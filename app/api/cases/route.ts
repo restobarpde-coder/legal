@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
 
     // Apply search filter
     if (searchQuery) {
-      query = query.or(`title.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%`)
+      query = query.or(`title.ilike.*${searchQuery}*,description.ilike.*${searchQuery}*`)
     }
 
     // Apply status filter

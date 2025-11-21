@@ -69,6 +69,11 @@ const navigation = [
     icon: MessageSquare,
   },
   {
+    name: "Chat Webhook",
+    href: "/dashboard/chat-webhook",
+    icon: MessageSquare,
+  },
+  {
     name: "Declaraciones",
     href: "/dashboard/declarations",
     icon: Mic,
