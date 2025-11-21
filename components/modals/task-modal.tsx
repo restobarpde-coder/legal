@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2 } from "lucide-react"
 import { toast } from "sonner"
-import { useCreateTask } from "@/hooks/use-tasks"
+import { useCreateTask, useUpdateTask } from "@/hooks/use-tasks"
 import { createClient } from "@/lib/supabase/client"
 
 interface User {
@@ -22,27 +22,65 @@ interface User {
 interface TaskModalProps {
   isOpen: boolean
   onClose: () => void
-  caseId: string
+  caseId?: string
   onSuccess?: () => void
+  taskToEdit?: any
+  initialDate?: Date | null
 }
 
-export function TaskModal({ isOpen, onClose, caseId, onSuccess }: TaskModalProps) {
+export function TaskModal({ isOpen, onClose, caseId, onSuccess, taskToEdit, initialDate }: TaskModalProps) {
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
   const [assignedTo, setAssignedTo] = useState("")
   const [priority, setPriority] = useState<"low" | "medium" | "high" | "urgent">("medium")
   const [status, setStatus] = useState<"pending" | "in_progress" | "completed" | "cancelled">("pending")
   const [dueDate, setDueDate] = useState("")
+  const [selectedCaseId, setSelectedCaseId] = useState(caseId || "")
   const [users, setUsers] = useState<User[]>([])
+  const [cases, setCases] = useState<any[]>([])
   const supabase = createClient()
-  
+
   const createTaskMutation = useCreateTask()
+  const updateTaskMutation = useUpdateTask()
 
   useEffect(() => {
     if (isOpen) {
       fetchUsers()
+      if (!caseId) {
+        fetchCases()
+      }
+
+      if (taskToEdit) {
+        setTitle(taskToEdit.title)
+        setDescription(taskToEdit.description || "")
+        setAssignedTo(taskToEdit.assigned_to || "none")
+        setPriority(taskToEdit.priority)
+        setStatus(taskToEdit.status)
+        setDueDate(taskToEdit.due_date ? new Date(taskToEdit.due_date).toISOString().slice(0, 16) : "")
+        setSelectedCaseId(taskToEdit.case_id)
+      } else {
+        // Reset form for new task
+        setTitle("")
+        setDescription("")
+        setAssignedTo("")
+        setPriority("medium")
+        setStatus("pending")
+        // Set initial date if provided, otherwise empty
+        if (initialDate) {
+          // Set time to 09:00 by default for clicked dates
+          const date = new Date(initialDate)
+          date.setHours(9, 0, 0, 0)
+          // Adjust for timezone offset to show correct local time in input
+          const offset = date.getTimezoneOffset() * 60000
+          const localISOTime = (new Date(date.getTime() - offset)).toISOString().slice(0, 16)
+          setDueDate(localISOTime)
+        } else {
+          setDueDate("")
+        }
+        setSelectedCaseId(caseId || "")
+      }
     }
-  }, [isOpen])
+  }, [isOpen, taskToEdit, caseId, initialDate])
 
   const fetchUsers = async () => {
     const { data, error } = await supabase
@@ -57,6 +95,20 @@ export function TaskModal({ isOpen, onClose, caseId, onSuccess }: TaskModalProps
     }
   }
 
+  const fetchCases = async () => {
+    const { data, error } = await supabase
+      .from("cases")
+      .select("id, title, case_number")
+      .neq('status', 'closed') // Only active cases
+      .order("title")
+
+    if (error) {
+      console.error("Error fetching cases:", error)
+    } else {
+      setCases(data || [])
+    }
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!title.trim()) {
@@ -64,42 +116,73 @@ export function TaskModal({ isOpen, onClose, caseId, onSuccess }: TaskModalProps
       return
     }
 
-    createTaskMutation.mutate(
-      {
-        caseId,
-        title: title.trim(),
-        description: description.trim() || undefined,
-        priority,
-        status,
-        dueDate: dueDate || undefined,
-      },
-      {
-        onSuccess: () => {
-          toast.success("Tarea creada exitosamente")
-          
-          // Reset form
-          setTitle("")
-          setDescription("")
-          setAssignedTo("")
-          setPriority("medium")
-          setStatus("pending")
-          setDueDate("")
-          
-          // Close modal
-          onClose()
-          if (onSuccess) {
-            onSuccess()
+    if (!selectedCaseId) {
+      toast.error("Debes seleccionar un caso")
+      return
+    }
+
+    const commonData = {
+      title: title.trim(),
+      description: description.trim() || undefined,
+      priority,
+      status,
+      dueDate: dueDate || undefined,
+      assignedTo: assignedTo === "none" ? null : assignedTo,
+    }
+
+    if (taskToEdit) {
+      updateTaskMutation.mutate(
+        {
+          caseId: taskToEdit.case_id,
+          taskId: taskToEdit.id,
+          updates: {
+            title: commonData.title,
+            description: commonData.description,
+            priority: commonData.priority,
+            status: commonData.status,
+            due_date: commonData.dueDate,
+            assigned_to: commonData.assignedTo,
           }
         },
-        onError: (error) => {
-          toast.error(error.message || "Error al crear la tarea")
+        {
+          onSuccess: () => {
+            toast.success("Tarea actualizada exitosamente")
+            onClose()
+            if (onSuccess) onSuccess()
+          },
+          onError: (error) => {
+            toast.error(error.message || "Error al actualizar la tarea")
+          }
+        }
+      )
+    } else {
+      createTaskMutation.mutate(
+        {
+          caseId: selectedCaseId,
+          ...commonData
         },
-      }
-    )
+        {
+          onSuccess: () => {
+            toast.success("Tarea creada exitosamente")
+            setTitle("")
+            setDescription("")
+            setAssignedTo("")
+            setPriority("medium")
+            setStatus("pending")
+            setDueDate("")
+            onClose()
+            if (onSuccess) onSuccess()
+          },
+          onError: (error) => {
+            toast.error(error.message || "Error al crear la tarea")
+          },
+        }
+      )
+    }
   }
 
   const handleClose = () => {
-    if (!createTaskMutation.isPending) {
+    if (!createTaskMutation.isPending && !updateTaskMutation.isPending) {
       setTitle("")
       setDescription("")
       setAssignedTo("")
@@ -110,19 +193,44 @@ export function TaskModal({ isOpen, onClose, caseId, onSuccess }: TaskModalProps
     }
   }
 
+  const isPending = createTaskMutation.isPending || updateTaskMutation.isPending
+
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} title="Nueva Tarea" description="Crea una nueva tarea para el caso">
+    <Modal
+      isOpen={isOpen}
+      onClose={handleClose}
+      title={taskToEdit ? "Editar Tarea" : "Nueva Tarea"}
+      description={taskToEdit ? "Modifica los detalles de la tarea" : "Crea una nueva tarea para el caso"}
+    >
       <div className="sm:max-w-2xl">
         <form onSubmit={handleSubmit} className="space-y-4">
-          {createTaskMutation.error && (
+          {(createTaskMutation.error || updateTaskMutation.error) && (
             <Alert variant="destructive">
               <AlertDescription>
-                {createTaskMutation.error.message || "Error al crear la tarea"}
+                {(createTaskMutation.error || updateTaskMutation.error)?.message || "Error al guardar la tarea"}
               </AlertDescription>
             </Alert>
           )}
 
           <div className="grid grid-cols-2 gap-4">
+            {!caseId && !taskToEdit && (
+              <div className="col-span-2 space-y-2">
+                <Label htmlFor="case">Caso *</Label>
+                <Select value={selectedCaseId} onValueChange={setSelectedCaseId} disabled={isPending}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecciona un caso" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {cases.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.case_number} - {c.title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
             <div className="col-span-2 space-y-2">
               <Label htmlFor="title">Título *</Label>
               <Input
@@ -131,7 +239,7 @@ export function TaskModal({ isOpen, onClose, caseId, onSuccess }: TaskModalProps
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="Título de la tarea"
                 required
-                disabled={createTaskMutation.isPending}
+                disabled={isPending}
               />
             </div>
 
@@ -143,13 +251,13 @@ export function TaskModal({ isOpen, onClose, caseId, onSuccess }: TaskModalProps
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Describe los detalles de la tarea..."
                 rows={3}
-                disabled={createTaskMutation.isPending}
+                disabled={isPending}
               />
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="assignedTo">Asignar a</Label>
-              <Select value={assignedTo} onValueChange={setAssignedTo} disabled={createTaskMutation.isPending}>
+              <Select value={assignedTo} onValueChange={setAssignedTo} disabled={isPending}>
                 <SelectTrigger>
                   <SelectValue placeholder="Selecciona un usuario" />
                 </SelectTrigger>
@@ -166,10 +274,10 @@ export function TaskModal({ isOpen, onClose, caseId, onSuccess }: TaskModalProps
 
             <div className="space-y-2">
               <Label htmlFor="priority">Prioridad</Label>
-              <Select 
-                value={priority} 
+              <Select
+                value={priority}
                 onValueChange={(value) => setPriority(value as any)}
-                disabled={createTaskMutation.isPending}
+                disabled={isPending}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -184,11 +292,11 @@ export function TaskModal({ isOpen, onClose, caseId, onSuccess }: TaskModalProps
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="status">Estado Inicial</Label>
-              <Select 
-                value={status} 
+              <Label htmlFor="status">Estado</Label>
+              <Select
+                value={status}
                 onValueChange={(value) => setStatus(value as any)}
-                disabled={createTaskMutation.isPending}
+                disabled={isPending}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -209,27 +317,27 @@ export function TaskModal({ isOpen, onClose, caseId, onSuccess }: TaskModalProps
                 type="datetime-local"
                 value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}
-                disabled={createTaskMutation.isPending}
+                disabled={isPending}
               />
             </div>
           </div>
 
           <div className="flex gap-3 pt-4">
-            <Button type="submit" disabled={createTaskMutation.isPending || !title.trim()}>
-              {createTaskMutation.isPending ? (
+            <Button type="submit" disabled={isPending || !title.trim() || (!selectedCaseId && !taskToEdit)}>
+              {isPending ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Creando...
+                  Guardando...
                 </>
               ) : (
-                "Crear Tarea"
+                taskToEdit ? "Actualizar Tarea" : "Crear Tarea"
               )}
             </Button>
-            <Button 
-              type="button" 
-              variant="outline" 
-              onClick={handleClose} 
-              disabled={createTaskMutation.isPending}
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleClose}
+              disabled={isPending}
             >
               Cancelar
             </Button>

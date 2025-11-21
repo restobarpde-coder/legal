@@ -12,15 +12,15 @@ export async function POST(request: NextRequest) {
     const isVercelCron = request.headers.get('user-agent')?.includes('vercel-cron')
     const authHeader = request.headers.get('authorization')
     const cronSecret = process.env.CRON_SECRET || 'your-secret-key'
-    
+
     // Permitir llamadas de Vercel Cron sin autenticación, o con Bearer token
     if (!isVercelCron && authHeader !== `Bearer ${cronSecret}`) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
     // Ejecutar el scheduler
-    const result = await checkAndSendNotifications(sendNotificationToUser)
-    
+    const result = await checkAndSendNotifications()
+
     return NextResponse.json({
       success: true,
       message: `Revisadas ${result.total} tareas, enviadas ${result.sent} notificaciones`,

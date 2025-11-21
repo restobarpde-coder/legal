@@ -1,24 +1,20 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { TaskCalendar } from '@/components/task-calendar'
+import { InteractiveCalendar } from '@/components/interactive-calendar'
+import { TaskModal } from '@/components/modals/task-modal'
 import { createClient } from '@/lib/supabase/client'
-import { toast } from 'sonner'
 import { Loader2 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
-import { useEffect, useState, useTransition } from 'react'
-
-interface User {
-  id: string
-  full_name: string
-  email: string
-}
+import { useEffect, useState } from 'react'
 
 export default function CalendarPage() {
   const router = useRouter()
   const supabase = createClient()
   const [currentUser, setCurrentUser] = useState<any>(null)
-  const [isPending, startTransition] = useTransition()
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [selectedTask, setSelectedTask] = useState<any>(null)
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null)
 
   // Obtener usuario actual
   useEffect(() => {
@@ -34,7 +30,7 @@ export default function CalendarPage() {
   }, [])
 
   // Cargar tareas con React Query
-  const { data: tasks = [], isLoading: tasksLoading } = useQuery({
+  const { data: tasks = [], isLoading: tasksLoading, refetch } = useQuery({
     queryKey: ['user-tasks'],
     queryFn: async () => {
       const response = await fetch('/api/tasks/user')
@@ -48,31 +44,29 @@ export default function CalendarPage() {
     refetchInterval: 30000, // Refrescar cada 30 segundos
   })
 
-  // Cargar usuarios con React Query
-  const { data: users = [], isLoading: usersLoading } = useQuery({
-    queryKey: ['users-list'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('users')
-        .select('id, full_name, email')
-        .order('full_name')
-
-      if (error) throw error
-      return data || []
-    },
-    enabled: !!currentUser,
-  })
-
   const handleTaskClick = (task: any) => {
-    // Navegar al caso de la tarea inmediatamente
-    if (task.case_id) {
-      startTransition(() => {
-        router.push(`/dashboard/cases/${task.case_id}`)
-      })
-    }
+    setSelectedTask(task)
+    setSelectedDate(null)
+    setIsModalOpen(true)
   }
 
-  const loading = tasksLoading || usersLoading || !currentUser
+  const handleDateClick = (date: Date) => {
+    setSelectedTask(null)
+    setSelectedDate(date)
+    setIsModalOpen(true)
+  }
+
+  const handleModalClose = () => {
+    setIsModalOpen(false)
+    setSelectedTask(null)
+    setSelectedDate(null)
+  }
+
+  const handleSuccess = () => {
+    refetch()
+  }
+
+  const loading = tasksLoading || !currentUser
 
   if (loading) {
     return (
@@ -86,12 +80,20 @@ export default function CalendarPage() {
   }
 
   return (
-    <div className="container mx-auto">
-      <TaskCalendar
+    <div className="container mx-auto p-4">
+      <InteractiveCalendar
         tasks={tasks}
-        currentUserId={currentUser?.id || ''}
-        users={users}
         onTaskClick={handleTaskClick}
+        onDateClick={handleDateClick}
+      />
+
+      <TaskModal
+        isOpen={isModalOpen}
+        onClose={handleModalClose}
+        caseId={selectedTask?.case_id || ''}
+        taskToEdit={selectedTask}
+        initialDate={selectedDate}
+        onSuccess={handleSuccess}
       />
     </div>
   )

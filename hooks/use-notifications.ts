@@ -1,20 +1,22 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { createClient } from '@/lib/supabase/client'
+import { useRouter } from 'next/navigation'
 
 export type Notification = {
-  id: string // Notifications from DB will always have an ID
-  user_id?: string // Optional, as it's the current user
-  type: string // Can be any string from the database for now
+  id: string
+  user_id?: string
+  type: string
   title: string
   message?: string
-  createdAt: string
-  readAt?: string | null // ISO string date
-  dismissedAt?: string | null // ISO string date
+  created_at: string
+  read_at?: string | null
+  dismissed_at?: string | null
   // Related entity details
-  caseId?: string | null
-  taskId?: string | null
-  // Additional fields from stream that might not be in DB for initial load
+  case_id?: string | null
+  task_id?: string | null
+  // Additional fields mapped from metadata or joins
   taskTitle?: string
   taskDescription?: string | null
   priority?: 'low' | 'medium' | 'high' | 'urgent'
@@ -22,184 +24,151 @@ export type Notification = {
   urgencyLevel?: 'critical' | 'high' | 'medium' | 'low'
 }
 
-// Hook para notificaciones en tiempo real con SSE
 export function useNotifications() {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
   const [isConnected, setIsConnected] = useState(false)
+  const supabase = createClient()
+  const router = useRouter()
 
   useEffect(() => {
-    let eventSource: EventSource | null = null
-    let reconnectTimeout: NodeJS.Timeout
+    let channel: any
 
-    const connect = () => {
+    const setupRealtime = async () => {
       try {
-        // Conectar al stream SSE
-        eventSource = new EventSource('/api/notifications/stream')
+        const { data: { user } } = await supabase.auth.getUser()
 
-        eventSource.onopen = () => {
-          console.log('🔔 Conectado al servidor de notificaciones')
-          setIsConnected(true)
+        if (!user) {
           setIsLoading(false)
-          setError(null)
+          return
         }
 
-        eventSource.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data) as Notification;
+        // Load initial notifications
+        const { data: initialData, error: initialError } = await supabase
+          .from('notifications')
+          .select('*')
+          .eq('user_id', user.id)
+          .is('dismissed_at', null)
+          .order('created_at', { ascending: false })
+          .limit(50)
 
-            // Ignore pings and connection messages
-            if (data.type === 'ping' || data.type === 'connected') {
-              return;
-            }
+        if (initialError) throw initialError
 
-            // Update local state with the new notification
-            setNotifications(prev => {
-              // Check if notification with the same ID already exists (e.g., an update)
-              const existingNotificationIndex = prev.findIndex(n => n.id === data.id);
+        // Map DB fields to frontend model if needed (though we should align them)
+        // For now, we assume the DB structure matches closely enough or we adapt here
+        setNotifications(initialData as Notification[])
+        setIsLoading(false)
 
-              if (existingNotificationIndex > -1) {
-                // Update existing notification
-                return prev.map((n, index) =>
-                  index === existingNotificationIndex ? { ...n, ...data } : n
-                );
-              } else {
-                // Add new notification, making sure it's not dismissed
-                if (!data.dismissedAt) {
-                  return [data, ...prev]; // Add new notification to the top
-                }
-              }
-              return prev;
-            });
+        // Subscribe to Broadcast channel (more reliable for direct notifications)
+        const channelName = `user-notifications-${user.id}`
+        console.log('🔌 Setting up Broadcast subscription:', channelName)
 
-            // Show browser notification if permitted and it's a new or significant event
-            if (data.type !== 'task_reminder' && data.type !== 'task') { // Only show for non-task events
+        channel = supabase
+          .channel(channelName)
+          .on(
+            'broadcast',
+            { event: 'new-notification' },
+            (payload) => {
+              console.log('📡 Broadcast event received:', payload)
+              const newNotification = payload.payload as Notification
+
+              // Add to state
+              setNotifications(prev => [newNotification, ...prev])
+
+              // Show browser notification
               if ('Notification' in window && Notification.permission === 'granted') {
-                new Notification(data.title || 'Nueva Notificación', {
-                  body: data.message || '',
+                new Notification(newNotification.title, {
+                  body: newNotification.message || '',
                   icon: '/favicon.ico',
-                  tag: data.id, // Avoid duplicates
-                });
-              }
-            } else if (data.type === 'task_reminder' && !data.readAt) { // For task reminders, if not read
-              if ('Notification' in window && Notification.permission === 'granted') {
-                new Notification(data.title || 'Recordatorio de Tarea', {
-                  body: data.message || `Vence en ${Math.round(data.hoursUntilDue || 0)} horas`,
-                  icon: '/favicon.ico',
-                  tag: data.id, // Avoid duplicates
-                });
+                  tag: newNotification.id,
+                })
               }
             }
-          } catch (err) {
-            console.error('Error procesando notificación:', err);
-          }
-        };
+          )
+          .subscribe((status, err) => {
+            console.log('📡 Subscription status:', status, err)
+            if (status === 'SUBSCRIBED') {
+              setIsConnected(true)
+            } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+              console.error('❌ Channel error:', err)
+              setIsConnected(false)
+            }
+          })
 
-        eventSource.onerror = (err) => {
-          console.error('❌ Error en SSE:', err)
-          setIsConnected(false)
-          setError(new Error('Error de conexión'))
-          eventSource?.close()
-
-          // Reconectar después de 5 segundos
-          reconnectTimeout = setTimeout(() => {
-            console.log('🔄 Reconectando...')
-            connect()
-          }, 5000)
-        }
       } catch (err) {
-        console.error('Error al conectar SSE:', err)
+        console.error('Error setting up notifications:', err)
         setError(err as Error)
         setIsLoading(false)
       }
     }
 
-    // Cargar notificaciones iniciales del API tradicional
-    const loadInitialNotifications = async () => {
-      try {
-        const response = await fetch('/api/notifications')
-        if (response.ok) {
-          const data = await response.json()
-          setNotifications(data.notifications || [])
-        }
-      } catch (err) {
-        console.error('Error cargando notificaciones iniciales:', err)
-      }
-    }
+    setupRealtime()
 
-    // Pedir permiso para notificaciones del navegador
+    // Request permission
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission()
     }
 
-    loadInitialNotifications()
-    connect()
-
-    // Cleanup
     return () => {
-      if (eventSource) {
-        eventSource.close()
-      }
-      if (reconnectTimeout) {
-        clearTimeout(reconnectTimeout)
+      if (channel) {
+        supabase.removeChannel(channel)
       }
     }
   }, [])
 
-  // Función para marcar notificación como leída
   const markAsRead = async (notificationId: string) => {
     try {
-      const response = await fetch(`/api/notifications/${notificationId}/read`, {
-        method: 'PUT',
-      });
+      const { error } = await supabase
+        .from('notifications')
+        .update({ read_at: new Date().toISOString() })
+        .eq('id', notificationId)
 
-      if (response.ok) {
-        setNotifications(prev => prev.map(n =>
-          n.id === notificationId ? { ...n, readAt: new Date().toISOString() } : n
-        ));
-      } else {
-        console.error('Failed to mark notification as read:', await response.text());
-      }
+      if (error) throw error
+
+      // Optimistic update is handled by Realtime subscription usually, 
+      // but we can also update locally for instant feedback
+      setNotifications(prev => prev.map(n =>
+        n.id === notificationId ? { ...n, read_at: new Date().toISOString() } : n
+      ))
     } catch (err) {
-      console.error('Error marking notification as read:', err);
+      console.error('Error marking as read:', err)
     }
-  };
+  }
 
-  // Función para descartar una notificación (la elimina de la vista)
   const dismissNotification = async (notificationId: string) => {
     try {
-      const response = await fetch(`/api/notifications/${notificationId}/dismiss`, {
-        method: 'PUT',
-      });
+      const { error } = await supabase
+        .from('notifications')
+        .update({ dismissed_at: new Date().toISOString() })
+        .eq('id', notificationId)
 
-      if (response.ok) {
-        setNotifications(prev => prev.filter(n => n.id !== notificationId));
-      } else {
-        console.error('Failed to dismiss notification:', await response.text());
-      }
+      if (error) throw error
+
+      setNotifications(prev => prev.filter(n => n.id !== notificationId))
     } catch (err) {
-      console.error('Error dismissing notification:', err);
+      console.error('Error dismissing notification:', err)
     }
-  };
+  }
 
-  // Función para descartar todas las notificaciones visibles
   const dismissAll = async () => {
     try {
-      // Create an array of promises for dismissing each visible notification
-      const dismissPromises = notifications.map(n => 
-        fetch(`/api/notifications/${n.id}/dismiss`, { method: 'PUT' })
-      );
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
 
-      // Wait for all dismiss requests to complete
-      await Promise.all(dismissPromises);
-      
-      // After all are dismissed on the backend, clear local state
-      setNotifications([]);
+      const { error } = await supabase
+        .from('notifications')
+        .update({ dismissed_at: new Date().toISOString() })
+        .eq('user_id', user.id)
+        .is('dismissed_at', null)
+
+      if (error) throw error
+
+      setNotifications([])
     } catch (err) {
-      console.error('Error dismissing all notifications:', err);
+      console.error('Error dismissing all:', err)
     }
-  };
+  }
 
   return {
     data: notifications,
@@ -207,7 +176,8 @@ export function useNotifications() {
     error,
     isConnected,
     markAsRead,
-    dismissNotification, // Exposed new function
-    dismissAll // Renamed and exposed new function
+    dismissNotification,
+    dismissAll,
+    clearAll: dismissAll // Alias for compatibility
   }
 }

@@ -26,6 +26,7 @@ import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 import { useQueryClient } from "@tanstack/react-query"
 import { useOptimizedNavigation } from "@/hooks/use-optimized-navigation"
+import { useUser } from "@/components/providers/user-context"
 
 const navigation = [
   {
@@ -63,11 +64,7 @@ const navigation = [
     href: "/dashboard/time",
     icon: Clock,
   },
-  {
-    name: "Chatwoot",
-    href: "/dashboard/chatwoot",
-    icon: MessageSquare,
-  },
+
   {
     name: "AI IMPO",
     href: "/dashboard/chat-webhook",
@@ -80,21 +77,16 @@ const navigation = [
   },
 ]
 
-interface DashboardSidebarProps {
-  user: {
-    full_name: string
-    email: string
-    role: string
-  }
-}
 
-function SidebarContent({ user }: DashboardSidebarProps) {
+
+function SidebarContent() {
   const pathname = usePathname()
   const router = useRouter()
   const supabase = createClient()
   const queryClient = useQueryClient()
   const { navigateWithPrefetch, prefetchRoute, isPending, isCurrentRoute } = useOptimizedNavigation()
-  
+  const { user } = useUser()
+
   // Prefetch functions for different routes
   const prefetchData = {
     '/dashboard/cases': () => {
@@ -138,7 +130,7 @@ function SidebarContent({ user }: DashboardSidebarProps) {
         <nav className="space-y-2">
           {navigation.map((item) => {
             const isActive = isCurrentRoute(item.href)
-            
+
             return (
               <Link
                 key={item.name}
@@ -165,8 +157,8 @@ function SidebarContent({ user }: DashboardSidebarProps) {
             <User className="h-4 w-4 text-sidebar-primary-foreground" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-sidebar-foreground truncate">{user.full_name}</p>
-            <p className="text-xs text-sidebar-foreground/70 truncate">{user.role}</p>
+            <p className="text-sm font-medium text-sidebar-foreground truncate">{user?.full_name || 'Usuario'}</p>
+            <p className="text-xs text-sidebar-foreground/70 truncate">{user?.role || 'Cargando...'}</p>
           </div>
         </div>
         <div className="space-y-1">
@@ -194,7 +186,7 @@ function SidebarContent({ user }: DashboardSidebarProps) {
 }
 
 // Mobile sidebar component
-export function MobileDashboardSidebar({ user }: DashboardSidebarProps) {
+export function MobileDashboardSidebar() {
   const [open, setOpen] = useState(false)
 
   return (
@@ -206,13 +198,13 @@ export function MobileDashboardSidebar({ user }: DashboardSidebarProps) {
       </SheetTrigger>
       <SheetContent side="left" className="p-0 w-64">
         <SheetTitle className="sr-only">Menú de navegación</SheetTitle>
-        <SidebarContent user={user} />
+        <SidebarContent />
       </SheetContent>
     </Sheet>
   )
 }
 
 // Desktop sidebar component
-export function DashboardSidebar({ user }: DashboardSidebarProps) {
-  return <SidebarContent user={user} />
+export function DashboardSidebar() {
+  return <SidebarContent />
 }

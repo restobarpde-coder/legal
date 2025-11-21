@@ -1,33 +1,15 @@
 import type React from "react"
 
-import { requireAuth, getUserProfile } from "@/lib/auth"
-import { DashboardHeader } from "@/components/dashboard-header"
-import { DashboardSidebar } from "@/components/dashboard-sidebar"
+import { requireAuth } from "@/lib/auth"
+import { DashboardShell } from "@/components/dashboard-shell"
 
 export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
+  // Only check auth - don't fetch profile (moved to client-side)
   await requireAuth()
-  const profile = await getUserProfile()
 
-  if (!profile) {
-    return <div>Error loading profile</div>
-  }
-
-  return (
-    <div className="min-h-screen bg-background overflow-x-hidden">
-      {/* Desktop sidebar */}
-      <div className="hidden lg:flex lg:w-64 lg:flex-col lg:fixed lg:inset-y-0">
-        <DashboardSidebar user={profile} />
-      </div>
-
-      {/* Main content */}
-      <div className="lg:pl-64 overflow-x-hidden">
-        <DashboardHeader user={profile} />
-        <main className="p-2 sm:p-3 md:p-4 lg:p-5 max-w-full overflow-x-hidden">{children}</main>
-      </div>
-    </div>
-  )
+  return <DashboardShell>{children}</DashboardShell>
 }

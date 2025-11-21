@@ -43,7 +43,7 @@ function formatTimeUntilDue(hours?: number) {
 }
 
 export function NotificationDropdown() {
-  const { data: notifications, isLoading, error, isConnected, markAsRead, clearAll } = useNotifications()
+  const { data: notifications, isLoading, error, isConnected, markAsRead, dismissNotification, clearAll } = useNotifications()
 
   const unreadCount = notifications?.length || 0
 
@@ -99,15 +99,15 @@ export function NotificationDropdown() {
             </DropdownMenuItem>
           ) : notifications && notifications.length > 0 ? (
             notifications.map((notification, index) => {
-              const notificationId = notification.taskId || notification.id || `notif-${index}`
+              const notificationId = notification.id || `notif-${index}`
               const title = notification.taskTitle || notification.title || 'Notificación'
-              const description = notification.taskDescription || ''
-              const link = notification.caseId 
-                ? `/dashboard/cases/${notification.caseId}`
-                : notification.taskId
-                ? `/dashboard/tasks/${notification.taskId}`
-                : '#'
-              
+              const description = notification.taskDescription || notification.message || ''
+              const link = notification.case_id
+                ? `/dashboard/cases/${notification.case_id}`
+                : notification.task_id
+                  ? `/dashboard/tasks/${notification.task_id}`
+                  : '#'
+
               return (
                 <div key={notificationId} className="relative group">
                   <DropdownMenuItem asChild className="cursor-pointer">
@@ -117,8 +117,8 @@ export function NotificationDropdown() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-start justify-between gap-2">
                             <p className="font-medium text-sm line-clamp-1">{title}</p>
-                            <Badge 
-                              variant="outline" 
+                            <Badge
+                              variant="outline"
                               className="text-xs shrink-0"
                             >
                               {getPriorityLabel(notification.priority)}
@@ -132,7 +132,10 @@ export function NotificationDropdown() {
                           <div className="flex items-center gap-2 mt-2">
                             <Clock className="h-3 w-3 text-muted-foreground" />
                             <p className="text-xs text-muted-foreground">
-                              Vence en {formatTimeUntilDue(notification.hoursUntilDue)}
+                              {notification.hoursUntilDue
+                                ? `Vence en ${formatTimeUntilDue(notification.hoursUntilDue)}`
+                                : formatDistanceToNow(new Date(notification.created_at), { addSuffix: true, locale: es })
+                              }
                             </p>
                           </div>
                         </div>
@@ -146,7 +149,7 @@ export function NotificationDropdown() {
                     onClick={(e) => {
                       e.preventDefault()
                       e.stopPropagation()
-                      markAsRead(notificationId)
+                      dismissNotification(notificationId)
                     }}
                   >
                     <X className="h-3 w-3" />

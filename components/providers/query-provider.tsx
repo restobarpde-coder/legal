@@ -13,7 +13,6 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
             staleTime: 1000 * 60 * 5, // 5min - datos se marcan stale después de 5 min
             gcTime: 1000 * 60 * 30, // 30min garbage collection
             refetchOnWindowFocus: true, // refrescar al volver a la ventana
-            refetchOnMount: 'always', // siempre refrescar al montar componente
             retry: 1,
             networkMode: 'online',
           },

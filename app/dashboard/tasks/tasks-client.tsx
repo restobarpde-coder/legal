@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Plus, Search, Eye, Edit, MoreHorizontal, CheckSquare, Clock, User, Calendar, Briefcase, AlertCircle, Trash2, Loader2 } from "lucide-react"
+import { Plus, Search, Eye, Edit, MoreHorizontal, CheckSquare, Clock, User, Calendar, Briefcase, AlertCircle, Trash2, Loader2, LayoutGrid, List } from "lucide-react"
 import Link from "next/link"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { TaskStatusSelect, TaskStatusBadge } from '@/components/task-status-select'
@@ -16,6 +16,9 @@ import { es } from 'date-fns/locale'
 import { useRouter } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
+import { KanbanBoard } from '@/components/kanban/kanban-board'
+import { TaskModal } from '@/components/modals/task-modal'
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 interface TasksClientProps {
   currentUserId: string
@@ -43,6 +46,10 @@ export const TasksClient = memo(function TasksClient({ currentUserId }: TasksCli
   const [statusFilter, setStatusFilter] = useState('all')
   const [priorityFilter, setPriorityFilter] = useState('all')
   const [assignmentFilter, setAssignmentFilter] = useState('all')
+  const [viewMode, setViewMode] = useState<'list' | 'board'>('list')
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [selectedTask, setSelectedTask] = useState<any>(null)
+
   const router = useRouter()
   const queryClient = useQueryClient()
   const supabase = createClient()
@@ -86,7 +93,7 @@ export const TasksClient = memo(function TasksClient({ currentUserId }: TasksCli
         const matchesDescription = task.description?.toLowerCase().includes(search)
         const matchesCase = task.cases?.title?.toLowerCase().includes(search)
         const matchesClient = task.cases?.clients?.name?.toLowerCase().includes(search)
-        
+
         if (!matchesTitle && !matchesDescription && !matchesCase && !matchesClient) {
           return false
         }
@@ -138,18 +145,18 @@ export const TasksClient = memo(function TasksClient({ currentUserId }: TasksCli
   // Estadísticas
   const stats = useMemo(() => {
     const today = new Date()
-    const overdue = filteredTasks.filter(task => 
-      task.due_date && 
-      isPast(new Date(task.due_date)) && 
-      task.status !== 'completed' && 
+    const overdue = filteredTasks.filter(task =>
+      task.due_date &&
+      isPast(new Date(task.due_date)) &&
+      task.status !== 'completed' &&
       task.status !== 'cancelled'
     ).length
 
-    const dueToday = filteredTasks.filter(task => 
+    const dueToday = filteredTasks.filter(task =>
       task.due_date && isToday(new Date(task.due_date))
     ).length
 
-    const dueTomorrow = filteredTasks.filter(task => 
+    const dueTomorrow = filteredTasks.filter(task =>
       task.due_date && isTomorrow(new Date(task.due_date))
     ).length
 
@@ -168,7 +175,7 @@ export const TasksClient = memo(function TasksClient({ currentUserId }: TasksCli
   const handleStatusChange = (taskId: string, newStatus: any) => {
     // Actualizar optimistamente
     queryClient.setQueryData(['all-tasks', currentUserId], (old: any[] = []) =>
-      old.map(task => 
+      old.map(task =>
         task.id === taskId ? { ...task, status: newStatus } : task
       )
     )
@@ -201,12 +208,26 @@ export const TasksClient = memo(function TasksClient({ currentUserId }: TasksCli
     }
   }
 
+  const handleTaskClick = (task: any) => {
+    setSelectedTask(task)
+    setIsModalOpen(true)
+  }
+
+  const handleModalClose = () => {
+    setIsModalOpen(false)
+    setSelectedTask(null)
+  }
+
+  const handleSuccess = () => {
+    queryClient.invalidateQueries({ queryKey: ['all-tasks', currentUserId] })
+    queryClient.invalidateQueries({ queryKey: ['user-tasks'] })
+  }
 
   const getDueDateBadge = (dueDate: string) => {
     if (!dueDate) return null
-    
+
     const date = new Date(dueDate)
-    
+
     if (isPast(date) && !isToday(date)) {
       return <Badge variant="destructive" className="text-xs">Vencida</Badge>
     }
@@ -216,7 +237,7 @@ export const TasksClient = memo(function TasksClient({ currentUserId }: TasksCli
     if (isTomorrow(date)) {
       return <Badge variant="outline" className="text-xs border-blue-500 text-blue-700">Mañana</Badge>
     }
-    
+
     return null
   }
 
@@ -239,12 +260,27 @@ export const TasksClient = memo(function TasksClient({ currentUserId }: TasksCli
           <h1 className="text-3xl font-bold tracking-tight">Tareas</h1>
           <p className="text-muted-foreground">Gestiona todas las tareas de tu estudio jurídico</p>
         </div>
-        <Button asChild>
-          <Link href="/dashboard/tasks/new">
+        <div className="flex gap-2">
+          <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as 'list' | 'board')}>
+            <TabsList>
+              <TabsTrigger value="list">
+                <List className="h-4 w-4 mr-2" />
+                Lista
+              </TabsTrigger>
+              <TabsTrigger value="board">
+                <LayoutGrid className="h-4 w-4 mr-2" />
+                Tablero
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+          <Button onClick={() => {
+            setSelectedTask(null)
+            setIsModalOpen(true)
+          }}>
             <Plus className="h-4 w-4 mr-2" />
             Nueva Tarea
-          </Link>
-        </Button>
+          </Button>
+        </div>
       </div>
 
       {/* Estadísticas */}
@@ -308,8 +344,8 @@ export const TasksClient = memo(function TasksClient({ currentUserId }: TasksCli
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input 
-                placeholder="Buscar tareas, casos o clientes..." 
+              <Input
+                placeholder="Buscar tareas, casos o clientes..."
                 className="pl-9"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -354,133 +390,145 @@ export const TasksClient = memo(function TasksClient({ currentUserId }: TasksCli
         </CardContent>
       </Card>
 
-      {/* Lista de tareas */}
-      <div className="grid gap-4">
-        {filteredTasks.length === 0 ? (
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12">
-              <div className="text-center">
-                <CheckSquare className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <h3 className="text-lg font-semibold mb-2">No hay tareas que mostrar</h3>
-                <p className="text-muted-foreground mb-4">
-                  {searchTerm || statusFilter !== 'all' || priorityFilter !== 'all' || assignmentFilter !== 'all'
-                    ? 'No se encontraron tareas con los filtros aplicados'
-                    : 'Comienza creando tu primera tarea'}
-                </p>
-                {!(searchTerm || statusFilter !== 'all' || priorityFilter !== 'all' || assignmentFilter !== 'all') && (
-                  <Button asChild>
-                    <Link href="/dashboard/tasks/new">
+      {/* Vista de tareas */}
+      {viewMode === 'board' ? (
+        <KanbanBoard
+          tasks={filteredTasks}
+          onTaskClick={handleTaskClick}
+        />
+      ) : (
+        <div className="grid gap-4">
+          {filteredTasks.length === 0 ? (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-12">
+                <div className="text-center">
+                  <CheckSquare className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold mb-2">No hay tareas que mostrar</h3>
+                  <p className="text-muted-foreground mb-4">
+                    {searchTerm || statusFilter !== 'all' || priorityFilter !== 'all' || assignmentFilter !== 'all'
+                      ? 'No se encontraron tareas con los filtros aplicados'
+                      : 'Comienza creando tu primera tarea'}
+                  </p>
+                  {!(searchTerm || statusFilter !== 'all' || priorityFilter !== 'all' || assignmentFilter !== 'all') && (
+                    <Button onClick={() => {
+                      setSelectedTask(null)
+                      setIsModalOpen(true)
+                    }}>
                       <Plus className="h-4 w-4 mr-2" />
                       Crear Primera Tarea
-                    </Link>
-                  </Button>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        ) : (
-          filteredTasks.map((task) => (
-            <Card key={task.id} className="hover:shadow-md transition-all hover:border-primary/50">
-              <CardContent className="p-6">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between mb-2">
-                      <h3 className="text-lg font-semibold truncate flex-1">{task.title}</h3>
-                      <div className="flex items-center gap-2 ml-4">
-                        {getDueDateBadge(task.due_date)}
-                        {getPriorityBadge(task.priority)}
-                      </div>
-                    </div>
-                    
-                    {task.description && (
-                      <p className="text-muted-foreground mb-3 line-clamp-2">{task.description}</p>
-                    )}
-                    
-                    <div className="flex flex-wrap items-center gap-4 text-sm">
-                      {task.cases && (
-                        <Link 
-                          href={`/dashboard/cases/${task.cases.id}`}
-                          className="flex items-center gap-1 hover:text-primary transition-colors"
-                        >
-                          <Briefcase className="h-4 w-4" />
-                          <span className="font-medium">{task.cases.title}</span>
-                          {task.cases.clients?.name && (
-                            <span className="text-muted-foreground">• {task.cases.clients.name}</span>
-                          )}
-                        </Link>
-                      )}
-                      
-                      {task.assigned_user && (
-                        <div className="flex items-center gap-1 text-muted-foreground">
-                          <User className="h-4 w-4" />
-                          <span>{task.assigned_user.full_name}</span>
-                        </div>
-                      )}
-                      
-                      {task.due_date && (
-                        <div className="flex items-center gap-1 text-muted-foreground">
-                          <Calendar className="h-4 w-4" />
-                          <span>
-                            {format(new Date(task.due_date), 'dd/MM/yyyy', { locale: es })}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center gap-2">
-                    <TaskStatusSelect
-                      taskId={task.id}
-                      caseId={task.case_id}
-                      currentStatus={task.status}
-                      showAsSelect={true}
-                      onStatusChange={(newStatus) => handleStatusChange(task.id, newStatus)}
-                    />
-                    
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem asChild>
-                          <Link href={`/dashboard/tasks/${task.id}`}>
-                            <Eye className="h-4 w-4 mr-2" />
-                            Ver Detalles
-                          </Link>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem asChild>
-                          <Link href={`/dashboard/tasks/${task.id}/edit`}>
-                            <Edit className="h-4 w-4 mr-2" />
-                            Editar
-                          </Link>
-                        </DropdownMenuItem>
-                        {task.cases && (
-                          <DropdownMenuItem asChild>
-                            <Link href={`/dashboard/cases/${task.cases.id}`}>
-                              <Briefcase className="h-4 w-4 mr-2" />
-                              Ir al Caso
-                            </Link>
-                          </DropdownMenuItem>
-                        )}
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem 
-                          className="text-red-600"
-                          onClick={() => handleDeleteTask(task.id, task.title)}
-                        >
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Eliminar
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
+                    </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>
-          ))
-        )}
-      </div>
+          ) : (
+            filteredTasks.map((task) => (
+              <Card key={task.id} className="hover:shadow-md transition-all hover:border-primary/50">
+                <CardContent className="p-6">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between mb-2">
+                        <h3 className="text-lg font-semibold truncate flex-1">{task.title}</h3>
+                        <div className="flex items-center gap-2 ml-4">
+                          {getDueDateBadge(task.due_date)}
+                          {getPriorityBadge(task.priority)}
+                        </div>
+                      </div>
+
+                      {task.description && (
+                        <p className="text-muted-foreground mb-3 line-clamp-2">{task.description}</p>
+                      )}
+
+                      <div className="flex flex-wrap items-center gap-4 text-sm">
+                        {task.cases && (
+                          <Link
+                            href={`/dashboard/cases/${task.cases.id}`}
+                            className="flex items-center gap-1 hover:text-primary transition-colors"
+                          >
+                            <Briefcase className="h-4 w-4" />
+                            <span className="font-medium">{task.cases.title}</span>
+                            {task.cases.clients?.name && (
+                              <span className="text-muted-foreground">• {task.cases.clients.name}</span>
+                            )}
+                          </Link>
+                        )}
+
+                        {task.assigned_user && (
+                          <div className="flex items-center gap-1 text-muted-foreground">
+                            <User className="h-4 w-4" />
+                            <span>{task.assigned_user.full_name}</span>
+                          </div>
+                        )}
+
+                        {task.due_date && (
+                          <div className="flex items-center gap-1 text-muted-foreground">
+                            <Calendar className="h-4 w-4" />
+                            <span>
+                              {format(new Date(task.due_date), 'dd/MM/yyyy', { locale: es })}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <TaskStatusSelect
+                        taskId={task.id}
+                        caseId={task.case_id}
+                        currentStatus={task.status}
+                        showAsSelect={true}
+                        onStatusChange={(newStatus) => handleStatusChange(task.id, newStatus)}
+                      />
+
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleTaskClick(task)}>
+                            <Eye className="h-4 w-4 mr-2" />
+                            Ver Detalles
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleTaskClick(task)}>
+                            <Edit className="h-4 w-4 mr-2" />
+                            Editar
+                          </DropdownMenuItem>
+                          {task.cases && (
+                            <DropdownMenuItem asChild>
+                              <Link href={`/dashboard/cases/${task.cases.id}`}>
+                                <Briefcase className="h-4 w-4 mr-2" />
+                                Ir al Caso
+                              </Link>
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            className="text-red-600"
+                            onClick={() => handleDeleteTask(task.id, task.title)}
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Eliminar
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </div>
+      )}
+
+      <TaskModal
+        isOpen={isModalOpen}
+        onClose={handleModalClose}
+        caseId={selectedTask?.case_id || ''}
+        taskToEdit={selectedTask}
+        onSuccess={handleSuccess}
+      />
     </div>
   )
 })
