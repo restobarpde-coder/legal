@@ -7,45 +7,31 @@ export async function GET(request: Request) {
     const supabase = await createClient()
     const user = await requireAuth()
 
-    const today = new Date().toISOString().split('T')[0]
-
-    // Get case IDs where the user is a member
-    const { data: caseMembers, error: memberError } = await supabase
-      .from('case_members')
-      .select('case_id')
-      .eq('user_id', user.id)
-
-    if (memberError) {
-      console.error('Error fetching case memberships for notifications:', memberError)
-      return NextResponse.json({ error: 'Error fetching case memberships' }, { status: 500 })
-    }
-
-    const caseIds = caseMembers.map(cm => cm.case_id)
-
-    if (caseIds.length === 0) {
-      return NextResponse.json({ notifications: [] })
-    }
-
-    // Get tasks due today for those cases
-    const { data: tasks, error: tasksError } = await supabase
-      .from('tasks')
+    const { data: notificationsData, error: notificationsError } = await supabase
+      .from('notifications')
       .select('*')
-      .in('case_id', caseIds)
-      .eq('due_date', today)
+      .eq('user_id', user.id)
+      .is('dismissed_at', null) // Only fetch notifications that haven't been dismissed
+      .order('created_at', { ascending: false }) // Order by most recent first
 
-    if (tasksError) {
-      console.error('Error fetching tasks for notifications:', tasksError)
-      return NextResponse.json({ error: 'Error fetching tasks' }, { status: 500 })
+    if (notificationsError) {
+      console.error('Error fetching notifications:', notificationsError)
+      return NextResponse.json({ error: 'Error fetching notifications' }, { status: 500 })
     }
 
-    // For now, we only have tasks as notifications
-    const notifications = (tasks || []).map(task => ({
-      id: `task-${task.id}`,
-      type: 'task',
-      title: task.title,
-      dueDate: task.due_date,
-      caseId: task.case_id,
-    }));
+    const notifications = (notificationsData || []).map(notification => ({
+      id: notification.id,
+      type: notification.type,
+      title: notification.title,
+      message: notification.message,
+      createdAt: notification.created_at,
+      readAt: notification.read_at,
+      dismissedAt: notification.dismissed_at,
+      caseId: notification.related_entity_type === 'case' ? notification.related_entity_id : undefined,
+      taskId: notification.related_entity_type === 'task' ? notification.related_entity_id : undefined,
+      // Add other fields from the new notifications table as needed
+      // For now, only mapping basic fields and related entity IDs
+    }))
 
     return NextResponse.json({ notifications })
 

@@ -3,19 +3,23 @@
 import { useEffect, useState } from 'react'
 
 export type Notification = {
-  id?: string
-  type: 'task_reminder' | 'task' | 'event' | 'connected' | 'ping'
-  title?: string
-  dueDate?: string
+  id: string // Notifications from DB will always have an ID
+  user_id?: string // Optional, as it's the current user
+  type: string // Can be any string from the database for now
+  title: string
+  message?: string
+  createdAt: string
+  readAt?: string | null // ISO string date
+  dismissedAt?: string | null // ISO string date
+  // Related entity details
   caseId?: string | null
-  // Campos adicionales para notificaciones en tiempo real
-  taskId?: string
+  taskId?: string | null
+  // Additional fields from stream that might not be in DB for initial load
   taskTitle?: string
   taskDescription?: string | null
   priority?: 'low' | 'medium' | 'high' | 'urgent'
   hoursUntilDue?: number
   urgencyLevel?: 'critical' | 'high' | 'medium' | 'low'
-  message?: string
 }
 
 // Hook para notificaciones en tiempo real con SSE
@@ -43,45 +47,54 @@ export function useNotifications() {
 
         eventSource.onmessage = (event) => {
           try {
-            const data = JSON.parse(event.data) as Notification
+            const data = JSON.parse(event.data) as Notification;
 
-            // Ignorar pings y mensajes de conexión
+            // Ignore pings and connection messages
             if (data.type === 'ping' || data.type === 'connected') {
-              return
+              return;
             }
 
-            // Agregar notificación de tarea
-            if (data.type === 'task_reminder') {
-              setNotifications(prev => {
-                // Evitar duplicados basados en taskId
-                const exists = prev.some(n => 
-                  n.type === 'task_reminder' && n.taskId === data.taskId
-                )
-                
-                if (exists) {
-                  // Actualizar notificación existente
-                  return prev.map(n => 
-                    n.type === 'task_reminder' && n.taskId === data.taskId ? data : n
-                  )
-                }
-                
-                // Agregar nueva notificación
-                return [...prev, data]
-              })
+            // Update local state with the new notification
+            setNotifications(prev => {
+              // Check if notification with the same ID already exists (e.g., an update)
+              const existingNotificationIndex = prev.findIndex(n => n.id === data.id);
 
-              // Mostrar notificación del navegador si está permitido
+              if (existingNotificationIndex > -1) {
+                // Update existing notification
+                return prev.map((n, index) =>
+                  index === existingNotificationIndex ? { ...n, ...data } : n
+                );
+              } else {
+                // Add new notification, making sure it's not dismissed
+                if (!data.dismissedAt) {
+                  return [data, ...prev]; // Add new notification to the top
+                }
+              }
+              return prev;
+            });
+
+            // Show browser notification if permitted and it's a new or significant event
+            if (data.type !== 'task_reminder' && data.type !== 'task') { // Only show for non-task events
               if ('Notification' in window && Notification.permission === 'granted') {
-                new Notification(data.taskTitle || 'Recordatorio de tarea', {
-                  body: `Vence en ${Math.round(data.hoursUntilDue || 0)} horas`,
+                new Notification(data.title || 'Nueva Notificación', {
+                  body: data.message || '',
                   icon: '/favicon.ico',
-                  tag: data.taskId, // Evita duplicados
-                })
+                  tag: data.id, // Avoid duplicates
+                });
+              }
+            } else if (data.type === 'task_reminder' && !data.readAt) { // For task reminders, if not read
+              if ('Notification' in window && Notification.permission === 'granted') {
+                new Notification(data.title || 'Recordatorio de Tarea', {
+                  body: data.message || `Vence en ${Math.round(data.hoursUntilDue || 0)} horas`,
+                  icon: '/favicon.ico',
+                  tag: data.id, // Avoid duplicates
+                });
               }
             }
           } catch (err) {
-            console.error('Error procesando notificación:', err)
+            console.error('Error procesando notificación:', err);
           }
-        }
+        };
 
         eventSource.onerror = (err) => {
           console.error('❌ Error en SSE:', err)
@@ -135,16 +148,58 @@ export function useNotifications() {
   }, [])
 
   // Función para marcar notificación como leída
-  const markAsRead = (notificationId: string) => {
-    setNotifications(prev => prev.filter(n => 
-      n.type === 'task_reminder' ? n.taskId !== notificationId : n.id !== notificationId
-    ))
-  }
+  const markAsRead = async (notificationId: string) => {
+    try {
+      const response = await fetch(`/api/notifications/${notificationId}/read`, {
+        method: 'PUT',
+      });
 
-  // Función para limpiar todas las notificaciones
-  const clearAll = () => {
-    setNotifications([])
-  }
+      if (response.ok) {
+        setNotifications(prev => prev.map(n =>
+          n.id === notificationId ? { ...n, readAt: new Date().toISOString() } : n
+        ));
+      } else {
+        console.error('Failed to mark notification as read:', await response.text());
+      }
+    } catch (err) {
+      console.error('Error marking notification as read:', err);
+    }
+  };
+
+  // Función para descartar una notificación (la elimina de la vista)
+  const dismissNotification = async (notificationId: string) => {
+    try {
+      const response = await fetch(`/api/notifications/${notificationId}/dismiss`, {
+        method: 'PUT',
+      });
+
+      if (response.ok) {
+        setNotifications(prev => prev.filter(n => n.id !== notificationId));
+      } else {
+        console.error('Failed to dismiss notification:', await response.text());
+      }
+    } catch (err) {
+      console.error('Error dismissing notification:', err);
+    }
+  };
+
+  // Función para descartar todas las notificaciones visibles
+  const dismissAll = async () => {
+    try {
+      // Create an array of promises for dismissing each visible notification
+      const dismissPromises = notifications.map(n => 
+        fetch(`/api/notifications/${n.id}/dismiss`, { method: 'PUT' })
+      );
+
+      // Wait for all dismiss requests to complete
+      await Promise.all(dismissPromises);
+      
+      // After all are dismissed on the backend, clear local state
+      setNotifications([]);
+    } catch (err) {
+      console.error('Error dismissing all notifications:', err);
+    }
+  };
 
   return {
     data: notifications,
@@ -152,6 +207,7 @@ export function useNotifications() {
     error,
     isConnected,
     markAsRead,
-    clearAll
+    dismissNotification, // Exposed new function
+    dismissAll // Renamed and exposed new function
   }
 }
