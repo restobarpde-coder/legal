@@ -251,3 +251,5 @@ Agregar headers de caché a todas las rutas API
 **Fecha creación:** 15 Oct 2025  
 **Stack detectado:** Next.js 15 + Supabase + TanStack Query + Radix UI + Tailwind  
 **Prioridad:** 🔴 Crítica - Aplicar cambios 1-4 inmediatamente
+
+asd
