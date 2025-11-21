@@ -20,6 +20,7 @@ import {
   User,
   Calendar,
   MessageSquare,
+  Mic,
 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
@@ -66,6 +67,11 @@ const navigation = [
     name: "Chatwoot",
     href: "/dashboard/chatwoot",
     icon: MessageSquare,
+  },
+  {
+    name: "Declaraciones",
+    href: "/dashboard/declarations",
+    icon: Mic,
   },
 ]
 

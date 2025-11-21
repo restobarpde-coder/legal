@@ -358,46 +358,51 @@ export function CaseDetailsClient({ caseId }: CaseDetailsClientProps) {
     }
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 max-w-full overflow-x-hidden">
             {/* Header */}
-            <div className="flex items-center gap-4">
-                <Button variant="ghost" size="icon" asChild>
-                    <Link href="/dashboard/cases">
-                        <ArrowLeft className="h-4 w-4" />
-                    </Link>
-                </Button>
-                <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                        <h1 className="text-3xl font-bold tracking-tight">{caseData.title}</h1>
-                        <Badge variant={getStatusColor(caseData.status)}>{getStatusLabel(caseData.status)}</Badge>
-                        <Badge className={getPriorityColor(caseData.priority)} variant="outline">
-                            {getPriorityLabel(caseData.priority)}
-                        </Badge>
-                    </div>
-                    <p className="text-muted-foreground">{caseData.description}</p>
+            <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                    <Button variant="ghost" size="icon" asChild>
+                        <Link href="/dashboard/cases">
+                            <ArrowLeft className="h-4 w-4" />
+                        </Link>
+                    </Button>
+                    <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex-1 truncate">{caseData.title}</h1>
                 </div>
-                <CaseMembersManager caseData={caseData} assignableUsers={assignableUsers} canManage={canManage} />
-                <Button asChild>
-                    <Link href={`/dashboard/cases/${caseData.id}/edit`}>
-                        <Edit className="h-4 w-4 mr-2" />
-                        Editar
-                    </Link>
-                </Button>
+                
+                <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant={getStatusColor(caseData.status)}>{getStatusLabel(caseData.status)}</Badge>
+                    <Badge className={getPriorityColor(caseData.priority)} variant="outline">
+                        {getPriorityLabel(caseData.priority)}
+                    </Badge>
+                </div>
+                
+                <p className="text-muted-foreground text-sm sm:text-base">{caseData.description}</p>
+                
+                <div className="flex flex-wrap items-center gap-2">
+                    <CaseMembersManager caseData={caseData} assignableUsers={assignableUsers} canManage={canManage} />
+                    <Button asChild size="sm" className="flex-1 sm:flex-none">
+                        <Link href={`/dashboard/cases/${caseData.id}/edit`}>
+                            <Edit className="h-4 w-4 mr-2" />
+                            Editar
+                        </Link>
+                    </Button>
+                </div>
             </div>
 
-            <div className="grid gap-6 lg:grid-cols-4">
+            <div className="grid gap-6 lg:grid-cols-4 max-w-full">
                 {/* Main content with tabs */}
-                <div className="lg:col-span-3">
+                <div className="lg:col-span-3 min-w-0">
                     <Tabs defaultValue="overview" className="space-y-6">
-                        <TabsList className="grid w-full grid-cols-6">
-                            <TabsTrigger value="overview">Resumen</TabsTrigger>
-                            <TabsTrigger value="tasks">Tareas ({tasks.length})</TabsTrigger>
-                            <TabsTrigger value="documents">Documentos ({documents.length})</TabsTrigger>
-                            <TabsTrigger value="notes">Notas ({notes.length})</TabsTrigger>
-                            <TabsTrigger value="time">Tiempo ({timeEntries.length})</TabsTrigger>
-                            <TabsTrigger value="timeline" className="flex items-center gap-1">
+                        <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6 h-auto overflow-x-auto">
+                            <TabsTrigger value="overview" className="text-xs sm:text-sm">Resumen</TabsTrigger>
+                            <TabsTrigger value="tasks" className="text-xs sm:text-sm">Tareas ({tasks.length})</TabsTrigger>
+                            <TabsTrigger value="documents" className="text-xs sm:text-sm">Docs ({documents.length})</TabsTrigger>
+                            <TabsTrigger value="notes" className="text-xs sm:text-sm">Notas ({notes.length})</TabsTrigger>
+                            <TabsTrigger value="time" className="text-xs sm:text-sm">Tiempo ({timeEntries.length})</TabsTrigger>
+                            <TabsTrigger value="timeline" className="flex items-center gap-1 text-xs sm:text-sm">
                                 <Shield className="h-3 w-3" />
-                                Historial
+                                <span className="hidden sm:inline">Historial</span>
                             </TabsTrigger>
                         </TabsList>
 
@@ -413,7 +418,7 @@ export function CaseDetailsClient({ caseId }: CaseDetailsClientProps) {
                                         <p className="text-sm">{caseData.description || 'Sin descripción'}</p>
                                     </div>
                                     <Separator />
-                                    <div className="grid grid-cols-2 gap-4">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                         <div>
                                             <p className="text-sm font-medium text-muted-foreground">Fecha de Inicio</p>
                                             <p>{new Date(caseData.start_date).toLocaleDateString("es-ES")}</p>
@@ -573,11 +578,11 @@ export function CaseDetailsClient({ caseId }: CaseDetailsClientProps) {
                                             </div>
                                         ) : (
                                             tasks.map((task) => (
-                                                <div key={task.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent/50 transition-colors">
-                                                    <div className="flex-1">
-                                                        <h4 className="font-medium">{task.title}</h4>
-                                                        <p className="text-sm text-muted-foreground">{task.description}</p>
-                                                        <div className="flex items-center gap-4 mt-2">
+                                                <div key={task.id} className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 border rounded-lg hover:bg-accent/50 transition-colors">
+                                                    <div className="flex-1 min-w-0">
+                                                        <h4 className="font-medium truncate">{task.title}</h4>
+                                                        <p className="text-sm text-muted-foreground line-clamp-2">{task.description}</p>
+                                                        <div className="flex flex-wrap items-center gap-2 mt-2">
                                                             <Badge variant="outline" className="text-xs">
                                                                 {task.priority === 'urgent' && '🔴 Urgente'}
                                                                 {task.priority === 'high' && '🟠 Alta'}
@@ -591,7 +596,7 @@ export function CaseDetailsClient({ caseId }: CaseDetailsClientProps) {
                                                             )}
                                                         </div>
                                                     </div>
-                                                    <div className="flex items-center gap-2">
+                                                    <div className="flex items-center gap-2 justify-end">
                                                         <TaskStatusSelect
                                                             taskId={task.id}
                                                             caseId={caseId}
@@ -648,11 +653,11 @@ export function CaseDetailsClient({ caseId }: CaseDetailsClientProps) {
                                             </div>
                                         ) : (
                                             documents.map((doc) => (
-                                                <div key={doc.id} className="flex items-center justify-between p-4 border rounded-lg">
-                                                    <div className="flex items-center gap-3">
-                                                        <FileText className="h-8 w-8 text-muted-foreground" />
-                                                        <div>
-                                                            <h4 className="font-medium">{doc.name}</h4>
+                                                <div key={doc.id} className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 border rounded-lg">
+                                                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                                                        <FileText className="h-8 w-8 text-muted-foreground flex-shrink-0" />
+                                                        <div className="min-w-0 flex-1">
+                                                            <h4 className="font-medium truncate">{doc.name}</h4>
                                                             <p className="text-sm text-muted-foreground">
                                                                 {doc.document_type} • {new Date(doc.created_at).toLocaleDateString("es-ES")}
                                                             </p>
@@ -663,17 +668,19 @@ export function CaseDetailsClient({ caseId }: CaseDetailsClientProps) {
                                                             size="sm" 
                                                             variant="outline" 
                                                             onClick={() => handleViewDocument(doc.id)}
+                                                            className="flex-1 sm:flex-none"
                                                         >
-                                                            <Eye className="h-4 w-4 mr-1" />
-                                                            Ver
+                                                            <Eye className="h-4 w-4 sm:mr-1" />
+                                                            <span className="hidden sm:inline">Ver</span>
                                                         </Button>
                                                         <Button 
                                                             size="sm" 
                                                             variant="outline"
                                                             onClick={() => handleDownloadDocument(doc.id, doc.name)}
+                                                            className="flex-1 sm:flex-none"
                                                         >
-                                                            <Download className="h-4 w-4 mr-1" />
-                                                            Descargar
+                                                            <Download className="h-4 w-4 sm:mr-1" />
+                                                            <span className="hidden sm:inline">Descargar</span>
                                                         </Button>
                                                         <DropdownMenu>
                                                             <DropdownMenuTrigger asChild>
@@ -773,7 +780,7 @@ export function CaseDetailsClient({ caseId }: CaseDetailsClientProps) {
                                 <CardContent>
                                     <div className="space-y-4">
                                         {/* Time summary */}
-                                        <div className="grid grid-cols-3 gap-4 p-4 bg-muted/50 rounded-lg">
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-4 bg-muted/50 rounded-lg">
                                             <div className="text-center">
                                                 <p className="text-2xl font-bold">{totalHours.toFixed(1)}h</p>
                                                 <p className="text-sm text-muted-foreground">Total Registradas</p>
@@ -802,15 +809,15 @@ export function CaseDetailsClient({ caseId }: CaseDetailsClientProps) {
                                             </div>
                                         ) : (
                                             timeEntries.map((entry) => (
-                                                <div key={entry.id} className="flex items-center justify-between p-4 border rounded-lg">
-                                                    <div className="flex-1">
-                                                        <h4 className="font-medium">{entry.description}</h4>
+                                                <div key={entry.id} className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 border rounded-lg">
+                                                    <div className="flex-1 min-w-0">
+                                                        <h4 className="font-medium truncate">{entry.description}</h4>
                                                         <p className="text-sm text-muted-foreground">
                                                             {entry.users?.full_name} • {new Date(entry.date).toLocaleDateString("es-ES")}
                                                         </p>
                                                     </div>
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="text-right">
+                                                    <div className="flex items-center gap-3 justify-between sm:justify-end">
+                                                        <div className="text-left sm:text-right">
                                                             <p className="font-medium">{entry.hours}h</p>
                                                             <p className="text-sm text-muted-foreground">
                                                                 {entry.billable ? 'Facturable' : 'No facturable'}
@@ -844,7 +851,7 @@ export function CaseDetailsClient({ caseId }: CaseDetailsClientProps) {
                 </div>
 
                 {/* Sidebar */}
-                <div className="space-y-6">
+                <div className="space-y-6 lg:sticky lg:top-6">
                     {/* Client info */}
                     <Card>
                         <CardHeader>
