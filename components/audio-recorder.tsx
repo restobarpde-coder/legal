@@ -3,20 +3,35 @@
 import { useState, useRef, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Mic, Square, Pause, Play, Loader2, FileAudio } from 'lucide-react'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { Mic, Square, Pause, Play, Loader2, FileAudio, FolderPlus, Plus } from 'lucide-react'
 import { toast } from 'sonner'
+import { useRouter } from 'next/navigation'
 
 interface AudioRecorderProps {
   onTranscriptionComplete?: (summary: string) => void
+  cases?: Array<{ id: string; title: string; clients?: { name: string } | null }>
+  clients?: Array<{ id: string; name: string; company: string | null }>
 }
 
-export function AudioRecorder({ onTranscriptionComplete }: AudioRecorderProps) {
+export function AudioRecorder({ onTranscriptionComplete, cases = [], clients = [] }: AudioRecorderProps) {
+  const router = useRouter()
   const [isRecording, setIsRecording] = useState(false)
   const [isPaused, setIsPaused] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const [recordingTime, setRecordingTime] = useState(0)
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null)
   const [summary, setSummary] = useState<string>('')
+  const [transcription, setTranscription] = useState<string>('')
+  const [showSaveDialog, setShowSaveDialog] = useState(false)
+  const [saveAction, setSaveAction] = useState<'attach' | 'create'>('attach')
+  const [selectedCaseId, setSelectedCaseId] = useState<string>('')
+  const [selectedClientId, setSelectedClientId] = useState<string>('')
+  const [newCaseTitle, setNewCaseTitle] = useState<string>('')
+  const [isSaving, setIsSaving] = useState(false)
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
@@ -133,6 +148,7 @@ export function AudioRecorder({ onTranscriptionComplete }: AudioRecorderProps) {
       
       if (data.summary) {
         setSummary(data.summary)
+        setTranscription(data.transcription || '')
         toast.success('Audio procesado exitosamente')
         
         if (onTranscriptionComplete) {
@@ -154,7 +170,89 @@ export function AudioRecorder({ onTranscriptionComplete }: AudioRecorderProps) {
   const resetRecording = () => {
     setAudioBlob(null)
     setSummary('')
+    setTranscription('')
     setRecordingTime(0)
+    setSelectedCaseId('')
+    setSelectedClientId('')
+    setNewCaseTitle('')
+  }
+
+  const handleSaveDeclaration = async () => {
+    if (!summary) {
+      toast.error('No hay declaración para guardar')
+      return
+    }
+
+    if (!audioBlob) {
+      toast.error('No hay audio para guardar')
+      return
+    }
+
+    setIsSaving(true)
+    
+    try {
+      // Create FormData to send both declaration data and audio file
+      const formData = new FormData()
+      formData.append('audio', audioBlob, 'declaracion.webm')
+      formData.append('summary', summary)
+      if (transcription) {
+        formData.append('transcription', transcription)
+      }
+
+      if (saveAction === 'attach') {
+        if (!selectedCaseId) {
+          toast.error('Selecciona un caso')
+          setIsSaving(false)
+          return
+        }
+
+        formData.append('caseId', selectedCaseId)
+
+        const response = await fetch('/api/declaration/attach', {
+          method: 'POST',
+          body: formData,
+        })
+
+        const result = await response.json()
+
+        if (result.success) {
+          toast.success('Declaración adjuntada al caso')
+          setShowSaveDialog(false)
+          router.push(`/dashboard/cases/${selectedCaseId}`)
+        } else {
+          throw new Error(result.message || 'Error al adjuntar')
+        }
+      } else {
+        if (!selectedClientId || !newCaseTitle) {
+          toast.error('Completa todos los campos')
+          setIsSaving(false)
+          return
+        }
+
+        formData.append('clientId', selectedClientId)
+        formData.append('title', newCaseTitle)
+
+        const response = await fetch('/api/declaration/create-case', {
+          method: 'POST',
+          body: formData,
+        })
+
+        const result = await response.json()
+
+        if (result.success) {
+          toast.success('Caso creado exitosamente')
+          setShowSaveDialog(false)
+          router.push(`/dashboard/cases/${result.caseId}`)
+        } else {
+          throw new Error(result.message || 'Error al crear caso')
+        }
+      }
+    } catch (error) {
+      console.error('Error saving declaration:', error)
+      toast.error('Error al guardar la declaración')
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   return (
@@ -246,10 +344,133 @@ export function AudioRecorder({ onTranscriptionComplete }: AudioRecorderProps) {
 
         {/* Summary Display */}
         {summary && (
-          <div className="space-y-2">
-            <h3 className="text-sm font-medium">Resumen de la Declaración</h3>
-            <div className="rounded-lg border bg-muted p-4">
-              <p className="text-sm whitespace-pre-wrap">{summary}</p>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <h3 className="text-sm font-medium">Resumen de la Declaración</h3>
+              <div className="rounded-lg border bg-muted p-4">
+                <p className="text-sm whitespace-pre-wrap">{summary}</p>
+              </div>
+            </div>
+
+            {/* Save Actions */}
+            <div className="flex gap-3">
+              <Dialog open={showSaveDialog} onOpenChange={setShowSaveDialog}>
+                <DialogTrigger asChild>
+                  <Button className="gap-2">
+                    <FolderPlus className="h-4 w-4" />
+                    Adjuntar a Caso
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Guardar Declaración</DialogTitle>
+                    <DialogDescription>
+                      Adjunta la declaración a un caso existente o crea uno nuevo
+                    </DialogDescription>
+                  </DialogHeader>
+
+                  <div className="space-y-4">
+                    {/* Action Selection */}
+                    <div className="space-y-2">
+                      <Label>Acción</Label>
+                      <Select value={saveAction} onValueChange={(v) => setSaveAction(v as 'attach' | 'create')}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="attach">Adjuntar a caso existente</SelectItem>
+                          <SelectItem value="create">Crear nuevo caso</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Attach to Existing Case */}
+                    {saveAction === 'attach' && (
+                      <div className="space-y-2">
+                        <Label>Caso</Label>
+                        <Select value={selectedCaseId} onValueChange={setSelectedCaseId}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Seleccionar caso..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {cases.length === 0 ? (
+                              <SelectItem value="none" disabled>
+                                No hay casos disponibles
+                              </SelectItem>
+                            ) : (
+                              cases.map((c) => (
+                                <SelectItem key={c.id} value={c.id}>
+                                  {c.title} {c.clients?.name && `- ${c.clients.name}`}
+                                </SelectItem>
+                              ))
+                            )}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+
+                    {/* Create New Case */}
+                    {saveAction === 'create' && (
+                      <>
+                        <div className="space-y-2">
+                          <Label>Cliente</Label>
+                          <Select value={selectedClientId} onValueChange={setSelectedClientId}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Seleccionar cliente..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {clients.length === 0 ? (
+                                <SelectItem value="none" disabled>
+                                  No hay clientes disponibles
+                                </SelectItem>
+                              ) : (
+                                clients.map((c) => (
+                                  <SelectItem key={c.id} value={c.id}>
+                                    {c.name} {c.company && `(${c.company})`}
+                                  </SelectItem>
+                                ))
+                              )}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Título del Caso</Label>
+                          <Input
+                            placeholder="Ej: Declaración de incidente..."
+                            value={newCaseTitle}
+                            onChange={(e) => setNewCaseTitle(e.target.value)}
+                          />
+                        </div>
+                      </>
+                    )}
+
+                    {/* Save Button */}
+                    <div className="flex gap-2 pt-2">
+                      <Button
+                        onClick={handleSaveDeclaration}
+                        disabled={isSaving}
+                        className="flex-1"
+                      >
+                        {isSaving ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Guardando...
+                          </>
+                        ) : (
+                          'Guardar'
+                        )}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => setShowSaveDialog(false)}
+                        disabled={isSaving}
+                      >
+                        Cancelar
+                      </Button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
             </div>
           </div>
         )}
