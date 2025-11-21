@@ -59,7 +59,7 @@ export async function attachDeclarationToCase(
     const noteContent = `# Declaración\n\n## Resumen\n${declaration.summary}\n\n${declaration.transcription ? `## Transcripción Completa\n${declaration.transcription}\n\n` : ''}${audioDocumentId ? `_Audio guardado como documento_` : ''}`
 
     const { data, error } = await supabase
-      .from('case_notes')
+      .from('notes')
       .insert({
         case_id: caseId,
         content: noteContent,
