@@ -22,6 +22,12 @@ export async function attachDeclarationToCase(
     // Save audio file to Supabase Storage if provided
     let audioDocumentId = null
     if (declaration.audioFile) {
+      console.log('Uploading audio file:', {
+        fileName: declaration.audioFile.name,
+        fileSize: declaration.audioFile.size,
+        fileType: declaration.audioFile.type
+      })
+
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-")
       const fileName = `${user.id}/${caseId}/${timestamp}-declaracion.webm`
 
@@ -32,7 +38,11 @@ export async function attachDeclarationToCase(
           upsert: false
         })
 
-      if (!uploadError && uploadData) {
+      if (uploadError) {
+        console.error('Error uploading audio to storage:', uploadError)
+      } else if (uploadData) {
+        console.log('Audio uploaded successfully:', uploadData.path)
+        
         // Save document metadata to database
         const { data: document, error: dbError } = await supabase
           .from('documents')
@@ -49,17 +59,22 @@ export async function attachDeclarationToCase(
           .select('id')
           .single()
 
-        if (!dbError && document) {
+        if (dbError) {
+          console.error('Error saving audio document to database:', dbError)
+        } else if (document) {
+          console.log('Audio document saved to database:', document.id)
           audioDocumentId = document.id
         }
       }
+    } else {
+      console.log('No audio file provided in declaration')
     }
 
     // Create a note for the case with the declaration content
     const noteContent = `# Declaración\n\n## Resumen\n${declaration.summary}\n\n${declaration.transcription ? `## Transcripción Completa\n${declaration.transcription}\n\n` : ''}${audioDocumentId ? `_Audio guardado como documento_` : ''}`
 
     const { data, error } = await supabase
-      .from('notes')
+      .from('case_notes')
       .insert({
         case_id: caseId,
         content: noteContent,
