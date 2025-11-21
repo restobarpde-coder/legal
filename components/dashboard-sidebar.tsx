@@ -69,7 +69,7 @@ const navigation = [
     icon: MessageSquare,
   },
   {
-    name: "Chat Webhook",
+    name: "AI IMPO",
     href: "/dashboard/chat-webhook",
     icon: MessageSquare,
   },

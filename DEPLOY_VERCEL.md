@@ -51,7 +51,7 @@ Una vez desplegado:
 3. Deberías ver:
    ```
    Path: /api/notifications/check
-   Schedule: */5 * * * *
+   Schedule: 0 0 * * * (Note: For Vercel Hobby accounts, cron jobs are limited to once a day. The schedule '0 0 * * *' runs daily at midnight.)
    Status: Active
    ```
 
