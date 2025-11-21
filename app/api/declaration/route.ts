@@ -69,37 +69,40 @@ export async function POST(request: NextRequest) {
     }
 
     // Parse the response from n8n
-    let n8nData
     const responseText = await n8nResponse.text()
     console.log('N8N raw response:', responseText)
     
+    // Try to parse as JSON first
+    let n8nData
+    let isPlainText = false
+    
     try {
       n8nData = JSON.parse(responseText)
+      console.log('N8N parsed as JSON:', n8nData)
     } catch (e) {
-      console.error('Failed to parse n8n response as JSON:', responseText)
-      return NextResponse.json(
-        { error: 'Invalid JSON response from processing service' },
-        { status: 500 }
-      )
+      // If not JSON, treat as plain text
+      console.log('N8N response is plain text')
+      isPlainText = true
+      n8nData = { summary: responseText }
     }
     
-    console.log('N8N parsed data:', n8nData)
+    // Handle response based on format
+    let summary: string
+    let transcription: string | undefined
     
-    // Expected format from n8n: { summary: string, transcription?: string }
-    // But be flexible - if no summary, return whatever we got
-    if (!n8nData.summary && !n8nData.text && !n8nData.transcription) {
-      console.warn('N8N response missing expected fields:', n8nData)
-      // Still return it, maybe the workflow returns different fields
-      return NextResponse.json({
-        summary: JSON.stringify(n8nData, null, 2),
-        rawResponse: n8nData
-      })
+    if (isPlainText) {
+      // Plain text response - use as summary
+      summary = responseText.trim()
+    } else {
+      // JSON response - extract fields
+      summary = n8nData.summary || n8nData.text || n8nData.transcription || JSON.stringify(n8nData, null, 2)
+      transcription = n8nData.transcription
     }
 
     // Return the summary to the frontend
     return NextResponse.json({
-      summary: n8nData.summary || n8nData.text || n8nData.transcription || 'Procesado correctamente',
-      transcription: n8nData.transcription,
+      summary,
+      transcription,
       rawResponse: n8nData
     })
 

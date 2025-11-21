@@ -18,10 +18,9 @@ export function SearchBar({ placeholder, value, onChange }: SearchBarProps) {
 
     // If controlled, use the provided onChange
     const handleSearch = useDebouncedCallback((term: string) => {
-        if (onChange) {
-            onChange(term)
-        } else {
-            // Fallback to URL params if not controlled
+        // This debounced callback should ONLY handle the uncontrolled case of updating URL params.
+        // The controlled case is handled by the direct onChange call on the Input.
+        if (!onChange) { // Only execute this block if the component is NOT controlled
             const params = new URLSearchParams(searchParams)
             if (term) {
                 params.set("q", term)
@@ -39,10 +38,14 @@ export function SearchBar({ placeholder, value, onChange }: SearchBarProps) {
                 type="search"
                 placeholder={placeholder}
                 onChange={(e) => {
+                    // If the component is controlled, update the parent state directly.
+                    // The parent is responsible for deciding when to trigger a search.
                     if (onChange) {
                         onChange(e.target.value)
+                    } else {
+                        // If uncontrolled, let handleSearch manage the URL parameter.
+                        handleSearch(e.target.value)
                     }
-                    handleSearch(e.target.value)
                 }}
                 value={value ?? searchParams.get("q")?.toString() ?? ""}
                 className="pl-9 w-full"
