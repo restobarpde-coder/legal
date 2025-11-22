@@ -56,7 +56,11 @@ export function TaskModal({ isOpen, onClose, caseId, onSuccess, taskToEdit, init
         setAssignedTo(taskToEdit.assigned_to || "none")
         setPriority(taskToEdit.priority)
         setStatus(taskToEdit.status)
-        setDueDate(taskToEdit.due_date ? new Date(taskToEdit.due_date).toISOString().slice(0, 16) : "")
+        setDueDate(taskToEdit.due_date ? (() => {
+          const date = new Date(taskToEdit.due_date)
+          const offset = date.getTimezoneOffset() * 60000
+          return new Date(date.getTime() - offset).toISOString().slice(0, 16)
+        })() : "")
         setSelectedCaseId(taskToEdit.case_id)
       } else {
         // Reset form for new task
@@ -126,7 +130,7 @@ export function TaskModal({ isOpen, onClose, caseId, onSuccess, taskToEdit, init
       description: description.trim() || undefined,
       priority,
       status,
-      dueDate: dueDate || undefined,
+      dueDate: dueDate ? new Date(dueDate).toISOString() : undefined,
       assignedTo: assignedTo === "none" ? null : assignedTo,
     }
 

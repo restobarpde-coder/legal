@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { MobileDashboardSidebar } from "./dashboard-sidebar"
 import { NotificationDropdown } from "./notification-dropdown"
+import { ModeToggle } from "@/components/mode-toggle"
 import { Input } from "@/components/ui/input"
 import { Search } from "lucide-react"
 import { useUser } from "@/components/providers/user-context"
@@ -24,28 +25,31 @@ export function DashboardHeader({ title }: DashboardHeaderProps) {
   }
 
   return (
-    <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="flex h-16 items-center gap-4 px-4 md:px-6">
+    <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur-md supports-[backdrop-filter]:bg-background/80 shadow-sm">
+      <div className="flex h-18 items-center gap-4 px-4 md:px-6">
         {/* Mobile menu button */}
         <MobileDashboardSidebar />
 
         {/* Page title */}
-        {title && <h1 className="text-lg font-semibold md:text-xl">{title}</h1>}
+        {title && <h1 className="text-lg font-semibold md:text-xl lg:text-2xl">{title}</h1>}
 
         {/* Spacer */}
         <div className="flex-1" />
 
         {/* Search */}
         <div className="relative hidden lg:block">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground transition-colors" />
           <Input
             placeholder="Buscar..."
-            className="pl-9 w-48 lg:w-64 xl:w-80"
+            className="pl-10 w-56 lg:w-72 xl:w-96 h-11 rounded-lg border-input bg-background/50 backdrop-blur-sm transition-all duration-200 focus:w-80 lg:focus:w-80 xl:focus:w-[28rem] focus:shadow-md"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onKeyDown={handleSearch}
           />
         </div>
+
+        {/* Theme Toggle */}
+        <ModeToggle />
 
         {/* Notifications */}
         <NotificationDropdown />

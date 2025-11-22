@@ -25,6 +25,15 @@ export async function requireAuth() {
   return user
 }
 
+/**
+ * Version of requireAuth for API routes
+ * Returns null instead of redirecting, since redirect() doesn't work in API routes
+ */
+export async function requireAuthAPI() {
+  const user = await getUser()
+  return user
+}
+
 export async function getUserProfile() {
   const supabase = await createClient()
   const user = await requireAuth()

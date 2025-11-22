@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { InteractiveCalendar } from '@/components/interactive-calendar'
+import { IosCalendar } from '@/components/ios-calendar'
 import { TaskModal } from '@/components/modals/task-modal'
 import { createClient } from '@/lib/supabase/client'
 import { Loader2 } from 'lucide-react'
@@ -41,8 +41,33 @@ export default function CalendarPage() {
       return response.json()
     },
     enabled: !!currentUser,
-    refetchInterval: 30000, // Refrescar cada 30 segundos
   })
+
+  // Realtime subscription for instant updates
+  useEffect(() => {
+    if (!currentUser) return
+
+    const channel = supabase
+      .channel('tasks-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*', // Listen to all events (INSERT, UPDATE, DELETE)
+          schema: 'public',
+          table: 'tasks',
+        },
+        (payload) => {
+          console.log('Task change detected:', payload)
+          // Refetch tasks when any change occurs
+          refetch()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [currentUser, refetch, supabase])
 
   const handleTaskClick = (task: any) => {
     setSelectedTask(task)
@@ -81,7 +106,7 @@ export default function CalendarPage() {
 
   return (
     <div className="container mx-auto p-4">
-      <InteractiveCalendar
+      <IosCalendar
         tasks={tasks}
         onTaskClick={handleTaskClick}
         onDateClick={handleDateClick}

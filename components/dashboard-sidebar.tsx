@@ -126,8 +126,8 @@ function SidebarContent() {
       </div>
 
       {/* Navigation */}
-      <ScrollArea className="flex-1 px-3 py-4">
-        <nav className="space-y-2">
+      <ScrollArea className="flex-1 px-4 py-6">
+        <nav className="space-y-1.5">
           {navigation.map((item) => {
             const isActive = isCurrentRoute(item.href)
 
@@ -137,13 +137,25 @@ function SidebarContent() {
                 href={item.href}
                 onMouseEnter={() => prefetchRoute(item.href)}
                 className={cn(
-                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-all duration-75",
-                  "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                  isActive && "bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary/90"
+                  "group flex items-center gap-3 rounded-lg px-3.5 py-3 text-sm font-medium transition-all duration-200",
+                  "text-sidebar-foreground hover:bg-sidebar-accent/70 hover:text-sidebar-accent-foreground",
+                  "hover:scale-[1.02] hover:shadow-sm",
+                  "relative",
+                  isActive && [
+                    "bg-sidebar-primary text-sidebar-primary-foreground",
+                    "hover:bg-sidebar-primary/90",
+                    "shadow-sm",
+                    "before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2",
+                    "before:h-8 before:w-1 before:rounded-r-full before:bg-sidebar-primary-foreground/80"
+                  ]
                 )}
               >
-                <item.icon className="h-5 w-5" />
-                <span>{item.name}</span>
+                <item.icon className={cn(
+                  "h-5 w-5 transition-transform duration-200",
+                  "group-hover:scale-110",
+                  isActive && "scale-110"
+                )} />
+                <span className="text-[0.9375rem]">{item.name}</span>
               </Link>
             )
           })}
@@ -151,33 +163,33 @@ function SidebarContent() {
       </ScrollArea>
 
       {/* User section */}
-      <div className="border-t border-sidebar-border p-4">
-        <div className="flex items-center gap-3 mb-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-sidebar-primary">
-            <User className="h-4 w-4 text-sidebar-primary-foreground" />
+      <div className="border-t border-sidebar-border p-5">
+        <div className="flex items-center gap-3.5 mb-4">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-sidebar-primary shadow-sm">
+            <User className="h-5 w-5 text-sidebar-primary-foreground" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-sidebar-foreground truncate">{user?.full_name || 'Usuario'}</p>
+            <p className="text-sm font-semibold text-sidebar-foreground truncate">{user?.full_name || 'Usuario'}</p>
             <p className="text-xs text-sidebar-foreground/70 truncate">{user?.role || 'Cargando...'}</p>
           </div>
         </div>
-        <div className="space-y-1">
+        <div className="space-y-1.5">
           <Button
             variant="ghost"
             size="sm"
-            className="w-full justify-start gap-2 text-sidebar-foreground hover:bg-sidebar-accent transition-all duration-75"
+            className="w-full justify-start gap-2.5 text-sidebar-foreground hover:bg-sidebar-accent transition-all duration-200 hover:scale-[1.02]"
           >
             <Settings className="h-4 w-4" />
-            Configuración
+            <span className="text-[0.9375rem]">Configuración</span>
           </Button>
           <Button
             variant="ghost"
             size="sm"
             onClick={handleSignOut}
-            className="w-full justify-start gap-2 text-sidebar-foreground hover:bg-sidebar-accent"
+            className="w-full justify-start gap-2.5 text-sidebar-foreground hover:bg-sidebar-accent transition-all duration-200 hover:scale-[1.02]"
           >
             <LogOut className="h-4 w-4" />
-            Cerrar Sesión
+            <span className="text-[0.9375rem]">Cerrar Sesión</span>
           </Button>
         </div>
       </div>

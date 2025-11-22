@@ -1,32 +1,45 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuth } from '@/lib/auth' // Assuming requireAuth is suitable for API routes
+import { requireAuthAPI } from '@/lib/auth'
+
+// Force dynamic to prevent static caching of 404s
+export const dynamic = 'force-dynamic'
 
 const EXTERNAL_WEBHOOK_URL = process.env.CHAT_WEBHOOK_URL
 
 export async function POST(request: NextRequest) {
+  console.log('👉 API Route /api/chat-proxy called')
+
   try {
+    // 1. Check Environment Config
     if (!EXTERNAL_WEBHOOK_URL) {
-      console.error('CHAT_WEBHOOK_URL environment variable is not set.')
+      console.error('❌ CRITICAL: CHAT_WEBHOOK_URL is not defined in environment variables')
       return NextResponse.json({ error: 'Server configuration error: Webhook URL is not set.' }, { status: 500 })
     }
 
-    const user = await requireAuth() // Get the authenticated user
+    // 2. Check Authentication
+    const user = await requireAuthAPI()
     if (!user) {
+      console.warn('⚠️ Authentication failed for chat proxy')
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     }
 
-    const { text } = await request.json()
+    // 3. Parse Request
+    const body = await request.json()
+    const { text } = body
 
     if (!text) {
       return NextResponse.json({ error: 'Message text is required' }, { status: 400 })
     }
 
+    // 4. Forward to Webhook
+    console.log('📤 Forwarding message to webhook...')
     const payload = {
       text,
-      userId: user.id, // Include the user ID
+      userId: user.id,
+      userEmail: user.email,
+      userName: user.user_metadata?.full_name || user.email
     }
 
-    // Forward the message to the external webhook
     const response = await fetch(EXTERNAL_WEBHOOK_URL, {
       method: 'POST',
       headers: {
@@ -35,37 +48,31 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify(payload),
     })
 
-    const contentType = response.headers.get('content-type') // Declare contentType here
+    console.log('📥 Webhook response status:', response.status)
 
     if (!response.ok) {
       const errorBody = await response.text()
-      console.error('External webhook error:', response.status, errorBody)
+      console.error('❌ Webhook error:', errorBody)
       return NextResponse.json(
         { error: `Webhook responded with status: ${response.status}`, details: errorBody },
         { status: response.status }
       )
     }
 
-    // Read the response from the external webhook
-    let webhookResponseData: any
-    const responseText = await response.text() // Read as text first
-
-    if (contentType && contentType.includes('application/json') && responseText.trim().length > 0) {
-      try {
-        webhookResponseData = JSON.parse(responseText) // Try to parse if not empty
-      } catch (jsonError) {
-        console.warn('Webhook indicated JSON but provided invalid JSON. Falling back to text.', jsonError)
-        webhookResponseData = responseText // Fallback to text if JSON parsing fails
-      }
-    } else {
-      webhookResponseData = responseText // Already read as text, so assign it
+    const textBody = await response.text()
+    let data
+    try {
+      data = JSON.parse(textBody)
+      console.log('✅ Webhook returned JSON')
+    } catch (e) {
+      console.log('⚠️ Webhook returned text (not JSON), wrapping as output')
+      data = textBody
     }
 
-    // Return the webhook's response to the client
-    console.log('Webhook response data being sent to client:', webhookResponseData)
-    return NextResponse.json({ response: webhookResponseData })
+    return NextResponse.json({ response: data })
+
   } catch (error) {
-    console.error('Error in chat-proxy API route:', error instanceof Error ? error.name + ': ' + error.message + '\n' + error.stack : error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    console.error('🔥 Error in chat-proxy API route:', error)
+    return NextResponse.json({ error: 'Internal server error', details: String(error) }, { status: 500 })
   }
 }

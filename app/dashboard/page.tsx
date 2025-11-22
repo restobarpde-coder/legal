@@ -53,58 +53,58 @@ export default async function DashboardPage() {
   const urgentTasks = tasks.filter((t) => t.priority === "urgent").length
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Welcome section */}
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-muted-foreground">Resumen de la actividad de tu estudio jurídico</p>
+      <div className="space-y-2">
+        <h1 className="text-4xl font-bold tracking-tight">Dashboard</h1>
+        <p className="text-muted-foreground text-lg">Resumen de la actividad de tu estudio jurídico</p>
       </div>
 
       {/* Stats cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Casos Activos</CardTitle>
-            <Scale className="h-4 w-4 text-muted-foreground" />
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+        <Card className="hover:scale-[1.02] cursor-pointer">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+            <CardTitle className="text-base font-semibold">Casos Activos</CardTitle>
+            <Scale className="h-5 w-5 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{activeCases}</div>
-            <p className="text-xs text-muted-foreground">de {cases.length} casos totales</p>
+            <div className="text-3xl font-bold">{activeCases}</div>
+            <p className="text-sm text-muted-foreground mt-1">de {cases.length} casos totales</p>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Clientes</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
+        <Card className="hover:scale-[1.02] cursor-pointer">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+            <CardTitle className="text-base font-semibold">Clientes</CardTitle>
+            <Users className="h-5 w-5 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{clientsCount}</div>
-            <p className="text-xs text-muted-foreground">clientes registrados</p>
+            <div className="text-3xl font-bold">{clientsCount}</div>
+            <p className="text-sm text-muted-foreground mt-1">clientes registrados</p>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Tareas Pendientes</CardTitle>
-            <CheckSquare className="h-4 w-4 text-muted-foreground" />
+        <Card className="hover:scale-[1.02] cursor-pointer">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+            <CardTitle className="text-base font-semibold">Tareas Pendientes</CardTitle>
+            <CheckSquare className="h-5 w-5 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{pendingTasks}</div>
-            <p className="text-xs text-muted-foreground">
-              {urgentTasks > 0 && <span className="text-destructive font-medium">{urgentTasks} urgentes</span>}
+            <div className="text-3xl font-bold">{pendingTasks}</div>
+            <p className="text-sm text-muted-foreground mt-1">
+              {urgentTasks > 0 && <span className="text-destructive font-semibold">{urgentTasks} urgentes</span>}
             </p>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Documentos</CardTitle>
-            <FileText className="h-4 w-4 text-muted-foreground" />
+        <Card className="hover:scale-[1.02] cursor-pointer">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+            <CardTitle className="text-base font-semibold">Documentos</CardTitle>
+            <FileText className="h-5 w-5 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{documentsCount}</div>
-            <p className="text-xs text-muted-foreground">archivos almacenados</p>
+            <div className="text-3xl font-bold">{documentsCount}</div>
+            <p className="text-sm text-muted-foreground mt-1">archivos almacenados</p>
           </CardContent>
         </Card>
       </div>
@@ -115,8 +115,8 @@ export default async function DashboardPage() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle>Casos Recientes</CardTitle>
-                <CardDescription>Tus casos más recientes</CardDescription>
+                <CardTitle className="text-xl">Casos Recientes</CardTitle>
+                <CardDescription className="text-base mt-1">Tus casos más recientes</CardDescription>
               </div>
               <Button asChild size="sm">
                 <Link href="/dashboard/cases">
@@ -126,12 +126,12 @@ export default async function DashboardPage() {
               </Button>
             </div>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-5">
             {cases.slice(0, 5).map((case_) => (
-              <div key={case_.id} className="flex items-center justify-between space-x-4">
+              <div key={case_.id} className="flex items-center justify-between space-x-4 p-3 rounded-lg hover:bg-accent/50 transition-colors">
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{case_.title}</p>
-                  <p className="text-xs text-muted-foreground truncate">{case_.clients?.name}</p>
+                  <p className="text-base font-medium truncate">{case_.title}</p>
+                  <p className="text-sm text-muted-foreground truncate">{case_.clients?.name}</p>
                 </div>
                 <div className="flex items-center space-x-2">
                   <Badge
@@ -141,12 +141,12 @@ export default async function DashboardPage() {
                   >
                     {case_.status}
                   </Badge>
-                  {case_.priority === "urgent" && <AlertCircle className="h-4 w-4 text-destructive" />}
+                  {case_.priority === "urgent" && <AlertCircle className="h-5 w-5 text-destructive" />}
                 </div>
               </div>
             ))}
             {cases.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-4">No hay casos registrados</p>
+              <p className="text-sm text-muted-foreground text-center py-8">No hay casos registrados</p>
             )}
           </CardContent>
         </Card>
@@ -156,20 +156,20 @@ export default async function DashboardPage() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle>Tareas Recientes</CardTitle>
-                <CardDescription>Tus tareas más recientes</CardDescription>
+                <CardTitle className="text-xl">Tareas Recientes</CardTitle>
+                <CardDescription className="text-base mt-1">Tus tareas más recientes</CardDescription>
               </div>
               <Button asChild size="sm" variant="outline">
                 <Link href="/dashboard/tasks">Ver Todas</Link>
               </Button>
             </div>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-5">
             {tasks.map((task) => (
-              <div key={task.id} className="flex items-center justify-between space-x-4">
+              <div key={task.id} className="flex items-center justify-between space-x-4 p-3 rounded-lg hover:bg-accent/50 transition-colors">
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{task.title}</p>
-                  <p className="text-xs text-muted-foreground truncate">
+                  <p className="text-base font-medium truncate">{task.title}</p>
+                  <p className="text-sm text-muted-foreground truncate">
                     {task.cases?.title} - {task.cases?.clients?.name}
                   </p>
                 </div>
@@ -181,12 +181,12 @@ export default async function DashboardPage() {
                   >
                     {task.status}
                   </Badge>
-                  {task.priority === "urgent" && <AlertCircle className="h-4 w-4 text-destructive" />}
+                  {task.priority === "urgent" && <AlertCircle className="h-5 w-5 text-destructive" />}
                 </div>
               </div>
             ))}
             {tasks.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-4">No hay tareas registradas</p>
+              <p className="text-sm text-muted-foreground text-center py-8">No hay tareas registradas</p>
             )}
           </CardContent>
         </Card>
