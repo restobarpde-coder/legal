@@ -41,7 +41,7 @@ export async function attachDeclarationToCase(
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('documents')
         .upload(fileName, fileBuffer, {
-          contentType: declaration.audioFile.type,
+          contentType: 'audio/webm', // Force simple mime type
           cacheControl: '3600',
           upsert: false
         })
