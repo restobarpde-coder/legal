@@ -33,7 +33,9 @@ export async function POST(request: NextRequest) {
       audioFile: audioFile || undefined,
     }
 
+    console.log('Create Case API: Calling createCaseFromDeclaration')
     const result = await createCaseFromDeclaration(clientId, title, declaration, user)
+    console.log('Create Case API: Result:', result)
 
     return NextResponse.json(result)
   } catch (error) {

@@ -1,4 +1,4 @@
-'use server'
+
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
@@ -20,15 +20,16 @@ export async function attachDeclarationToCase(
 ) {
   try {
     const user = injectedUser || await requireAuth()
+    console.log('User authenticated:', user.id)
     const supabase = await createClient()
 
     // Save audio file to Supabase Storage if provided
     let audioDocumentId = null
     if (declaration.audioFile) {
-      console.log('Uploading audio file:', {
-        fileName: declaration.audioFile.name,
-        fileSize: declaration.audioFile.size,
-        fileType: declaration.audioFile.type
+      console.log('Processing audio file:', {
+        name: declaration.audioFile.name,
+        type: declaration.audioFile.type,
+        size: declaration.audioFile.size
       })
 
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-")
@@ -47,6 +48,7 @@ export async function attachDeclarationToCase(
 
       if (uploadError) {
         console.error('Error uploading audio to storage:', uploadError)
+        throw new Error(`Storage upload failed: ${uploadError.message}`)
       } else if (uploadData) {
         console.log('Audio uploaded successfully:', uploadData.path)
 
@@ -68,6 +70,7 @@ export async function attachDeclarationToCase(
 
         if (dbError) {
           console.error('Error saving audio document to database:', dbError)
+          throw new Error(`Database document save failed: ${dbError.message}`)
         } else if (document) {
           console.log('Audio document saved to database:', document.id)
           audioDocumentId = document.id
@@ -81,7 +84,7 @@ export async function attachDeclarationToCase(
     const noteContent = `# Declaración\n\n## Resumen\n${declaration.summary}\n\n${declaration.transcription ? `## Transcripción Completa\n${declaration.transcription}\n\n` : ''}${audioDocumentId ? `_Audio guardado como documento_` : ''}`
 
     const { data, error } = await supabase
-      .from('case_notes')
+      .from('notes')
       .insert({
         case_id: caseId,
         content: noteContent,

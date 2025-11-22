@@ -32,7 +32,9 @@ export async function POST(request: NextRequest) {
       audioFile: audioFile || undefined,
     }
 
+    console.log('Attach API: Calling attachDeclarationToCase')
     const result = await attachDeclarationToCase(caseId, declaration, user)
+    console.log('Attach API: Result:', result)
 
     return NextResponse.json(result)
   } catch (error) {
