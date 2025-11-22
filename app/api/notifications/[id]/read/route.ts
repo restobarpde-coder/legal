@@ -2,11 +2,11 @@ import { createClient } from '@/lib/supabase/server';
 import { requireAuth } from '@/lib/auth';
 import { NextResponse } from 'next/server';
 
-export async function PUT(request: Request, { params }: { params: { id: string } }) {
+export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const supabase = await createClient();
     const user = await requireAuth();
-    const notificationId = params.id;
+    const notificationId = (await params).id;
 
     if (!notificationId) {
       return NextResponse.json({ error: 'Notification ID is required' }, { status: 400 });

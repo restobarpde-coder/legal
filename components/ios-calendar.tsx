@@ -169,8 +169,8 @@ export function IosCalendar({ tasks, onTaskClick, onDateClick }: IosCalendarProp
                 <DnDCalendar
                     localizer={localizer}
                     events={events}
-                    startAccessor="start"
-                    endAccessor="end"
+                    startAccessor={(event: any) => event.start}
+                    endAccessor={(event: any) => event.end}
                     style={{ height: 700 }}
                     date={currentDate}
                     view={currentView}
