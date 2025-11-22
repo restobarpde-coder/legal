@@ -1,13 +1,14 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect } from 'react'
+import { useRouter, useSearchParams, usePathname } from 'next/navigation'
 import { MobileDashboardSidebar } from "./dashboard-sidebar"
 import { NotificationDropdown } from "./notification-dropdown"
 import { ModeToggle } from "@/components/mode-toggle"
 import { Input } from "@/components/ui/input"
 import { Search } from "lucide-react"
 import { useUser } from "@/components/providers/user-context"
+import { useDebouncedCallback } from "use-debounce"
 
 interface DashboardHeaderProps {
   title?: string
@@ -15,13 +16,40 @@ interface DashboardHeaderProps {
 
 export function DashboardHeader({ title }: DashboardHeaderProps) {
   const router = useRouter()
-  const [searchQuery, setSearchQuery] = useState('')
+  const searchParams = useSearchParams()
+  const pathname = usePathname()
+  const [searchQuery, setSearchQuery] = useState(searchParams.get('q') || '')
   const { user } = useUser()
+
+  // Sync search query with URL params when they change (e.g. navigation)
+  useEffect(() => {
+    if (pathname === '/dashboard/search') {
+      setSearchQuery(searchParams.get('q') || '')
+    }
+  }, [searchParams, pathname])
+
+  const debouncedSearch = useDebouncedCallback((term: string) => {
+    if (pathname === '/dashboard/search') {
+      const params = new URLSearchParams(searchParams.toString())
+      if (term) {
+        params.set('q', term)
+      } else {
+        params.delete('q')
+      }
+      router.replace(`/dashboard/search?${params.toString()}`)
+    }
+  }, 500)
 
   const handleSearch = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && searchQuery.trim() !== '') {
       router.push(`/dashboard/search?q=${searchQuery}`)
     }
+  }
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value
+    setSearchQuery(value)
+    debouncedSearch(value)
   }
 
   return (
@@ -43,7 +71,7 @@ export function DashboardHeader({ title }: DashboardHeaderProps) {
             placeholder="Buscar..."
             className="pl-10 w-56 lg:w-72 xl:w-96 h-11 rounded-lg border-input bg-background/50 backdrop-blur-sm transition-all duration-200 focus:w-80 lg:focus:w-80 xl:focus:w-[28rem] focus:shadow-md"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={handleChange}
             onKeyDown={handleSearch}
           />
         </div>

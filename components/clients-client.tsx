@@ -7,9 +7,12 @@ import { useClients } from "@/hooks/use-clients"
 import { Loader2 } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 
+import { useDebounce } from "use-debounce"
+
 export function ClientsClient() {
   const [searchQuery, setSearchQuery] = useState("")
-  const { data: clients, isLoading, error } = useClients(searchQuery)
+  const [debouncedSearchQuery] = useDebounce(searchQuery, 500)
+  const { data: clients, isLoading, error } = useClients(debouncedSearchQuery)
 
   if (isLoading) {
     return (
@@ -33,8 +36,8 @@ export function ClientsClient() {
   return (
     <div className="space-y-6">
       <ClientPageHeader />
-      <ClientsTable 
-        clients={clients || []} 
+      <ClientsTable
+        clients={clients || []}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
       />

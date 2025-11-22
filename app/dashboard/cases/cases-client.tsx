@@ -79,16 +79,21 @@ type CasesClientProps = {
   userCanCreateCases: boolean;
 }
 
+import { useDebounce } from "use-debounce"
+
+// ... imports
+
 // Componente memoizado para evitar re-renders innecesarios
 export const CasesClient = memo(function CasesClient({ userCanCreateCases }: CasesClientProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const queryClient = useQueryClient()
   const [searchQuery, setSearchQuery] = useState(searchParams.get('q') || '')
+  const [debouncedSearchQuery] = useDebounce(searchQuery, 500)
   const [statusFilter, setStatusFilter] = useState(searchParams.get('status') || 'all')
   const [priorityFilter, setPriorityFilter] = useState(searchParams.get('priority') || 'all')
 
-  const { data: cases = [], isLoading, error } = useCases(searchQuery, statusFilter, priorityFilter)
+  const { data: cases = [], isLoading, error } = useCases(debouncedSearchQuery, statusFilter, priorityFilter)
 
   // Optimizado: solo depender del valor que importa
   const successParam = searchParams.get('success')
@@ -158,8 +163,8 @@ export const CasesClient = memo(function CasesClient({ userCanCreateCases }: Cas
         <CardContent>
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="flex-1">
-              <SearchBar 
-                placeholder="Buscar por título o descripción..." 
+              <SearchBar
+                placeholder="Buscar por título o descripción..."
                 value={searchQuery}
                 onChange={setSearchQuery}
               />
@@ -182,8 +187,8 @@ export const CasesClient = memo(function CasesClient({ userCanCreateCases }: Cas
               <div className="text-center">
                 <h3 className="text-lg font-semibold mb-2">No hay casos registrados</h3>
                 <p className="text-muted-foreground mb-4">
-                  {userCanCreateCases 
-                    ? "Comienza creando tu primer caso" 
+                  {userCanCreateCases
+                    ? "Comienza creando tu primer caso"
                     : "No tienes casos asignados"}
                 </p>
                 {userCanCreateCases && (

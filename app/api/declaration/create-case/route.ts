@@ -1,10 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createCaseFromDeclaration } from '@/app/dashboard/declarations/actions'
+import { requireAuthAPI } from '@/lib/auth'
 
 export async function POST(request: NextRequest) {
   try {
+    const user = await requireAuthAPI()
+    if (!user) {
+      return NextResponse.json(
+        { success: false, message: 'Unauthorized' },
+        { status: 401 }
+      )
+    }
+
     const formData = await request.formData()
-    
+
     const clientId = formData.get('clientId') as string
     const title = formData.get('title') as string
     const summary = formData.get('summary') as string
@@ -24,7 +33,7 @@ export async function POST(request: NextRequest) {
       audioFile: audioFile || undefined,
     }
 
-    const result = await createCaseFromDeclaration(clientId, title, declaration)
+    const result = await createCaseFromDeclaration(clientId, title, declaration, user)
 
     return NextResponse.json(result)
   } catch (error) {

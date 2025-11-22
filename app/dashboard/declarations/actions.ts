@@ -10,13 +10,16 @@ export type DeclarationData = {
   audioFile?: File
 }
 
+import { User } from '@supabase/supabase-js'
+
 // Save declaration as a document/note attached to a case
 export async function attachDeclarationToCase(
   caseId: string,
-  declaration: DeclarationData
+  declaration: DeclarationData,
+  injectedUser?: User
 ) {
   try {
-    const user = await requireAuth()
+    const user = injectedUser || await requireAuth()
     const supabase = await createClient()
 
     // Save audio file to Supabase Storage if provided
@@ -31,9 +34,13 @@ export async function attachDeclarationToCase(
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-")
       const fileName = `${user.id}/${caseId}/${timestamp}-declaracion.webm`
 
+      const arrayBuffer = await declaration.audioFile.arrayBuffer()
+      const fileBuffer = Buffer.from(arrayBuffer)
+
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('documents')
-        .upload(fileName, declaration.audioFile, {
+        .upload(fileName, fileBuffer, {
+          contentType: declaration.audioFile.type,
           cacheControl: '3600',
           upsert: false
         })
@@ -42,7 +49,7 @@ export async function attachDeclarationToCase(
         console.error('Error uploading audio to storage:', uploadError)
       } else if (uploadData) {
         console.log('Audio uploaded successfully:', uploadData.path)
-        
+
         // Save document metadata to database
         const { data: document, error: dbError } = await supabase
           .from('documents')
@@ -97,13 +104,15 @@ export async function attachDeclarationToCase(
 }
 
 // Create a new case from a declaration
+// Create a new case from a declaration
 export async function createCaseFromDeclaration(
   clientId: string,
   title: string,
-  declaration: DeclarationData
+  declaration: DeclarationData,
+  injectedUser?: User
 ) {
   try {
-    const user = await requireAuth()
+    const user = injectedUser || await requireAuth()
     const supabase = await createClient()
 
     // Create the case
@@ -139,7 +148,7 @@ export async function createCaseFromDeclaration(
     }
 
     // Attach the full declaration as a note
-    await attachDeclarationToCase(newCase.id, declaration)
+    await attachDeclarationToCase(newCase.id, declaration, user)
 
     revalidatePath('/dashboard/cases')
     return { success: true, caseId: newCase.id }
