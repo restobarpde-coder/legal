@@ -16,6 +16,9 @@ export type Notification = {
   // Related entity details
   case_id?: string | null
   task_id?: string | null
+  related_entity_type?: string
+  related_entity_id?: string
+  metadata?: Record<string, any>
   // Additional fields mapped from metadata or joins
   taskTitle?: string
   taskDescription?: string | null
@@ -170,8 +173,41 @@ export function useNotifications() {
     }
   }
 
+  // Filter notifications to show only the latest one per task
+  const filteredNotifications = notifications.reduce((acc, current) => {
+    // Identify if it's a task notification
+    const isTask = current.related_entity_type === 'task' || !!current.task_id
+    const taskId = current.related_entity_type === 'task'
+      ? current.related_entity_id
+      : current.task_id
+
+    if (isTask && taskId) {
+      // Check if we already have a notification for this task
+      const existingIndex = acc.findIndex(n => {
+        const nTaskId = n.related_entity_type === 'task' ? n.related_entity_id : n.task_id
+        return (n.related_entity_type === 'task' || !!n.task_id) && nTaskId === taskId
+      })
+
+      if (existingIndex >= 0) {
+        // If current is newer than existing, replace it
+        if (new Date(current.created_at) > new Date(acc[existingIndex].created_at)) {
+          acc[existingIndex] = current
+        }
+        // If existing is newer, do nothing (keep existing)
+      } else {
+        acc.push(current)
+      }
+    } else {
+      // Non-task notifications are always added
+      acc.push(current)
+    }
+    return acc
+  }, [] as Notification[])
+    // Sort by created_at desc again just in case
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+
   return {
-    data: notifications,
+    data: filteredNotifications,
     isLoading,
     error,
     isConnected,

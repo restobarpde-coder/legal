@@ -102,11 +102,16 @@ export function NotificationDropdown() {
               const notificationId = notification.id || `notif-${index}`
               const title = notification.taskTitle || notification.title || 'Notificación'
               const description = notification.taskDescription || notification.message || ''
-              const link = notification.case_id
-                ? `/dashboard/cases/${notification.case_id}`
-                : notification.task_id
-                  ? `/dashboard/tasks/${notification.task_id}`
-                  : '#'
+              // Determine link based on notification type and data
+              let link = '#'
+
+              if (notification.related_entity_type === 'task' && notification.related_entity_id) {
+                link = `/dashboard/tasks/${notification.related_entity_id}`
+              } else if (notification.task_id) {
+                link = `/dashboard/tasks/${notification.task_id}`
+              } else if (notification.case_id) {
+                link = `/dashboard/cases/${notification.case_id}`
+              }
 
               return (
                 <div key={notificationId} className="relative group">
