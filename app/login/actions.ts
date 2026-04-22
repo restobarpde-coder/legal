@@ -37,7 +37,7 @@ export async function loginAction(
         }
         
         // Redirect to dashboard
-        redirect('/')
+        redirect('/dashboard')
         
     } catch (criticalError: any) {
         // NEXT_REDIRECT is expected when using redirect()
@@ -51,4 +51,3 @@ export async function loginAction(
         }
     }
 }
-

@@ -81,12 +81,11 @@ export async function GET(request: NextRequest) {
 
     const response = NextResponse.json(cases || [])
     
-    // Cache headers para optimizar performance
+    // Realtime requires fresh data on every request
     response.headers.set(
       'Cache-Control',
-      'public, s-maxage=300, stale-while-revalidate=600'
+      'private, no-cache, no-store, max-age=0, must-revalidate'
     )
-    response.headers.set('Vary', 'Authorization')
     
     return response
   } catch (error) {

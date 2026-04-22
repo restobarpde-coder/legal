@@ -38,5 +38,6 @@ export const caseSchema = z.object({
 
 export type CaseFormState = {
   message: string
+  success?: boolean
   errors?: z.ZodError<z.infer<typeof caseSchema>>['formErrors']['fieldErrors']
 }

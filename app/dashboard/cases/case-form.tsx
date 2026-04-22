@@ -35,10 +35,23 @@ type CaseFormProps = {
   clients: Client[]
   formAction: (prevState: CaseFormState, formData: FormData) => Promise<CaseFormState>
   preselectedClientId?: string
+  returnStateOnSuccess?: boolean
+  onSuccess?: () => void
+  onCancel?: () => void
+  cancelHref?: string
 }
 
-export function CaseForm({ case: caseData, clients: initialClients, formAction, preselectedClientId }: CaseFormProps) {
-  const [state, dispatch] = useActionState(formAction, { message: '', errors: {} })
+export function CaseForm({
+  case: caseData,
+  clients: initialClients,
+  formAction,
+  preselectedClientId,
+  returnStateOnSuccess = false,
+  onSuccess,
+  onCancel,
+  cancelHref = '/dashboard/cases',
+}: CaseFormProps) {
+  const [state, dispatch] = useActionState(formAction, { message: '', errors: {}, success: false })
   const [clients, setClients] = useState<Client[]>(initialClients)
   const [openClientSelect, setOpenClientSelect] = useState(false)
   const [openNewClientDialog, setOpenNewClientDialog] = useState(false)
@@ -65,10 +78,14 @@ export function CaseForm({ case: caseData, clients: initialClients, formAction, 
   const watchedClientId = watch('client_id')
   const watchedStatus = watch('status')
   const watchedPriority = watch('priority')
-  const watchedNumeroArchivo = watch('numero_archivo')
-  const watchedNumeroCarpeta = watch('numero_carpeta')
 
   useEffect(() => {
+    if (state.success) {
+      toast.success(caseData ? '¡Caso actualizado exitosamente!' : '¡Caso creado exitosamente!')
+      onSuccess?.()
+      return
+    }
+
     if (state.message) {
       if (state.errors) {
         toast.warning('Error de validación', {
@@ -80,7 +97,7 @@ export function CaseForm({ case: caseData, clients: initialClients, formAction, 
         })
       }
     }
-  }, [state])
+  }, [state, caseData, onSuccess])
 
   const handleCreateClientInline = async (prevState: ClientFormState, formData: FormData): Promise<ClientFormState> => {
     const name = formData.get('name') as string
@@ -104,6 +121,7 @@ export function CaseForm({ case: caseData, clients: initialClients, formAction, 
 
   return (
     <form action={dispatch}>
+      {returnStateOnSuccess && <input type="hidden" name="_return_state" value="1" />}
       <Card>
         <CardHeader>
           <CardTitle>{caseData ? 'Editar Caso' : 'Crear Nuevo Caso'}</CardTitle>
@@ -404,9 +422,15 @@ export function CaseForm({ case: caseData, clients: initialClients, formAction, 
           )}
         </CardContent>
         <CardFooter className="flex justify-end gap-2">
-          <Button variant="ghost" asChild>
-            <Link href="/dashboard/cases">Cancelar</Link>
-          </Button>
+          {onCancel ? (
+            <Button variant="ghost" type="button" onClick={onCancel}>
+              Cancelar
+            </Button>
+          ) : (
+            <Button variant="ghost" asChild>
+              <Link href={cancelHref}>Cancelar</Link>
+            </Button>
+          )}
           <Button type="submit" disabled={isSubmitting}>
             {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
             {caseData ? 'Guardar Cambios' : 'Crear Caso'}

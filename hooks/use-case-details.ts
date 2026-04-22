@@ -1,7 +1,7 @@
 'use client'
 
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 export type CaseDetails = {
@@ -99,11 +99,47 @@ export type CaseDetails = {
 // Fetch full case details
 export function useCaseDetails(caseId: string) {
   const queryClient = useQueryClient()
-  const supabase = createClient()
+  const supabase = useMemo(() => createClient(), [])
   
   // Set up real-time subscriptions for instant updates
   useEffect(() => {
     if (!caseId) return
+
+    // Subscribe to changes in the case itself (status, priority, etc.)
+    const caseChannel = supabase
+      .channel(`case-${caseId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'cases',
+          filter: `id=eq.${caseId}`,
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['case', caseId] })
+          queryClient.invalidateQueries({ queryKey: ['cases'] })
+        }
+      )
+      .subscribe()
+
+    // Subscribe to changes in case members
+    const caseMembersChannel = supabase
+      .channel(`case-members-${caseId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'case_members',
+          filter: `case_id=eq.${caseId}`,
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['case', caseId] })
+          queryClient.invalidateQueries({ queryKey: ['cases'] })
+        }
+      )
+      .subscribe()
 
     // Subscribe to changes in tasks
     const tasksChannel = supabase
@@ -117,8 +153,10 @@ export function useCaseDetails(caseId: string) {
           filter: `case_id=eq.${caseId}`,
         },
         () => {
-          // Invalidate the case query to trigger a refetch
           queryClient.invalidateQueries({ queryKey: ['case', caseId] })
+          queryClient.invalidateQueries({ queryKey: ['tasks', caseId] })
+          queryClient.invalidateQueries({ queryKey: ['user-tasks'] })
+          queryClient.invalidateQueries({ queryKey: ['all-tasks'] })
         }
       )
       .subscribe()
@@ -136,6 +174,7 @@ export function useCaseDetails(caseId: string) {
         },
         () => {
           queryClient.invalidateQueries({ queryKey: ['case', caseId] })
+          queryClient.invalidateQueries({ queryKey: ['documents', caseId] })
         }
       )
       .subscribe()
@@ -153,6 +192,7 @@ export function useCaseDetails(caseId: string) {
         },
         () => {
           queryClient.invalidateQueries({ queryKey: ['case', caseId] })
+          queryClient.invalidateQueries({ queryKey: ['notes', caseId] })
         }
       )
       .subscribe()
@@ -176,6 +216,8 @@ export function useCaseDetails(caseId: string) {
 
     // Cleanup subscriptions on unmount
     return () => {
+      supabase.removeChannel(caseChannel)
+      supabase.removeChannel(caseMembersChannel)
       supabase.removeChannel(tasksChannel)
       supabase.removeChannel(documentsChannel)
       supabase.removeChannel(notesChannel)

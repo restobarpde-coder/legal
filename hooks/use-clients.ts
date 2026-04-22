@@ -45,7 +45,8 @@ export function useClients(searchQuery?: string) {
       }
       return response.json() as Promise<Client[]>
     },
-    staleTime: 1000 * 60 * 10, // 10min - datos frescos por más tiempo
+    staleTime: 0,
+    refetchOnWindowFocus: true,
     select: (data) => {
       // Transformar datos para optimizar renders
       return data.map(client => ({

@@ -1,6 +1,7 @@
 'use client'
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 type Case = {
@@ -29,6 +30,49 @@ type Case = {
 
 // Fetch cases
 export function useCases(searchQuery?: string, statusFilter?: string, priorityFilter?: string) {
+  const queryClient = useQueryClient()
+  const supabase = useMemo(() => createClient(), [])
+
+  useEffect(() => {
+    const channel = supabase
+      .channel('cases-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'cases',
+        },
+        (payload) => {
+          const changedCaseId =
+            (payload.new as { id?: string } | null)?.id ||
+            (payload.old as { id?: string } | null)?.id
+
+          queryClient.invalidateQueries({ queryKey: ['cases'] })
+
+          if (changedCaseId) {
+            queryClient.invalidateQueries({ queryKey: ['case', changedCaseId] })
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'case_members',
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['cases'] })
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [queryClient, supabase])
+
   return useQuery({
     queryKey: ['cases', searchQuery, statusFilter, priorityFilter],
     queryFn: async (): Promise<Case[]> => {
@@ -37,13 +81,16 @@ export function useCases(searchQuery?: string, statusFilter?: string, priorityFi
       if (statusFilter) params.append('status', statusFilter)
       if (priorityFilter) params.append('priority', priorityFilter)
 
-      const response = await fetch(`/api/cases?${params.toString()}`)
+      const response = await fetch(`/api/cases?${params.toString()}`, {
+        cache: 'no-store',
+      })
       if (!response.ok) {
         throw new Error('Failed to fetch cases')
       }
       return response.json()
     },
-    staleTime: 1000 * 60 * 10, // 10min para esta query específica
+    staleTime: 0,
+    refetchOnWindowFocus: true,
   })
 }
 

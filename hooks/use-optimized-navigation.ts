@@ -2,46 +2,75 @@
 
 import { useRouter, usePathname } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
-import { useCallback, useTransition } from 'react'
+import { useCallback, useRef, useTransition } from 'react'
+
+type PrefetchRouteOptions = {
+  includeData?: boolean
+}
 
 export function useOptimizedNavigation() {
   const router = useRouter()
   const pathname = usePathname()
   const queryClient = useQueryClient()
   const [isPending, startTransition] = useTransition()
+  const prefetchedRoutesRef = useRef<Set<string>>(new Set())
+  const prefetchedDataRef = useRef<Set<string>>(new Set())
 
-  // Prefetch inteligente basado en la ruta destino
-  const prefetchRoute = useCallback((href: string) => {
-    // Prefetch page component
-    router.prefetch(href)
-    
-    // Prefetch data based on route
-    const prefetchMap: Record<string, () => void> = {
-      '/dashboard/cases': () => {
-        queryClient.prefetchQuery({
-          queryKey: ['cases'],
-          queryFn: () => fetch('/api/cases').then(res => res.json()),
-          staleTime: 1000 * 60 * 5,
-        })
-      },
-      '/dashboard/clients': () => {
-        queryClient.prefetchQuery({
-          queryKey: ['clients'],
-          queryFn: () => fetch('/api/clients').then(res => res.json()),
-          staleTime: 1000 * 60 * 5,
-        })
-      },
-      '/dashboard/tasks': () => {
-        queryClient.prefetchQuery({
-          queryKey: ['tasks'],
-          queryFn: () => fetch('/api/tasks').then(res => res.json()),
-          staleTime: 1000 * 60 * 5,
-        })
+  const dataPrefetchers: Record<string, () => Promise<unknown>> = {
+    '/dashboard/cases': () =>
+      queryClient.prefetchQuery({
+        queryKey: ['cases', '', 'all', 'all'],
+        queryFn: () => fetch('/api/cases', { cache: 'no-store' }).then((res) => res.json()),
+        staleTime: 0,
+      }),
+    '/dashboard/clients': () =>
+      queryClient.prefetchQuery({
+        queryKey: ['clients', ''],
+        queryFn: () => fetch('/api/clients', { cache: 'no-store' }).then((res) => res.json()),
+        staleTime: 0,
+      }),
+  }
+
+  // Prefetch inteligente basado en la ruta destino (con dedupe)
+  const prefetchRoute = useCallback(
+    (href: string, options?: PrefetchRouteOptions) => {
+      if (!prefetchedRoutesRef.current.has(href)) {
+        router.prefetch(href)
+        prefetchedRoutesRef.current.add(href)
       }
-    }
-    
-    prefetchMap[href]?.()
-  }, [router, queryClient])
+
+      const shouldPrefetchData = options?.includeData ?? true
+      if (!shouldPrefetchData) return
+
+      if (!prefetchedDataRef.current.has(href) && dataPrefetchers[href]) {
+        prefetchedDataRef.current.add(href)
+        void dataPrefetchers[href]()
+      }
+    },
+    [router, queryClient]
+  )
+
+  const prefetchCommonRoutes = useCallback(
+    (routes: string[]) => {
+      const schedule = (cb: () => void) => {
+        const runtime = globalThis as typeof globalThis & {
+          requestIdleCallback?: (callback: () => void) => number
+        }
+
+        if (typeof runtime.requestIdleCallback === 'function') {
+          runtime.requestIdleCallback(cb)
+          return
+        }
+
+        setTimeout(cb, 80)
+      }
+
+      schedule(() => {
+        routes.forEach((route) => prefetchRoute(route))
+      })
+    },
+    [prefetchRoute]
+  )
 
   // Navegación optimizada con transición
   const navigate = useCallback((href: string, options?: { replace?: boolean }) => {
@@ -67,7 +96,9 @@ export function useOptimizedNavigation() {
     navigate,
     navigateWithPrefetch,
     prefetchRoute,
+    prefetchCommonRoutes,
     isPending,
-    isCurrentRoute: (href: string) => pathname === href
+    isCurrentRoute: (href: string) =>
+      pathname === href || (href !== '/dashboard' && pathname.startsWith(`${href}/`)),
   }
 }

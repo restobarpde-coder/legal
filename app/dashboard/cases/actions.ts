@@ -96,6 +96,7 @@ export async function updateCase(
 ): Promise<CaseFormState> {
   await requireAuth()
   const supabase = await createClient()
+  const returnStateOnSuccess = formData.get('_return_state') === '1'
 
   const validatedFields = caseSchema.safeParse(
     Object.fromEntries(formData.entries())
@@ -136,6 +137,11 @@ export async function updateCase(
   revalidatePath('/dashboard/cases')
   revalidatePath(`/dashboard/cases/${caseId}`)
   revalidatePath(`/dashboard/cases/${caseId}/edit`)
+
+  if (returnStateOnSuccess) {
+    return { message: '', success: true }
+  }
+
   redirect('/dashboard/cases?success=case-updated')
 }
 

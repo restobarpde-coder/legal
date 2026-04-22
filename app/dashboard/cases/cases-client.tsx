@@ -11,6 +11,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { SearchBar } from "@/components/search-bar"
 import { CaseFilters } from "./case-filters"
 import { SuccessToast } from "./success-toast"
+import { CaseEditModal } from "./case-edit-modal"
 import { useCases } from "@/hooks/use-cases"
 import { useSearchParams, useRouter } from 'next/navigation'
 
@@ -88,6 +89,7 @@ export const CasesClient = memo(function CasesClient({ userCanCreateCases }: Cas
   const router = useRouter()
   const searchParams = useSearchParams()
   const queryClient = useQueryClient()
+  const [editingCaseId, setEditingCaseId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState(searchParams.get('q') || '')
   const [debouncedSearchQuery] = useDebounce(searchQuery, 500)
   const [statusFilter, setStatusFilter] = useState(searchParams.get('status') || 'all')
@@ -258,11 +260,9 @@ export const CasesClient = memo(function CasesClient({ userCanCreateCases }: Cas
                           Ver Detalles
                         </Link>
                       </DropdownMenuItem>
-                      <DropdownMenuItem asChild>
-                        <Link href={`/dashboard/cases/${case_.id}/edit`}>
-                          <Edit className="h-4 w-4 mr-2" />
-                          Editar
-                        </Link>
+                      <DropdownMenuItem onClick={() => setEditingCaseId(case_.id)}>
+                        <Edit className="h-4 w-4 mr-2" />
+                        Editar
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -272,6 +272,16 @@ export const CasesClient = memo(function CasesClient({ userCanCreateCases }: Cas
           ))
         )}
       </div>
+
+      <CaseEditModal
+        caseId={editingCaseId}
+        open={!!editingCaseId}
+        onOpenChange={(open) => {
+          if (!open) {
+            setEditingCaseId(null)
+          }
+        }}
+      />
     </div>
   )
 })

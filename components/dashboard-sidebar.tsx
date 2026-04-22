@@ -1,8 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -24,14 +23,13 @@ import {
 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
-import { useQueryClient } from "@tanstack/react-query"
 import { useOptimizedNavigation } from "@/hooks/use-optimized-navigation"
 import { useUser } from "@/components/providers/user-context"
 
 const navigation = [
   {
     name: "Dashboard",
-    href: "/",
+    href: "/dashboard",
     icon: LayoutDashboard,
   },
   {
@@ -80,37 +78,14 @@ const navigation = [
 
 
 function SidebarContent() {
-  const pathname = usePathname()
   const router = useRouter()
   const supabase = createClient()
-  const queryClient = useQueryClient()
-  const { navigateWithPrefetch, prefetchRoute, isPending, isCurrentRoute } = useOptimizedNavigation()
+  const { prefetchRoute, prefetchCommonRoutes, isCurrentRoute } = useOptimizedNavigation()
   const { user } = useUser()
 
-  // Prefetch functions for different routes
-  const prefetchData = {
-    '/dashboard/cases': () => {
-      queryClient.prefetchQuery({
-        queryKey: ['cases'],
-        queryFn: () => fetch('/api/cases').then(res => res.json()),
-        staleTime: 1000 * 60 * 5, // 5min
-      })
-    },
-    '/dashboard/clients': () => {
-      queryClient.prefetchQuery({
-        queryKey: ['clients'],
-        queryFn: () => fetch('/api/clients').then(res => res.json()),
-        staleTime: 1000 * 60 * 5,
-      })
-    },
-    '/dashboard/tasks': () => {
-      queryClient.prefetchQuery({
-        queryKey: ['tasks'],
-        queryFn: () => fetch('/api/tasks').then(res => res.json()),
-        staleTime: 1000 * 60 * 5,
-      })
-    }
-  }
+  useEffect(() => {
+    prefetchCommonRoutes(['/dashboard', '/dashboard/cases', '/dashboard/clients', '/dashboard/tasks'])
+  }, [prefetchCommonRoutes])
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
@@ -136,6 +111,7 @@ function SidebarContent() {
                 key={item.name}
                 href={item.href}
                 onMouseEnter={() => prefetchRoute(item.href)}
+                onFocus={() => prefetchRoute(item.href)}
                 className={cn(
                   "group flex items-center gap-3 rounded-lg px-3.5 py-3 text-sm font-medium transition-all duration-200",
                   "text-sidebar-foreground hover:bg-sidebar-accent/70 hover:text-sidebar-accent-foreground",
