@@ -1,6 +1,8 @@
 "use client"
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useMemo } from 'react'
+import { createClient } from '@/lib/supabase/client'
 
 export interface Client {
   id: string
@@ -31,6 +33,38 @@ export interface UpdateClientData extends CreateClientData {
 
 // Fetch all clients
 export function useClients(searchQuery?: string) {
+  const queryClient = useQueryClient()
+  const supabase = useMemo(() => createClient(), [])
+
+  useEffect(() => {
+    const channel = supabase
+      .channel('clients-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'clients',
+        },
+        (payload) => {
+          const changedClientId =
+            (payload.new as { id?: string } | null)?.id ||
+            (payload.old as { id?: string } | null)?.id
+
+          queryClient.invalidateQueries({ queryKey: ['clients'] })
+
+          if (changedClientId) {
+            queryClient.invalidateQueries({ queryKey: ['client', changedClientId] })
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [queryClient, supabase])
+
   return useQuery({
     queryKey: ['clients', searchQuery],
     queryFn: async () => {
@@ -39,7 +73,11 @@ export function useClients(searchQuery?: string) {
         params.append('q', searchQuery)
       }
       
-      const response = await fetch(`/api/clients?${params}`)
+      const queryString = params.toString()
+      const endpoint = queryString ? `/api/clients?${queryString}` : '/api/clients'
+      const response = await fetch(endpoint, {
+        cache: 'no-store',
+      })
       if (!response.ok) {
         throw new Error('Error al cargar los clientes')
       }
@@ -62,7 +100,9 @@ export function useClient(clientId: string) {
   return useQuery({
     queryKey: ['client', clientId],
     queryFn: async () => {
-      const response = await fetch(`/api/clients/${clientId}`)
+      const response = await fetch(`/api/clients/${clientId}`, {
+        cache: 'no-store',
+      })
       if (!response.ok) {
         throw new Error('Error al cargar el cliente')
       }

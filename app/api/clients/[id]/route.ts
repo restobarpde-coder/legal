@@ -2,6 +2,8 @@ import { createClient } from '@/lib/supabase/server'
 import { requireAuth } from '@/lib/auth'
 import { NextResponse } from 'next/server'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -36,7 +38,13 @@ export async function GET(
       )
     }
 
-    return NextResponse.json(client)
+    const response = NextResponse.json(client)
+    response.headers.set(
+      'Cache-Control',
+      'private, no-cache, no-store, max-age=0, must-revalidate'
+    )
+
+    return response
   } catch (error) {
     console.error('Client API error:', error)
     return NextResponse.json(

@@ -214,6 +214,22 @@ export function useCaseDetails(caseId: string) {
       )
       .subscribe()
 
+    const clientsChannel = supabase
+      .channel(`case-client-${caseId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'clients',
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['case', caseId] })
+          queryClient.invalidateQueries({ queryKey: ['cases'] })
+        }
+      )
+      .subscribe()
+
     // Cleanup subscriptions on unmount
     return () => {
       supabase.removeChannel(caseChannel)
@@ -222,13 +238,16 @@ export function useCaseDetails(caseId: string) {
       supabase.removeChannel(documentsChannel)
       supabase.removeChannel(notesChannel)
       supabase.removeChannel(timeEntriesChannel)
+      supabase.removeChannel(clientsChannel)
     }
   }, [caseId, queryClient, supabase])
   
   return useQuery({
     queryKey: ['case', caseId],
     queryFn: async (): Promise<CaseDetails> => {
-      const response = await fetch(`/api/cases/${caseId}`)
+      const response = await fetch(`/api/cases/${caseId}`, {
+        cache: 'no-store',
+      })
       if (!response.ok) {
         throw new Error('Failed to fetch case details')
       }

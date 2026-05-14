@@ -50,7 +50,9 @@ export function CaseEditModal({ caseId, open, onOpenChange }: CaseEditModalProps
   } = useQuery({
     queryKey: ['case-edit', caseId],
     queryFn: async (): Promise<CaseDetailsResponse> => {
-      const response = await fetch(`/api/cases/${caseId}`)
+      const response = await fetch(`/api/cases/${caseId}`, {
+        cache: 'no-store',
+      })
       if (!response.ok) {
         throw new Error('No se pudo cargar el caso')
       }

@@ -2,6 +2,17 @@ import { createClient } from '@/lib/supabase/server'
 import { requireAuth } from '@/lib/auth'
 import { NextRequest, NextResponse } from 'next/server'
 
+export const dynamic = 'force-dynamic'
+
+function freshJson(data: unknown, init?: ResponseInit) {
+  const response = NextResponse.json(data, init)
+  response.headers.set(
+    'Cache-Control',
+    'private, no-cache, no-store, max-age=0, must-revalidate'
+  )
+  return response
+}
+
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
@@ -28,7 +39,7 @@ export async function GET(request: NextRequest) {
     
     // If user is not a member of any case, return empty array
     if (caseIds.length === 0) {
-      return NextResponse.json([])
+      return freshJson([])
     }
 
     // Now query cases with those IDs (optimized select)
@@ -79,15 +90,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Error fetching cases' }, { status: 500 })
     }
 
-    const response = NextResponse.json(cases || [])
-    
-    // Realtime requires fresh data on every request
-    response.headers.set(
-      'Cache-Control',
-      'private, no-cache, no-store, max-age=0, must-revalidate'
-    )
-    
-    return response
+    return freshJson(cases || [])
   } catch (error) {
     console.error('Error in cases API:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

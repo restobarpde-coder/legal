@@ -2,6 +2,8 @@ import { createClient } from '@/lib/supabase/server'
 import { requireAuth } from '@/lib/auth'
 import { NextResponse } from 'next/server'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(request: Request) {
   try {
     const user = await requireAuth()
@@ -39,12 +41,11 @@ export async function GET(request: Request) {
 
     const response = NextResponse.json(clients || [])
     
-    // Cache headers para optimizar performance
+    // Realtime updates need every refetch to hit Supabase, not a stale HTTP cache.
     response.headers.set(
       'Cache-Control',
-      'public, s-maxage=600, stale-while-revalidate=1200'
+      'private, no-cache, no-store, max-age=0, must-revalidate'
     )
-    response.headers.set('Vary', 'Authorization')
     
     return response
   } catch (error) {

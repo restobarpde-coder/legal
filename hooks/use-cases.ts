@@ -34,6 +34,15 @@ export function useCases(searchQuery?: string, statusFilter?: string, priorityFi
   const supabase = useMemo(() => createClient(), [])
 
   useEffect(() => {
+    const invalidateCaseQueries = (caseId?: string) => {
+      queryClient.invalidateQueries({ queryKey: ['cases'] })
+
+      if (caseId) {
+        queryClient.invalidateQueries({ queryKey: ['case', caseId] })
+        queryClient.invalidateQueries({ queryKey: ['case-edit', caseId] })
+      }
+    }
+
     const channel = supabase
       .channel('cases-realtime')
       .on(
@@ -48,11 +57,7 @@ export function useCases(searchQuery?: string, statusFilter?: string, priorityFi
             (payload.new as { id?: string } | null)?.id ||
             (payload.old as { id?: string } | null)?.id
 
-          queryClient.invalidateQueries({ queryKey: ['cases'] })
-
-          if (changedCaseId) {
-            queryClient.invalidateQueries({ queryKey: ['case', changedCaseId] })
-          }
+          invalidateCaseQueries(changedCaseId)
         }
       )
       .on(
@@ -62,7 +67,24 @@ export function useCases(searchQuery?: string, statusFilter?: string, priorityFi
           schema: 'public',
           table: 'case_members',
         },
+        (payload) => {
+          const changedCaseId =
+            (payload.new as { case_id?: string } | null)?.case_id ||
+            (payload.old as { case_id?: string } | null)?.case_id
+
+          invalidateCaseQueries(changedCaseId)
+          queryClient.invalidateQueries({ queryKey: ['assignable-users'] })
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'clients',
+        },
         () => {
+          // The cases list renders client name/company, so client edits must refresh it too.
           queryClient.invalidateQueries({ queryKey: ['cases'] })
         }
       )
@@ -81,7 +103,9 @@ export function useCases(searchQuery?: string, statusFilter?: string, priorityFi
       if (statusFilter) params.append('status', statusFilter)
       if (priorityFilter) params.append('priority', priorityFilter)
 
-      const response = await fetch(`/api/cases?${params.toString()}`, {
+      const queryString = params.toString()
+      const endpoint = queryString ? `/api/cases?${queryString}` : '/api/cases'
+      const response = await fetch(endpoint, {
         cache: 'no-store',
       })
       if (!response.ok) {
@@ -91,6 +115,7 @@ export function useCases(searchQuery?: string, statusFilter?: string, priorityFi
     },
     staleTime: 0,
     refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
   })
 }
 

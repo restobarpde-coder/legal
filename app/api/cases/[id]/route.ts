@@ -2,6 +2,17 @@ import { createClient } from '@/lib/supabase/server'
 import { requireAuth } from '@/lib/auth'
 import { NextRequest, NextResponse } from 'next/server'
 
+export const dynamic = 'force-dynamic'
+
+function freshJson(data: unknown, init?: ResponseInit) {
+  const response = NextResponse.json(data, init)
+  response.headers.set(
+    'Cache-Control',
+    'private, no-cache, no-store, max-age=0, must-revalidate'
+  )
+  return response
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -186,7 +197,7 @@ export async function GET(
     
     console.log('API response being sent:', { caseData: !!caseData, tasks: tasks?.length, canManage })
 
-    return NextResponse.json({
+    return freshJson({
       caseData,
       tasks: tasks || [],
       documents: documents || [],
