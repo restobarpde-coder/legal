@@ -88,8 +88,8 @@ export function MessagesInbox() {
   const [composeLoading, setComposeLoading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const selectedIdRef = useRef<string | null>(null)
-  const openingConversationRef = useRef<string | null>(null)
-  const openedConversationRef = useRef<string | null>(null)
+  const conversationsRequestRef = useRef(0)
+  const readRequestsRef = useRef(new Set<string>())
 
   useEffect(() => { selectedIdRef.current = selectedId }, [selectedId])
 
@@ -99,12 +99,14 @@ export function MessagesInbox() {
   )
 
   const loadConversations = useCallback(async (preferredId?: string) => {
+    const requestId = ++conversationsRequestRef.current
     setLoading(true)
     setError(null)
     try {
       const response = await fetch(`/api/inbox/conversations?channel=${channel}&status=${status}&assigned=all`)
       const result = await response.json()
       if (!response.ok) throw new Error(result.error ?? 'No fue posible cargar las conversaciones')
+      if (requestId !== conversationsRequestRef.current) return
       setConversations(result.conversations ?? [])
       setSelectedId((current) => {
         if (preferredId && result.conversations?.some((item: Conversation) => item.id === preferredId)) return preferredId
@@ -112,9 +114,10 @@ export function MessagesInbox() {
         return result.conversations?.[0]?.id ?? null
       })
     } catch (err) {
+      if (requestId !== conversationsRequestRef.current) return
       setError(err instanceof Error ? err.message : 'No fue posible cargar las conversaciones')
     } finally {
-      setLoading(false)
+      if (requestId === conversationsRequestRef.current) setLoading(false)
     }
   }, [channel, status])
 
@@ -124,12 +127,13 @@ export function MessagesInbox() {
       const response = await fetch(`/api/inbox/conversations/${conversationId}/messages`)
       const result = await response.json()
       if (!response.ok) throw new Error(result.error ?? 'No fue posible cargar los mensajes')
+      if (selectedIdRef.current !== conversationId) return
       setMessages(result.messages ?? [])
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No fue posible cargar los mensajes')
-      setMessages([])
+      if (selectedIdRef.current === conversationId) setMessages([])
     } finally {
-      setDetailLoading(false)
+      if (selectedIdRef.current === conversationId) setDetailLoading(false)
     }
   }, [])
 
@@ -141,32 +145,28 @@ export function MessagesInbox() {
   }, [conversations, notificationConversationId])
   useEffect(() => { if (selectedId) void loadMessages(selectedId); else setMessages([]) }, [selectedId, loadMessages])
 
-  const openConversation = useCallback(async (conversationId: string) => {
+  const markConversationRead = useCallback(async (conversationId: string) => {
     setConversations(current => current.map(conversation => conversation.id === conversationId
-      ? { ...conversation, status: 'open', unread_count: 0 }
+      ? { ...conversation, unread_count: 0 }
       : conversation))
-    if (openedConversationRef.current === conversationId || openingConversationRef.current === conversationId) return
-    openingConversationRef.current = conversationId
+    if (readRequestsRef.current.has(conversationId)) return
+    readRequestsRef.current.add(conversationId)
     try {
-      const response = await fetch(`/api/inbox/conversations/${conversationId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'open' }),
-      })
-      if (response.ok) openedConversationRef.current = conversationId
+      const response = await fetch(`/api/inbox/conversations/${conversationId}/read`, { method: 'POST' })
+      if (!response.ok) void loadConversations(conversationId)
     } finally {
-      openingConversationRef.current = null
+      readRequestsRef.current.delete(conversationId)
     }
-  }, [])
+  }, [loadConversations])
 
   function selectConversation(conversationId: string) {
     setSelectedId(conversationId)
-    void openConversation(conversationId)
+    void markConversationRead(conversationId)
   }
 
   useEffect(() => {
-    if (selectedId) void openConversation(selectedId)
-  }, [openConversation, selectedId])
+    if (selectedId) void markConversationRead(selectedId)
+  }, [markConversationRead, selectedId])
 
   useEffect(() => {
     if (!selectedId) return
@@ -201,8 +201,10 @@ export function MessagesInbox() {
           setMessages(current => current.some(item => item.id === message.id)
             ? current.map(item => item.id === message.id ? { ...item, ...message } : item)
             : [...current, message])
+          if (message.direction === 'inbound' && document.visibilityState === 'visible') {
+            void markConversationRead(message.conversation_id!)
+          }
         }
-        void loadConversations()
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'inbox_messages' }, (payload) => {
         if (!active) return
@@ -213,8 +215,13 @@ export function MessagesInbox() {
             : [...current, message])
         }
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'inbox_conversations' }, () => {
-        if (active) void loadConversations()
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'inbox_conversations' }, (payload) => {
+        if (!active) return
+        const updated = payload.new as Partial<Conversation> & { id?: string }
+        if (!updated.id) return
+        setConversations(current => current.map(conversation => conversation.id === updated.id
+          ? { ...conversation, ...updated }
+          : conversation))
       })
       .subscribe()
 
@@ -222,7 +229,7 @@ export function MessagesInbox() {
       active = false
       void supabase.removeChannel(channel)
     }
-  }, [loadConversations, supabase])
+  }, [markConversationRead, supabase])
 
   async function sendReply() {
     if (!selectedId || (!draft.trim() && files.length === 0)) return
@@ -265,7 +272,10 @@ export function MessagesInbox() {
         body: JSON.stringify({ content: draft.trim(), attachments: uploadedFiles }),
       })
       const result = await response.json()
-      if (!response.ok) throw new Error(result.error ?? 'No fue posible enviar el mensaje')
+      if (!response.ok) {
+        if (result.message_id) await loadMessages(selectedId)
+        throw new Error(result.error ?? 'No fue posible enviar el mensaje')
+      }
       setDraft('')
       setFiles([])
       if (fileInputRef.current) fileInputRef.current.value = ''
@@ -280,7 +290,6 @@ export function MessagesInbox() {
 
   async function changeStatus(nextStatus: Exclude<Status, 'all'>) {
     if (!selectedId) return
-    if (nextStatus !== 'open') openedConversationRef.current = null
     const response = await fetch(`/api/inbox/conversations/${selectedId}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: nextStatus }),
     })
@@ -337,7 +346,7 @@ export function MessagesInbox() {
                 {messages.map((message) => <div key={message.id} className={cn('flex', message.direction === 'outbound' ? 'justify-end' : 'justify-start')}><div className={cn('max-w-[82%] rounded-2xl px-3 py-2 text-sm shadow-sm', message.direction === 'outbound' ? 'rounded-br-sm bg-primary text-primary-foreground' : 'rounded-bl-sm bg-background border')}><p className="whitespace-pre-wrap">{message.content || `[${message.content_type}]`}</p>{selected.channel === 'email' && message.email_account ? <p className="mt-2 border-t border-current/15 pt-1 text-[10px] opacity-75">{message.direction === 'outbound' ? 'Enviado desde' : 'Recibido en'}: {message.email_account.display_name || message.email_account.email_address}</p> : null}{message.attachments?.length ? <div className="mt-2 space-y-1">{message.attachments.map((attachment, index) => attachment.attachmentId ? <a key={attachment.attachmentId} href={`/api/inbox/attachments/${attachment.attachmentId}`} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs underline underline-offset-2 opacity-90"><FileText className="h-3.5 w-3.5" />{attachment.filename || 'Archivo adjunto'}</a> : <div key={index} className="flex items-center gap-1.5 text-xs opacity-90"><FileText className="h-3.5 w-3.5" />{attachment.filename || attachment.type || 'Archivo adjunto'}</div>)}</div> : null}<div className="mt-1 flex items-center justify-end gap-1 text-[10px] opacity-70">{formatDate(message.sent_at || message.created_at)}{message.direction === 'outbound' && message.wa_status ? <CheckCheck className="h-3 w-3" /> : null}</div></div></div>)}
               </div>
             </ScrollArea>
-            <div className="border-t p-3" onMouseEnter={() => void openConversation(selected.id)}><input ref={fileInputRef} type="file" multiple className="hidden" onChange={(event) => setFiles(Array.from(event.target.files ?? []))} /><div className="flex gap-2"><Button variant="ghost" size="icon" title="Adjuntar archivo" onClick={() => fileInputRef.current?.click()} disabled={selected.status === 'resolved' || selected.status === 'spam' || sending}><Paperclip className="h-4 w-4" /></Button><Textarea value={draft} onFocus={() => void openConversation(selected.id)} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void sendReply() } }} placeholder={selected.status === 'resolved' ? 'La conversación está resuelta' : 'Escribí una respuesta…'} disabled={selected.status === 'resolved' || selected.status === 'spam' || sending} className="min-h-10 resize-none" /><Button size="icon" onClick={() => void sendReply()} disabled={(!draft.trim() && files.length === 0) || sending || selected.status === 'resolved' || selected.status === 'spam'}><Send className="h-4 w-4" /></Button></div>{files.length > 0 ? <div className="mt-2 flex flex-wrap gap-1">{files.map(file => <Badge key={`${file.name}-${file.size}`} variant="secondary" className="gap-1"><FileText className="h-3 w-3" />{file.name}</Badge>)}</div> : null}<p className="mt-1 text-xs text-muted-foreground">Enter para enviar · Shift + Enter para salto de línea · máximo 50 MB por archivo</p></div>
+            <div className="border-t p-3"><input ref={fileInputRef} type="file" multiple className="hidden" onChange={(event) => setFiles(Array.from(event.target.files ?? []))} /><div className="flex gap-2"><Button variant="ghost" size="icon" title="Adjuntar archivo" onClick={() => fileInputRef.current?.click()} disabled={selected.status === 'resolved' || selected.status === 'spam' || sending}><Paperclip className="h-4 w-4" /></Button><Textarea value={draft} onFocus={() => void markConversationRead(selected.id)} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void sendReply() } }} placeholder={selected.status === 'resolved' ? 'La conversación está resuelta' : 'Escribí una respuesta…'} disabled={selected.status === 'resolved' || selected.status === 'spam' || sending} className="min-h-10 resize-none" /><Button size="icon" onClick={() => void sendReply()} disabled={(!draft.trim() && files.length === 0) || sending || selected.status === 'resolved' || selected.status === 'spam'}><Send className="h-4 w-4" /></Button></div>{files.length > 0 ? <div className="mt-2 flex flex-wrap gap-1">{files.map(file => <Badge key={`${file.name}-${file.size}`} variant="secondary" className="gap-1"><FileText className="h-3 w-3" />{file.name}</Badge>)}</div> : null}<p className="mt-1 text-xs text-muted-foreground">Enter para enviar · Shift + Enter para salto de línea · máximo 50 MB por archivo</p></div>
           </>}</main>
 
         <aside className="hidden min-h-0 border-l p-4 lg:block">

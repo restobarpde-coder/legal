@@ -227,7 +227,7 @@ export async function POST(request: NextRequest, { params }: { params: Params })
       // Do not include errMsg in logs directly (may contain auth info from nodemailer)
       console.error(`[inbox/reply] SMTP send failed for message ${msg.id}`)
       await svc.from('inbox_delivery_attempts').update({ status: 'failed', last_error: errMsg }).eq('message_id', msg.id)
-      return NextResponse.json({ error: 'Email send failed' }, { status: 502 })
+      return NextResponse.json({ error: 'Email send failed', message_id: msg.id }, { status: 502 })
     }
 
     await updateConversationSummary(svc, conversationId, content || `[${attachments.length} archivo${attachments.length === 1 ? '' : 's'}]`)

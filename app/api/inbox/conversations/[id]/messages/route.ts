@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceClient } from '@/lib/supabase/server'
 
 export const runtime = 'nodejs'
 
@@ -64,8 +64,9 @@ export async function GET(request: NextRequest, { params }: { params: Params }) 
     .filter(m => m.direction === 'inbound' && !m.is_read)
     .map(m => m.id)
 
+  const service = createServiceClient()
   if (unreadIds.length > 0) {
-    await supabase
+    await service
       .from('inbox_messages')
       .update({ is_read: true, read_at: new Date().toISOString() })
       .in('id', unreadIds)
@@ -73,7 +74,7 @@ export async function GET(request: NextRequest, { params }: { params: Params }) 
 
   // Opening the message view is the authoritative read action for the
   // conversation list badge as well as for individual messages.
-  await supabase
+  await service
     .from('inbox_conversations')
     .update({ unread_count: 0 })
     .eq('id', conversationId)

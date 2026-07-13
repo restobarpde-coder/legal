@@ -19,31 +19,28 @@ Además existen cuatro problemas de consistencia:
 
 ## Arquitectura elegida
 
-### Listener IMAP
+### Webhook nativo de Hostinger
 
-Se agregará un proceso Node.js independiente que mantenga una conexión IMAP IDLE por cada cuenta activa. El listener:
+Hostinger Agentic Mail enviará el evento `message.received` a un endpoint HTTPS de la aplicación en Vercel. El endpoint:
 
-- abre `INBOX`, procesa mensajes posteriores al UID confirmado y entra en IDLE;
-- ante una notificación de Hostinger, recupera y persiste los UIDs nuevos;
-- renueva IDLE y reconecta con backoff y jitter ante cierres o errores;
-- al reconectar ejecuta una recuperación desde el último UID persistido;
-- expone únicamente `/health`, con estado de conexión y última sincronización, sin credenciales ni contenido de emails;
-- responde a `SIGTERM` cerrando conexiones limpiamente.
+- validará el token Bearer específico del webhook usando comparación de tiempo constante;
+- identificará la cuenta por la dirección de la casilla incluida en el evento;
+- acusará recibo únicamente después de validar y programar el procesamiento;
+- disparará inmediatamente la sincronización IMAP incremental de esa cuenta para recuperar contenido y adjuntos completos;
+- devolverá respuestas idempotentes cuando Hostinger reintente el mismo evento;
+- no registrará el token, credenciales ni contenido sensible en logs.
 
-El código de parseo e ingestión será compartido por el listener y por el cron existente. No habrá dos implementaciones de sincronización.
+Usar el webhook como señal y el sincronizador IMAP como lector evita depender de que el payload incluya el cuerpo completo. El mismo código de parseo e ingestión será compartido por el webhook y el cron existente.
 
-### Alojamiento gratuito
+### Recuperación gratuita
 
-El listener se preparará como Web Service gratuito de Render. Un workflow de GitHub consultará `/health` cada diez minutos para reducir suspensiones por inactividad. Render ofrece 750 horas gratuitas mensuales para Web Services, pero puede reiniciar servicios gratuitos y no los recomienda para producción; por eso esta modalidad ofrece tiempo casi real, no una garantía formal de disponibilidad.
+El cron actual de cinco minutos permanecerá como mecanismo de reconciliación. Si Vercel no procesa un webhook o Hostinger agota sus reintentos, el cron importará cualquier UID pendiente. El endpoint de sincronización y el webhook usarán un bloqueo por cuenta para evitar procesamiento concurrente.
 
-El cron actual de cinco minutos permanecerá como mecanismo de recuperación. Si Render duerme o reinicia el proceso, el cron importará cualquier UID pendiente. El endpoint de sincronización y el listener usarán un bloqueo por cuenta para evitar procesamiento concurrente.
+Esta arquitectura conserva Vercel Free y Supabase Free y no requiere Render ni otro proceso persistente.
 
-Referencias verificadas el 13 de julio de 2026:
+Referencia verificada el 13 de julio de 2026:
 
-- https://render.com/docs/free
-- https://render.com/docs/service-types
-- https://www.koyeb.com/docs/reference/instances
-- https://docs.railway.com/pricing/free-trial
+- https://www.hostinger.com/support/how-to-use-agentic-mail-in-hpanel/
 
 ## Ingestión idempotente y atómica
 
@@ -101,11 +98,11 @@ No se emitirán notificaciones para filas deduplicadas ni para emails salientes 
 
 ## Seguridad y límites
 
-- Las credenciales IMAP seguirán cifradas en Supabase y solo serán descifradas dentro del listener/servidor.
-- Render recibirá la clave de servicio y la clave de cifrado como secretos, nunca dentro del repositorio o del endpoint de salud.
+- Las credenciales IMAP seguirán cifradas en Supabase y solo serán descifradas dentro del sincronizador del servidor.
+- Vercel recibirá el token del webhook, la clave de servicio y la clave de cifrado como secretos, nunca dentro del repositorio ni de respuestas HTTP.
 - La función de ingestión no será ejecutable por `anon` ni `authenticated`; únicamente por el rol de servicio.
 - Se conservarán RLS y las reglas actuales de visibilidad por cuenta.
-- El listener observará solamente `INBOX`; el correo enviado por SMTP continuará registrándose directamente desde la API.
+- El sincronizador consultará solamente `INBOX`; el correo enviado por SMTP continuará registrándose directamente desde la API.
 
 ## Verificación
 
@@ -118,15 +115,15 @@ Se cubrirán estos escenarios:
 5. Un mensaje llega con la pestaña en segundo plano y permanece no leído hasta abrirlo.
 6. Una respuesta optimista se reconcilia con HTTP y Realtime sin desaparecer ni duplicarse.
 7. Un fallo SMTP queda visible como fallido y puede reintentarse sin doble envío.
-8. El listener se reinicia y recupera exactamente los UIDs faltantes.
-9. Una caída prolongada de Render es recuperada por el cron de cinco minutos.
+8. Hostinger reintenta un webhook y no se duplica el mensaje.
+9. Un webhook omitido o fallido es recuperado por el cron de cinco minutos.
 10. Varias pestañas convergen al mismo estado después de los eventos Realtime.
 
 ## Entrega por etapas
 
 1. Corregir carreras de UI, lectura explícita, claves idempotentes e ingestión atómica.
-2. Extraer el sincronizador compartido y agregar el listener IMAP IDLE con pruebas de reconexión.
-3. Agregar configuración de Render y health check de GitHub Actions.
-4. Desplegar, ejecutar pruebas con una cuenta Hostinger y observar duplicados, latencia y reconexiones.
+2. Extraer la ingestión compartida y agregar el webhook autenticado de Hostinger.
+3. Configurar el webhook en hPanel y sus secretos en Vercel.
+4. Desplegar, ejecutar pruebas con una cuenta Hostinger y observar duplicados, latencia y reintentos.
 
-La primera etapa mejora inmediatamente la confiabilidad aunque el listener todavía no esté desplegado. Las etapas dos a cuatro reducen la latencia habitual de cinco minutos a segundos.
+La primera etapa mejora inmediatamente la confiabilidad aunque el webhook todavía no esté configurado. Las etapas dos a cuatro reducen la latencia habitual de cinco minutos a segundos.

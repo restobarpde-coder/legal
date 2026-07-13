@@ -26,6 +26,7 @@ export interface SyncResult {
   account_id:   string
   fetched:      number
   created:      number
+  busy?:        boolean
   error?:       string
 }
 
@@ -49,6 +50,15 @@ export async function syncEmailAccount(accountId: string): Promise<SyncResult> {
   if (fetchErr || !account) {
     return { account_id: accountId, fetched: 0, created: 0, error: 'Account not found or sync disabled' }
   }
+
+  const { data: claimed, error: claimError } = await supabase.rpc('inbox_claim_email_sync', {
+    p_account_id: accountId,
+    p_ttl_seconds: 90,
+  })
+  if (claimError) {
+    return { account_id: accountId, fetched: 0, created: 0, error: 'Could not acquire email synchronization lock' }
+  }
+  if (!claimed) return { account_id: accountId, fetched: 0, created: 0, busy: true }
 
   // Record this sync run
   const { data: runRow } = await supabase
@@ -79,6 +89,7 @@ export async function syncEmailAccount(accountId: string): Promise<SyncResult> {
     try {
       const lastUid: number = account.last_uid ?? 0
       let maxUid = lastUid
+      const uidValidity = client.mailbox ? Number(client.mailbox.uidValidity ?? 0) : 0
 
       // On first sync limit to last 30 days to avoid flooding
       let uidList: number[] = []
@@ -98,6 +109,7 @@ export async function syncEmailAccount(accountId: string): Promise<SyncResult> {
           .update({ last_sync_at: new Date().toISOString() })
           .eq('id', accountId)
         await finishRun(supabase, runId, 'completed', 0, 0)
+        await supabase.rpc('inbox_release_email_sync', { p_account_id: accountId })
         return { account_id: accountId, fetched: 0, created: 0 }
       }
 
@@ -130,6 +142,16 @@ export async function syncEmailAccount(accountId: string): Promise<SyncResult> {
             .maybeSingle()
           if (dup) continue
         }
+        if (!messageId && uidValidity > 0) {
+          const { data: duplicateUid } = await supabase
+            .from('inbox_messages')
+            .select('id')
+            .eq('email_account_id', accountId)
+            .eq('email_uid_validity', uidValidity)
+            .eq('email_uid', msg.uid)
+            .maybeSingle()
+          if (duplicateUid) continue
+        }
 
         // Find or create conversation via thread matching
         const conversationId = await resolveConversation(supabase, account, {
@@ -151,6 +173,8 @@ export async function syncEmailAccount(accountId: string): Promise<SyncResult> {
           sender_name:      fromName ?? fromEmail,
           email_account_id: accountId,
           email_message_id: messageId,
+          email_uid:        msg.uid,
+          email_uid_validity: uidValidity || null,
           email_from:       parsed.from?.text ?? null,
           email_to:         toAddrs,
           email_cc:         ccAddrs,
@@ -161,6 +185,7 @@ export async function syncEmailAccount(accountId: string): Promise<SyncResult> {
             size:        a.size ?? null,
           })),
         }).select('id').single()
+        if (insertError?.code === '23505') continue
         if (insertError || !storedMessage) throw new Error('Could not persist incoming email message')
 
         const savedAttachments = []
@@ -187,18 +212,11 @@ export async function syncEmailAccount(accountId: string): Promise<SyncResult> {
           }).eq('id', storedMessage.id)
         }
 
-        // Update conversation summary (non-atomic: race unlikely in single sync)
-        const { data: conv } = await supabase
-          .from('inbox_conversations')
-          .select('unread_count')
-          .eq('id', conversationId)
-          .single()
-
         await supabase.from('inbox_conversations').update({
           last_message_at:      sentAt.toISOString(),
           last_message_preview: text?.slice(0, 200) ?? '',
-          unread_count:         (conv?.unread_count ?? 0) + 1,
         }).eq('id', conversationId)
+        await supabase.rpc('inbox_increment_unread', { p_conversation_id: conversationId })
 
         try {
           await notifyInboxMessage(supabase, {
@@ -242,6 +260,7 @@ export async function syncEmailAccount(accountId: string): Promise<SyncResult> {
     created,
     errorMessage
   )
+  await supabase.rpc('inbox_release_email_sync', { p_account_id: accountId })
 
   return { account_id: accountId, fetched, created, error: errorMessage }
 }
