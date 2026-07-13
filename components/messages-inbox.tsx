@@ -98,10 +98,45 @@ function sortMessages(items: Message[]) {
   })
 }
 
-function upsertMessage(items: Message[], incoming: Message) {
+function messageTime(message: Message) {
+  return new Date(message.sent_at ?? message.created_at).getTime()
+}
+
+function findMatchingOptimisticMessage(items: Message[], incoming: Message) {
+  if (incoming.id.startsWith('local-') || incoming.direction !== 'outbound') return null
+
+  const candidates = items.filter(message =>
+    message.id.startsWith('local-')
+    && message.direction === 'outbound'
+    && message.content === incoming.content
+    && Math.abs(messageTime(message) - messageTime(incoming)) < 5 * 60 * 1000
+  )
+
+  return candidates.sort((left, right) =>
+    Math.abs(messageTime(left) - messageTime(incoming))
+    - Math.abs(messageTime(right) - messageTime(incoming))
+  )[0] ?? null
+}
+
+function upsertMessage(items: Message[], incoming: Message, preferExisting = false) {
+  const optimisticMatch = findMatchingOptimisticMessage(items, incoming)
   const existing = items.find(item => item.id === incoming.id)
-  const merged = existing ? { ...existing, ...incoming } : incoming
-  return sortMessages([...items.filter(item => item.id !== incoming.id), merged])
+  const merged = existing
+    ? preferExisting
+      ? { ...incoming, ...existing }
+      : { ...existing, ...incoming }
+    : incoming
+  return sortMessages([
+    ...items.filter(item => item.id !== incoming.id && item.id !== optimisticMatch?.id),
+    merged,
+  ])
+}
+
+function mergeMessageSnapshot(items: Message[], snapshot: Message[]) {
+  return snapshot.reduce(
+    (current, message) => upsertMessage(current, message, true),
+    items
+  )
 }
 
 function formatDate(value: string | null) {
@@ -223,7 +258,10 @@ export function MessagesInbox() {
       const result = await response.json()
       if (!response.ok) throw new Error(result.error ?? 'No fue posible cargar los mensajes')
       if (requestId !== messagesRequestRef.current || selectedIdRef.current !== conversationId) return
-      setMessages(sortMessages(result.messages ?? []))
+      const snapshot = sortMessages(result.messages ?? [])
+      setMessages(current => messagesConversationIdRef.current === conversationId
+        ? mergeMessageSnapshot(current, snapshot)
+        : snapshot)
       setMessagesConversationId(conversationId)
       messagesConversationIdRef.current = conversationId
     } catch (err) {
