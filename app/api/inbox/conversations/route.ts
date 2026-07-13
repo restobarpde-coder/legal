@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/server'
+import { resolveInboxContact } from '@/lib/inbox/contacts'
+import { sendEmail } from '@/lib/inbox/smtp'
+import { decrypt } from '@/lib/inbox/crypto'
+import { sendWhatsAppTemplate } from '@/lib/inbox/whatsapp'
 
 export const runtime = 'nodejs'
 
@@ -67,4 +72,87 @@ export async function GET(request: NextRequest) {
     limit,
     offset,
   })
+}
+
+// ─── POST /api/inbox/conversations ───────────────────────────
+// Creates an outbound email or a WhatsApp conversation initiated by a template.
+export async function POST(request: NextRequest) {
+  const supabase = await createClient()
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const body = await request.json()
+  const channel = body.channel as 'email' | 'whatsapp'
+  if (channel !== 'email' && channel !== 'whatsapp') return NextResponse.json({ error: 'Canal inválido' }, { status: 400 })
+
+  const contactName = String(body.contact_name ?? '').trim() || null
+  const contactEmail = String(body.contact_email ?? '').trim().toLowerCase() || null
+  const contactPhone = String(body.contact_phone ?? '').replace(/\s+/g, '') || null
+  const linkedClientId = body.linked_client_id || null
+  if (channel === 'email' && !contactEmail) return NextResponse.json({ error: 'El email del destinatario es obligatorio' }, { status: 400 })
+  if (channel === 'whatsapp' && !contactPhone) return NextResponse.json({ error: 'El número de WhatsApp es obligatorio' }, { status: 400 })
+
+  const svc = createServiceClient()
+  const { data: sender } = await supabase.from('users').select('full_name, email').eq('id', user.id).single()
+  const senderName = sender?.full_name ?? sender?.email ?? 'Equipo'
+  const inboxContactId = await resolveInboxContact(svc, { name: contactName, email: contactEmail, phone: contactPhone, linkedClientId })
+
+  if (channel === 'whatsapp') {
+    const phone = contactPhone!
+    const templateId = String(body.template_id ?? '')
+    if (!templateId) return NextResponse.json({ error: 'Elegí una plantilla aprobada de WhatsApp' }, { status: 400 })
+    const { data: template } = await supabase.from('inbox_whatsapp_templates').select('id, name, language_code').eq('id', templateId).eq('is_active', true).single()
+    if (!template) return NextResponse.json({ error: 'Plantilla no disponible' }, { status: 404 })
+
+    const { data: conversation, error } = await svc.from('inbox_conversations').insert({
+      channel: 'whatsapp', inbox_type: 'whatsapp_shared', contact_name: contactName || contactPhone,
+      contact_phone: phone, wa_contact_id: phone.replace(/^\+/, ''), inbox_contact_id: inboxContactId,
+      linked_client_id: linkedClientId, assigned_user_id: user.id, status: 'open',
+      last_message_at: new Date().toISOString(), last_message_preview: `[Plantilla: ${template.name}]`,
+    }).select('id').single()
+    if (error || !conversation) return NextResponse.json({ error: error?.message ?? 'No fue posible crear la conversación' }, { status: 500 })
+
+    try {
+      const { messageId } = await sendWhatsAppTemplate({ to: phone.replace(/^\+/, ''), name: template.name, languageCode: template.language_code })
+      await svc.from('inbox_messages').insert({
+        conversation_id: conversation.id, direction: 'outbound', content: `[Plantilla: ${template.name}]`, content_type: 'text',
+        sender_type: 'user', sender_user_id: user.id, sender_name: senderName, wa_message_id: messageId, wa_status: 'sent', sent_at: new Date().toISOString(),
+      })
+      return NextResponse.json({ conversation_id: conversation.id }, { status: 201 })
+    } catch (err) {
+      await svc.from('inbox_conversations').delete().eq('id', conversation.id)
+      return NextResponse.json({ error: err instanceof Error ? err.message : 'No fue posible enviar la plantilla' }, { status: 502 })
+    }
+  }
+
+  const emailAccountId = String(body.email_account_id ?? '')
+  const recipientEmail = contactEmail!
+  const subject = String(body.subject ?? '').trim()
+  const content = String(body.content ?? '').trim()
+  if (!emailAccountId || !subject || !content) return NextResponse.json({ error: 'Cuenta, asunto y mensaje son obligatorios' }, { status: 400 })
+  const { data: accessibleAccount } = await supabase.from('inbox_email_accounts_safe').select('id').eq('id', emailAccountId).single()
+  if (!accessibleAccount) return NextResponse.json({ error: 'No podés usar esta cuenta de correo' }, { status: 403 })
+  const { data: account } = await svc.from('inbox_email_accounts').select('*').eq('id', emailAccountId).single()
+  if (!account) return NextResponse.json({ error: 'Cuenta de correo no encontrada' }, { status: 404 })
+
+  const { data: conversation, error } = await svc.from('inbox_conversations').insert({
+    channel: 'email', inbox_type: account.account_type === 'personal' ? 'email_personal' : 'email_shared', email_account_id: account.id,
+    contact_name: contactName || recipientEmail, contact_email: recipientEmail, inbox_contact_id: inboxContactId, linked_client_id: linkedClientId,
+    assigned_user_id: user.id, email_subject: subject, status: 'open', last_message_at: new Date().toISOString(), last_message_preview: content.slice(0, 200),
+  }).select('id').single()
+  if (error || !conversation) return NextResponse.json({ error: error?.message ?? 'No fue posible crear la conversación' }, { status: 500 })
+
+  try {
+    const { messageId } = await sendEmail({
+      account, decryptedPassword: decrypt(account.encrypted_password), to: [recipientEmail], subject, text: content,
+    })
+    await svc.from('inbox_messages').insert({
+      conversation_id: conversation.id, direction: 'outbound', content, content_type: 'text', sender_type: 'user', sender_user_id: user.id,
+      sender_name: senderName, email_account_id: account.id, email_message_id: messageId, email_to: [recipientEmail], sent_at: new Date().toISOString(),
+    })
+    return NextResponse.json({ conversation_id: conversation.id }, { status: 201 })
+  } catch {
+    await svc.from('inbox_conversations').delete().eq('id', conversation.id)
+    return NextResponse.json({ error: 'No fue posible enviar el email' }, { status: 502 })
+  }
 }

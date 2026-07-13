@@ -48,7 +48,7 @@ export async function GET(_req: NextRequest, { params }: { params: Params }) {
 }
 
 // ─── PATCH /api/inbox/conversations/[id] ─────────────────────
-// Allowed fields: status, linked_client_id, linked_case_id
+// Allowed fields: status, client/case links, classification and priority.
 
 export async function PATCH(request: NextRequest, { params }: { params: Params }) {
   const { id } = await params
@@ -59,7 +59,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Params }
 
   const body = await request.json()
 
-  const allowed = ['status', 'linked_client_id', 'linked_case_id'] as const
+  const allowed = ['status', 'linked_client_id', 'linked_case_id', 'classification', 'priority'] as const
   const updates: Record<string, unknown> = {}
   for (const key of allowed) {
     if (key in body) updates[key] = body[key]
@@ -73,7 +73,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Params }
     .from('inbox_conversations')
     .update(updates)
     .eq('id', id)
-    .select('id, status, linked_client_id, linked_case_id, updated_at')
+    .select('id, status, linked_client_id, linked_case_id, classification, priority, updated_at')
     .single()
 
   if (error) {

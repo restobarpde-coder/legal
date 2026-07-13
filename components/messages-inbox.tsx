@@ -19,6 +19,7 @@ import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
+import { NewConversationDialog } from '@/components/new-conversation-dialog'
 
 type Channel = 'all' | 'whatsapp' | 'email'
 type Status = 'open' | 'pending' | 'resolved' | 'spam' | 'all'
@@ -153,9 +154,9 @@ export function MessagesInbox() {
           <h1 className="text-3xl font-bold tracking-tight">Mensajes</h1>
           <p className="mt-1 text-sm text-muted-foreground">WhatsApp y email del estudio en una sola bandeja.</p>
         </div>
-        <Button variant="outline" onClick={() => void loadConversations()} disabled={loading}>
+        <div className="flex gap-2"><NewConversationDialog onCreated={(id) => { void loadConversations(); setSelectedId(id) }} /><Button variant="outline" onClick={() => void loadConversations()} disabled={loading}>
           <RefreshCw className={cn('mr-2 h-4 w-4', loading && 'animate-spin')} />Actualizar
-        </Button>
+        </Button></div>
       </div>
 
       <div className="grid min-h-0 flex-1 overflow-hidden rounded-xl border bg-background lg:grid-cols-[330px_minmax(0,1fr)_280px]">

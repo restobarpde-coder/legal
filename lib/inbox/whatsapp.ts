@@ -42,6 +42,32 @@ export async function sendWhatsAppText(
   return { messageId }
 }
 
+export async function sendWhatsAppTemplate(params: {
+  to: string
+  name: string
+  languageCode: string
+}): Promise<{ messageId: string }> {
+  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID
+  const accessToken = process.env.WHATSAPP_ACCESS_TOKEN
+  if (!phoneNumberId || !accessToken) throw new Error('WhatsApp API is not configured')
+
+  const response = await fetch(`${GRAPH_URL}/${phoneNumberId}/messages`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      messaging_product: 'whatsapp',
+      to: params.to,
+      type: 'template',
+      template: { name: params.name, language: { code: params.languageCode } },
+    }),
+  })
+  if (!response.ok) throw new Error(`WhatsApp template send responded with status ${response.status}`)
+  const data = await response.json()
+  const messageId = data?.messages?.[0]?.id
+  if (!messageId) throw new Error('WhatsApp API returned no message ID')
+  return { messageId }
+}
+
 export type WhatsAppMediaType = 'image' | 'document' | 'audio' | 'video'
 
 export async function uploadWhatsAppMedia(params: {
