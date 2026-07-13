@@ -58,6 +58,52 @@ type Message = {
   created_at: string
 }
 
+type LoadOptions = {
+  background?: boolean
+}
+
+function sortConversations(items: Conversation[]) {
+  return [...items].sort((left, right) => {
+    const leftTime = left.last_message_at ? new Date(left.last_message_at).getTime() : 0
+    const rightTime = right.last_message_at ? new Date(right.last_message_at).getTime() : 0
+    return rightTime - leftTime
+  })
+}
+
+function matchesConversationFilters(conversation: Conversation, channel: Channel, status: Status) {
+  return (channel === 'all' || conversation.channel === channel)
+    && (status === 'all' || conversation.status === status)
+}
+
+function upsertConversation(
+  items: Conversation[],
+  incoming: Conversation,
+  channel: Channel,
+  status: Status
+) {
+  const existing = items.find(item => item.id === incoming.id)
+  const merged = existing ? { ...existing, ...incoming } : incoming
+  const withoutIncoming = items.filter(item => item.id !== incoming.id)
+  const next = matchesConversationFilters(merged, channel, status)
+    ? [...withoutIncoming, merged]
+    : withoutIncoming
+  return sortConversations(next)
+}
+
+function sortMessages(items: Message[]) {
+  return [...items].sort((left, right) => {
+    const leftTime = new Date(left.sent_at ?? left.created_at).getTime()
+    const rightTime = new Date(right.sent_at ?? right.created_at).getTime()
+    return leftTime - rightTime
+  })
+}
+
+function upsertMessage(items: Message[], incoming: Message) {
+  const existing = items.find(item => item.id === incoming.id)
+  const merged = existing ? { ...existing, ...incoming } : incoming
+  return sortMessages([...items.filter(item => item.id !== incoming.id), merged])
+}
+
 function formatDate(value: string | null) {
   if (!value) return ''
   return new Intl.DateTimeFormat('es-UY', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' }).format(new Date(value))
@@ -76,6 +122,7 @@ export function MessagesInbox() {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
+  const [messagesConversationId, setMessagesConversationId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [detailLoading, setDetailLoading] = useState(false)
   const [draft, setDraft] = useState('')
@@ -88,94 +135,219 @@ export function MessagesInbox() {
   const [composeLoading, setComposeLoading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const selectedIdRef = useRef<string | null>(null)
+  const messagesConversationIdRef = useRef<string | null>(null)
+  const channelRef = useRef<Channel>(channel)
+  const statusRef = useRef<Status>(status)
   const conversationsRequestRef = useRef(0)
+  const messagesRequestRef = useRef(0)
+  const conversationsAbortRef = useRef<AbortController | null>(null)
+  const messagesAbortRef = useRef<AbortController | null>(null)
+  const listReconciliationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const detailReconciliationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const readRequestsRef = useRef(new Set<string>())
+  const pendingReadRequestsRef = useRef(new Set<string>())
+  const handledNotificationRef = useRef<string | null>(null)
+  const loadConversationsRef = useRef<(preferredId?: string, options?: LoadOptions) => Promise<void>>(async () => {})
+  const loadMessagesRef = useRef<(conversationId: string, options?: LoadOptions) => Promise<void>>(async () => {})
+
+  channelRef.current = channel
+  statusRef.current = status
 
   useEffect(() => { selectedIdRef.current = selectedId }, [selectedId])
+  useEffect(() => { messagesConversationIdRef.current = messagesConversationId }, [messagesConversationId])
 
   const selected = useMemo(
     () => conversations.find((conversation) => conversation.id === selectedId) ?? null,
     [conversations, selectedId]
   )
+  const visibleMessages = messagesConversationId === selectedId ? messages : []
 
-  const loadConversations = useCallback(async (preferredId?: string) => {
+  const loadConversations = useCallback(async (preferredId?: string, options: LoadOptions = {}) => {
+    conversationsAbortRef.current?.abort()
+    const controller = new AbortController()
+    conversationsAbortRef.current = controller
     const requestId = ++conversationsRequestRef.current
-    setLoading(true)
-    setError(null)
+    if (!options.background) {
+      setLoading(true)
+      setError(null)
+    }
     try {
-      const response = await fetch(`/api/inbox/conversations?channel=${channel}&status=${status}&assigned=all`)
+      const response = await fetch(`/api/inbox/conversations?channel=${channel}&status=${status}&assigned=all`, {
+        cache: 'no-store',
+        signal: controller.signal,
+      })
       const result = await response.json()
       if (!response.ok) throw new Error(result.error ?? 'No fue posible cargar las conversaciones')
       if (requestId !== conversationsRequestRef.current) return
-      setConversations(result.conversations ?? [])
+      const nextConversations = sortConversations(result.conversations ?? [])
+      setConversations(nextConversations)
       setSelectedId((current) => {
-        if (preferredId && result.conversations?.some((item: Conversation) => item.id === preferredId)) return preferredId
-        if (current && result.conversations?.some((item: Conversation) => item.id === current)) return current
-        return result.conversations?.[0]?.id ?? null
+        const nextSelectedId = preferredId && nextConversations.some((item: Conversation) => item.id === preferredId)
+          ? preferredId
+          : current && nextConversations.some((item: Conversation) => item.id === current)
+            ? current
+            : nextConversations[0]?.id ?? null
+        selectedIdRef.current = nextSelectedId
+        return nextSelectedId
       })
     } catch (err) {
       if (requestId !== conversationsRequestRef.current) return
-      setError(err instanceof Error ? err.message : 'No fue posible cargar las conversaciones')
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      if (!options.background) {
+        setError(err instanceof Error ? err.message : 'No fue posible cargar las conversaciones')
+      }
     } finally {
-      if (requestId === conversationsRequestRef.current) setLoading(false)
+      if (requestId === conversationsRequestRef.current) {
+        if (conversationsAbortRef.current === controller) conversationsAbortRef.current = null
+        setLoading(false)
+      }
     }
   }, [channel, status])
 
-  const loadMessages = useCallback(async (conversationId: string) => {
-    setDetailLoading(true)
+  const loadMessages = useCallback(async (conversationId: string, options: LoadOptions = {}) => {
+    messagesAbortRef.current?.abort()
+    const controller = new AbortController()
+    messagesAbortRef.current = controller
+    const requestId = ++messagesRequestRef.current
+    if (!options.background) {
+      setMessages([])
+      setMessagesConversationId(null)
+      messagesConversationIdRef.current = null
+      setDetailLoading(true)
+    }
     try {
-      const response = await fetch(`/api/inbox/conversations/${conversationId}/messages`)
+      const response = await fetch(`/api/inbox/conversations/${conversationId}/messages`, {
+        cache: 'no-store',
+        signal: controller.signal,
+      })
       const result = await response.json()
       if (!response.ok) throw new Error(result.error ?? 'No fue posible cargar los mensajes')
-      if (selectedIdRef.current !== conversationId) return
-      setMessages(result.messages ?? [])
+      if (requestId !== messagesRequestRef.current || selectedIdRef.current !== conversationId) return
+      setMessages(sortMessages(result.messages ?? []))
+      setMessagesConversationId(conversationId)
+      messagesConversationIdRef.current = conversationId
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No fue posible cargar los mensajes')
-      if (selectedIdRef.current === conversationId) setMessages([])
+      if (requestId !== messagesRequestRef.current) return
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      if (!options.background) {
+        setError(err instanceof Error ? err.message : 'No fue posible cargar los mensajes')
+        if (selectedIdRef.current === conversationId) {
+          setMessages([])
+          setMessagesConversationId(null)
+          messagesConversationIdRef.current = null
+        }
+      }
     } finally {
-      if (selectedIdRef.current === conversationId) setDetailLoading(false)
+      if (requestId === messagesRequestRef.current) {
+        if (messagesAbortRef.current === controller) messagesAbortRef.current = null
+        if (selectedIdRef.current === conversationId) setDetailLoading(false)
+      }
     }
   }, [])
 
+  useEffect(() => { loadConversationsRef.current = loadConversations }, [loadConversations])
+  useEffect(() => { loadMessagesRef.current = loadMessages }, [loadMessages])
+
   useEffect(() => { void loadConversations() }, [loadConversations])
   useEffect(() => {
-    if (notificationConversationId && conversations.some(conversation => conversation.id === notificationConversationId)) {
-      setSelectedId(notificationConversationId)
+    selectedIdRef.current = selectedId
+    if (selectedId) {
+      void loadMessages(selectedId)
+      return
     }
-  }, [conversations, notificationConversationId])
-  useEffect(() => { if (selectedId) void loadMessages(selectedId); else setMessages([]) }, [selectedId, loadMessages])
+    messagesAbortRef.current?.abort()
+    messagesAbortRef.current = null
+    messagesRequestRef.current++
+    setMessages([])
+    setMessagesConversationId(null)
+    messagesConversationIdRef.current = null
+    setDetailLoading(false)
+  }, [selectedId, loadMessages])
 
-  const markConversationRead = useCallback(async (conversationId: string) => {
+  const scheduleListReconciliation = useCallback((delay = 150) => {
+    if (listReconciliationTimerRef.current) clearTimeout(listReconciliationTimerRef.current)
+    listReconciliationTimerRef.current = setTimeout(() => {
+      listReconciliationTimerRef.current = null
+      void loadConversationsRef.current(undefined, { background: true })
+    }, delay)
+  }, [])
+
+  const scheduleDetailReconciliation = useCallback((delay = 150) => {
+    if (detailReconciliationTimerRef.current) clearTimeout(detailReconciliationTimerRef.current)
+    detailReconciliationTimerRef.current = setTimeout(() => {
+      detailReconciliationTimerRef.current = null
+      const conversationId = selectedIdRef.current
+      if (conversationId) void loadMessagesRef.current(conversationId, { background: true })
+    }, delay)
+  }, [])
+
+  const markConversationRead = useCallback(async function confirmConversationRead(conversationId: string) {
     setConversations(current => current.map(conversation => conversation.id === conversationId
       ? { ...conversation, unread_count: 0 }
       : conversation))
-    if (readRequestsRef.current.has(conversationId)) return
+    if (readRequestsRef.current.has(conversationId)) {
+      pendingReadRequestsRef.current.add(conversationId)
+      return
+    }
     readRequestsRef.current.add(conversationId)
     try {
       const response = await fetch(`/api/inbox/conversations/${conversationId}/read`, { method: 'POST' })
-      if (!response.ok) void loadConversations(conversationId)
+      if (!response.ok) void loadConversationsRef.current(conversationId, { background: true })
+    } catch {
+      void loadConversationsRef.current(conversationId, { background: true })
     } finally {
       readRequestsRef.current.delete(conversationId)
+      if (pendingReadRequestsRef.current.delete(conversationId)) {
+        void confirmConversationRead(conversationId)
+      }
     }
-  }, [loadConversations])
+  }, [])
 
-  function selectConversation(conversationId: string) {
+  const selectConversation = useCallback((conversationId: string) => {
+    if (conversationId === selectedIdRef.current) {
+      void markConversationRead(conversationId)
+      return
+    }
+    messagesAbortRef.current?.abort()
+    messagesRequestRef.current++
+    selectedIdRef.current = conversationId
+    messagesConversationIdRef.current = null
+    setMessages([])
+    setMessagesConversationId(null)
+    setDetailLoading(true)
     setSelectedId(conversationId)
-    void markConversationRead(conversationId)
-  }
+  }, [markConversationRead])
 
   useEffect(() => {
-    if (selectedId) void markConversationRead(selectedId)
+    if (!notificationConversationId) {
+      handledNotificationRef.current = null
+      return
+    }
+    if (notificationConversationId
+      && notificationConversationId !== handledNotificationRef.current
+      && conversations.some(conversation => conversation.id === notificationConversationId)) {
+      handledNotificationRef.current = notificationConversationId
+      selectConversation(notificationConversationId)
+    }
+  }, [conversations, notificationConversationId, selectConversation])
+
+  useEffect(() => {
+    if (selectedId && document.visibilityState === 'visible') void markConversationRead(selectedId)
   }, [markConversationRead, selectedId])
 
-  useEffect(() => {
-    if (!selectedId) return
+  const dismissConversationNotifications = useCallback((conversationId: string) => {
     void fetch('/api/notifications/entity/dismiss', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ entity_type: 'inbox_conversation', entity_id: selectedId }),
+      body: JSON.stringify({ entity_type: 'inbox_conversation', entity_id: conversationId }),
     })
-  }, [selectedId])
+  }, [])
+
+  useEffect(() => {
+    if (selectedId && document.visibilityState === 'visible') {
+      dismissConversationNotifications(selectedId)
+    }
+  }, [dismissConversationNotifications, selectedId])
 
   useEffect(() => {
     if (!isComposing) return
@@ -192,44 +364,110 @@ export function MessagesInbox() {
 
   useEffect(() => {
     let active = true
+    let hasSubscribed = false
+    let needsRecovery = false
     const channel = supabase
       .channel('inbox-realtime')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'inbox_messages' }, (payload) => {
         if (!active) return
         const message = payload.new as Message
-        if (message.conversation_id === selectedIdRef.current) {
-          setMessages(current => current.some(item => item.id === message.id)
-            ? current.map(item => item.id === message.id ? { ...item, ...message } : item)
-            : [...current, message])
+        if (message.conversation_id && message.conversation_id === selectedIdRef.current) {
+          setMessages(current => messagesConversationIdRef.current === message.conversation_id
+            ? upsertMessage(current, message)
+            : [message])
+          setMessagesConversationId(message.conversation_id)
+          messagesConversationIdRef.current = message.conversation_id
+          scheduleDetailReconciliation()
           if (message.direction === 'inbound' && document.visibilityState === 'visible') {
-            void markConversationRead(message.conversation_id!)
+            void markConversationRead(message.conversation_id)
           }
         }
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'inbox_messages' }, (payload) => {
         if (!active) return
         const message = payload.new as Message
-        if (message.conversation_id === selectedIdRef.current) {
-          setMessages(current => current.some(item => item.id === message.id)
-            ? current.map(item => item.id === message.id ? { ...item, ...message } : item)
-            : [...current, message])
+        if (message.conversation_id && message.conversation_id === selectedIdRef.current) {
+          setMessages(current => messagesConversationIdRef.current === message.conversation_id
+            ? upsertMessage(current, message)
+            : [message])
+          setMessagesConversationId(message.conversation_id)
+          messagesConversationIdRef.current = message.conversation_id
+          scheduleDetailReconciliation()
         }
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'inbox_conversations' }, (payload) => {
         if (!active) return
-        const updated = payload.new as Partial<Conversation> & { id?: string }
-        if (!updated.id) return
-        setConversations(current => current.map(conversation => conversation.id === updated.id
-          ? { ...conversation, ...updated }
-          : conversation))
+        if (payload.eventType === 'DELETE') {
+          const removed = payload.old as { id?: string }
+          if (removed.id) setConversations(current => current.filter(conversation => conversation.id !== removed.id))
+        } else {
+          const updated = payload.new as Conversation
+          if (updated.id) {
+            setConversations(current => upsertConversation(
+              current,
+              updated,
+              channelRef.current,
+              statusRef.current
+            ))
+            if (updated.id === selectedIdRef.current
+              && updated.unread_count > 0
+              && document.visibilityState === 'visible') {
+              void markConversationRead(updated.id)
+            }
+          }
+        }
+        scheduleListReconciliation()
       })
-      .subscribe()
+      .subscribe((subscriptionStatus) => {
+        if (!active) return
+        if (subscriptionStatus === 'SUBSCRIBED') {
+          if (hasSubscribed && needsRecovery) {
+            scheduleListReconciliation(0)
+            scheduleDetailReconciliation(0)
+          }
+          hasSubscribed = true
+          needsRecovery = false
+          return
+        }
+        if (hasSubscribed) needsRecovery = true
+      })
 
     return () => {
       active = false
       void supabase.removeChannel(channel)
     }
-  }, [markConversationRead, supabase])
+  }, [markConversationRead, scheduleDetailReconciliation, scheduleListReconciliation, supabase])
+
+  useEffect(() => {
+    const reconcileVisibleTab = () => {
+      if (document.visibilityState !== 'visible') return
+      scheduleListReconciliation(0)
+      scheduleDetailReconciliation(0)
+      const conversationId = selectedIdRef.current
+      if (conversationId) {
+        void markConversationRead(conversationId)
+        dismissConversationNotifications(conversationId)
+      }
+    }
+    const reconcileOnline = () => {
+      scheduleListReconciliation(0)
+      scheduleDetailReconciliation(0)
+    }
+
+    document.addEventListener('visibilitychange', reconcileVisibleTab)
+    window.addEventListener('online', reconcileOnline)
+    return () => {
+      document.removeEventListener('visibilitychange', reconcileVisibleTab)
+      window.removeEventListener('online', reconcileOnline)
+    }
+  }, [dismissConversationNotifications, markConversationRead, scheduleDetailReconciliation, scheduleListReconciliation])
+
+  useEffect(() => () => {
+    conversationsAbortRef.current?.abort()
+    messagesAbortRef.current?.abort()
+    if (listReconciliationTimerRef.current) clearTimeout(listReconciliationTimerRef.current)
+    if (detailReconciliationTimerRef.current) clearTimeout(detailReconciliationTimerRef.current)
+  }, [])
 
   async function sendReply() {
     if (!selectedId || (!draft.trim() && files.length === 0)) return
@@ -343,7 +581,7 @@ export function MessagesInbox() {
             <ScrollArea className="min-h-0 flex-1 bg-muted/20 p-4">
               {detailLoading ? <p className="text-sm text-muted-foreground">Cargando mensajes…</p> : null}
               <div className="space-y-3">
-                {messages.map((message) => <div key={message.id} className={cn('flex', message.direction === 'outbound' ? 'justify-end' : 'justify-start')}><div className={cn('max-w-[82%] rounded-2xl px-3 py-2 text-sm shadow-sm', message.direction === 'outbound' ? 'rounded-br-sm bg-primary text-primary-foreground' : 'rounded-bl-sm bg-background border')}><p className="whitespace-pre-wrap">{message.content || `[${message.content_type}]`}</p>{selected.channel === 'email' && message.email_account ? <p className="mt-2 border-t border-current/15 pt-1 text-[10px] opacity-75">{message.direction === 'outbound' ? 'Enviado desde' : 'Recibido en'}: {message.email_account.display_name || message.email_account.email_address}</p> : null}{message.attachments?.length ? <div className="mt-2 space-y-1">{message.attachments.map((attachment, index) => attachment.attachmentId ? <a key={attachment.attachmentId} href={`/api/inbox/attachments/${attachment.attachmentId}`} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs underline underline-offset-2 opacity-90"><FileText className="h-3.5 w-3.5" />{attachment.filename || 'Archivo adjunto'}</a> : <div key={index} className="flex items-center gap-1.5 text-xs opacity-90"><FileText className="h-3.5 w-3.5" />{attachment.filename || attachment.type || 'Archivo adjunto'}</div>)}</div> : null}<div className="mt-1 flex items-center justify-end gap-1 text-[10px] opacity-70">{formatDate(message.sent_at || message.created_at)}{message.direction === 'outbound' && message.wa_status ? <CheckCheck className="h-3 w-3" /> : null}</div></div></div>)}
+                {visibleMessages.map((message) => <div key={message.id} className={cn('flex', message.direction === 'outbound' ? 'justify-end' : 'justify-start')}><div className={cn('max-w-[82%] rounded-2xl px-3 py-2 text-sm shadow-sm', message.direction === 'outbound' ? 'rounded-br-sm bg-primary text-primary-foreground' : 'rounded-bl-sm bg-background border')}><p className="whitespace-pre-wrap">{message.content || `[${message.content_type}]`}</p>{selected.channel === 'email' && message.email_account ? <p className="mt-2 border-t border-current/15 pt-1 text-[10px] opacity-75">{message.direction === 'outbound' ? 'Enviado desde' : 'Recibido en'}: {message.email_account.display_name || message.email_account.email_address}</p> : null}{message.attachments?.length ? <div className="mt-2 space-y-1">{message.attachments.map((attachment, index) => attachment.attachmentId ? <a key={attachment.attachmentId} href={`/api/inbox/attachments/${attachment.attachmentId}`} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs underline underline-offset-2 opacity-90"><FileText className="h-3.5 w-3.5" />{attachment.filename || 'Archivo adjunto'}</a> : <div key={index} className="flex items-center gap-1.5 text-xs opacity-90"><FileText className="h-3.5 w-3.5" />{attachment.filename || attachment.type || 'Archivo adjunto'}</div>)}</div> : null}<div className="mt-1 flex items-center justify-end gap-1 text-[10px] opacity-70">{formatDate(message.sent_at || message.created_at)}{message.direction === 'outbound' && message.wa_status ? <CheckCheck className="h-3 w-3" /> : null}</div></div></div>)}
               </div>
             </ScrollArea>
             <div className="border-t p-3"><input ref={fileInputRef} type="file" multiple className="hidden" onChange={(event) => setFiles(Array.from(event.target.files ?? []))} /><div className="flex gap-2"><Button variant="ghost" size="icon" title="Adjuntar archivo" onClick={() => fileInputRef.current?.click()} disabled={selected.status === 'resolved' || selected.status === 'spam' || sending}><Paperclip className="h-4 w-4" /></Button><Textarea value={draft} onFocus={() => void markConversationRead(selected.id)} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void sendReply() } }} placeholder={selected.status === 'resolved' ? 'La conversación está resuelta' : 'Escribí una respuesta…'} disabled={selected.status === 'resolved' || selected.status === 'spam' || sending} className="min-h-10 resize-none" /><Button size="icon" onClick={() => void sendReply()} disabled={(!draft.trim() && files.length === 0) || sending || selected.status === 'resolved' || selected.status === 'spam'}><Send className="h-4 w-4" /></Button></div>{files.length > 0 ? <div className="mt-2 flex flex-wrap gap-1">{files.map(file => <Badge key={`${file.name}-${file.size}`} variant="secondary" className="gap-1"><FileText className="h-3 w-3" />{file.name}</Badge>)}</div> : null}<p className="mt-1 text-xs text-muted-foreground">Enter para enviar · Shift + Enter para salto de línea · máximo 50 MB por archivo</p></div>
