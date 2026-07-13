@@ -117,7 +117,18 @@ Si la solicitud falla antes de persistir, no aparecerá ninguna burbuja. Si el p
 
 ## Notificaciones
 
-La notificación se originará durante la ingestión, no desde la interfaz. Supabase Realtime actualizará el indicador global inmediatamente después de persistirla. Abrir la conversación la descartará mediante la misma operación `mark-read`.
+La notificación se originará durante la ingestión, no desde la interfaz. Solamente los mensajes entrantes crearán notificaciones; los mensajes enviados desde la plataforma no incrementarán la campana.
+
+El dashboard mantendrá un único estado global de notificaciones montado en `DashboardShell`, por encima de las páginas individuales. Ese estado:
+
+- cargará inicialmente las notificaciones del usuario con `read_at IS NULL` y `dismissed_at IS NULL`;
+- se suscribirá mediante Supabase Realtime a `INSERT`, `UPDATE` y `DELETE` de las notificaciones del usuario autenticado;
+- actualizará inmediatamente el contador de la campana desde cualquier página del panel;
+- deduplicará por `id` y ordenará por `created_at` descendente;
+- hará una consulta de reconciliación al recuperar Realtime, conexión de red o visibilidad de la pestaña;
+- conservará la notificación hasta que la conversación correspondiente sea abierta y marcada como leída.
+
+Al pulsar una notificación de mensaje, la aplicación navegará a `/dashboard/messages?conversation=<id>`. La conversación se seleccionará aunque no coincida con el filtro actual y la misma operación idempotente `mark-read` marcará sus mensajes como leídos y descartará sus notificaciones. Si el usuario ya tiene esa conversación seleccionada en una pestaña visible, la notificación se descartará automáticamente después de confirmar la lectura.
 
 No se emitirán notificaciones para filas deduplicadas ni para emails salientes reflejados accidentalmente en una carpeta observada.
 
@@ -147,6 +158,8 @@ Se cubrirán estos escenarios:
 12. Una conversación nueva aparece sin recargar, y una conversación existente con actividad nueva sube al primer lugar.
 13. Cambiar el estado de una conversación la incorpora o retira de la lista según el filtro activo.
 14. Recuperar Realtime, la conexión de red o la visibilidad de la pestaña produce una sola reconciliación y no duplica mensajes.
+15. Un mensaje entrante actualiza la campana desde cualquier página del dashboard y al pulsarla abre la conversación correcta.
+16. Un mensaje saliente no crea una notificación global y una conversación visible no deja una notificación pendiente después de marcarse como leída.
 
 ## Entrega por etapas
 
