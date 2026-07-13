@@ -122,11 +122,13 @@ La notificación se originará durante la ingestión, no desde la interfaz. Sola
 El dashboard mantendrá un único estado global de notificaciones montado en `DashboardShell`, por encima de las páginas individuales. Ese estado:
 
 - cargará inicialmente las notificaciones del usuario con `read_at IS NULL` y `dismissed_at IS NULL`;
-- se suscribirá mediante Supabase Realtime a `INSERT`, `UPDATE` y `DELETE` de las notificaciones del usuario autenticado;
+- se suscribirá mediante Supabase Realtime a `INSERT` y `UPDATE` filtrados por el usuario autenticado;
 - actualizará inmediatamente el contador de la campana desde cualquier página del panel;
 - deduplicará por `id` y ordenará por `created_at` descendente;
 - hará una consulta de reconciliación al recuperar Realtime, conexión de red o visibilidad de la pestaña;
 - conservará la notificación hasta que la conversación correspondiente sea abierta y marcada como leída.
+
+Los eventos `DELETE` de Postgres Changes no admiten filtros por usuario. Como las notificaciones se descartan mediante `UPDATE`, no se abrirá una suscripción global a eliminaciones; cualquier borrado excepcional se resolverá en la siguiente reconciliación HTTP para no exponer identificadores de otros usuarios.
 
 Al pulsar una notificación de mensaje, la aplicación navegará a `/dashboard/messages?conversation=<id>`. La conversación se seleccionará aunque no coincida con el filtro actual y la misma operación idempotente `mark-read` marcará sus mensajes como leídos y descartará sus notificaciones. Si el usuario ya tiene esa conversación seleccionada en una pestaña visible, la notificación se descartará automáticamente después de confirmar la lectura.
 

@@ -98,28 +98,7 @@ function sortMessages(items: Message[]) {
   })
 }
 
-function messageTime(message: Message) {
-  return new Date(message.sent_at ?? message.created_at).getTime()
-}
-
-function findMatchingOptimisticMessage(items: Message[], incoming: Message) {
-  if (incoming.id.startsWith('local-') || incoming.direction !== 'outbound') return null
-
-  const candidates = items.filter(message =>
-    message.id.startsWith('local-')
-    && message.direction === 'outbound'
-    && message.content === incoming.content
-    && Math.abs(messageTime(message) - messageTime(incoming)) < 5 * 60 * 1000
-  )
-
-  return candidates.sort((left, right) =>
-    Math.abs(messageTime(left) - messageTime(incoming))
-    - Math.abs(messageTime(right) - messageTime(incoming))
-  )[0] ?? null
-}
-
 function upsertMessage(items: Message[], incoming: Message, preferExisting = false) {
-  const optimisticMatch = findMatchingOptimisticMessage(items, incoming)
   const existing = items.find(item => item.id === incoming.id)
   const merged = existing
     ? preferExisting
@@ -127,7 +106,7 @@ function upsertMessage(items: Message[], incoming: Message, preferExisting = fal
       : { ...existing, ...incoming }
     : incoming
   return sortMessages([
-    ...items.filter(item => item.id !== incoming.id && item.id !== optimisticMatch?.id),
+    ...items.filter(item => item.id !== incoming.id),
     merged,
   ])
 }
@@ -543,24 +522,12 @@ export function MessagesInbox() {
   async function sendReply() {
     if (!selectedId || (!draft.trim() && files.length === 0)) return
     const conversationId = selectedId
+    const replyContent = draft.trim()
+    const replyFiles = [...files]
     setSending(true)
     setError(null)
-    const optimisticId = `local-${Date.now()}`
-    const optimisticMessage: Message = {
-      id: optimisticId,
-      conversation_id: selectedId,
-      direction: 'outbound',
-      content: draft.trim() || `[${files.length} archivo${files.length === 1 ? '' : 's'}]`,
-      content_type: 'text',
-      sender_name: 'Vos',
-      wa_status: 'pending',
-      attachments: files.map(file => ({ filename: file.name, mimeType: file.type, size: file.size })),
-      sent_at: new Date().toISOString(),
-      created_at: new Date().toISOString(),
-    }
-    setMessages(current => [...current, optimisticMessage])
     try {
-      const uploadedFiles = await Promise.all(files.map(async file => {
+      const uploadedFiles = await Promise.all(replyFiles.map(async file => {
         const uploadUrlResponse = await fetch(`/api/inbox/conversations/${conversationId}/attachments/upload-url`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -579,7 +546,7 @@ export function MessagesInbox() {
       const response = await fetch(`/api/inbox/conversations/${conversationId}/reply`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: draft.trim(), attachments: uploadedFiles }),
+        body: JSON.stringify({ content: replyContent, attachments: uploadedFiles }),
       })
       const result = await response.json()
       if (!response.ok) {
@@ -589,17 +556,13 @@ export function MessagesInbox() {
         throw new Error(result.error ?? 'No fue posible enviar el mensaje')
       }
       if (selectedIdRef.current === conversationId) {
-        const persistedMessage: Message = result.message ?? {
-          ...optimisticMessage,
-          id: result.message_id,
-          wa_status: selected?.channel === 'whatsapp' ? 'sent' : null,
+        if (result.message) {
+          setMessages(current => upsertMessage(current, result.message as Message))
+          setMessagesConversationId(conversationId)
+          messagesConversationIdRef.current = conversationId
+        } else {
+          await loadMessages(conversationId, { background: true })
         }
-        setMessages(current => upsertMessage(
-          current.filter(message => message.id !== optimisticId),
-          persistedMessage
-        ))
-        setMessagesConversationId(conversationId)
-        messagesConversationIdRef.current = conversationId
         setDraft('')
         setFiles([])
         if (fileInputRef.current) fileInputRef.current.value = ''
@@ -607,9 +570,6 @@ export function MessagesInbox() {
       }
       void loadConversations(undefined, { background: true })
     } catch (err) {
-      if (selectedIdRef.current === conversationId) {
-        setMessages(current => current.filter(message => message.id !== optimisticId))
-      }
       setError(err instanceof Error ? err.message : 'No fue posible enviar el mensaje')
     } finally {
       setSending(false)
@@ -674,7 +634,7 @@ export function MessagesInbox() {
                 {visibleMessages.map((message) => <div key={message.id} className={cn('flex', message.direction === 'outbound' ? 'justify-end' : 'justify-start')}><div className={cn('max-w-[82%] rounded-2xl px-3 py-2 text-sm shadow-sm', message.direction === 'outbound' ? 'rounded-br-sm bg-primary text-primary-foreground' : 'rounded-bl-sm bg-background border')}><p className="whitespace-pre-wrap">{message.content || `[${message.content_type}]`}</p>{selected.channel === 'email' && message.email_account ? <p className="mt-2 border-t border-current/15 pt-1 text-[10px] opacity-75">{message.direction === 'outbound' ? 'Enviado desde' : 'Recibido en'}: {message.email_account.display_name || message.email_account.email_address}</p> : null}{message.attachments?.length ? <div className="mt-2 space-y-1">{message.attachments.map((attachment, index) => attachment.attachmentId ? <a key={attachment.attachmentId} href={`/api/inbox/attachments/${attachment.attachmentId}`} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs underline underline-offset-2 opacity-90"><FileText className="h-3.5 w-3.5" />{attachment.filename || 'Archivo adjunto'}</a> : <div key={index} className="flex items-center gap-1.5 text-xs opacity-90"><FileText className="h-3.5 w-3.5" />{attachment.filename || attachment.type || 'Archivo adjunto'}</div>)}</div> : null}<div className="mt-1 flex items-center justify-end gap-1 text-[10px] opacity-70">{formatDate(message.sent_at || message.created_at)}{message.direction === 'outbound' && message.wa_status ? <CheckCheck className="h-3 w-3" /> : null}</div></div></div>)}
               </div>
             </ScrollArea>
-            <div className="border-t p-3"><input ref={fileInputRef} type="file" multiple className="hidden" onChange={(event) => setFiles(Array.from(event.target.files ?? []))} /><div className="flex gap-2"><Button variant="ghost" size="icon" title="Adjuntar archivo" onClick={() => fileInputRef.current?.click()} disabled={selected.status === 'resolved' || selected.status === 'spam' || sending}><Paperclip className="h-4 w-4" /></Button><Textarea value={draft} onFocus={() => void markConversationRead(selected.id)} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void sendReply() } }} placeholder={selected.status === 'resolved' ? 'La conversación está resuelta' : 'Escribí una respuesta…'} disabled={selected.status === 'resolved' || selected.status === 'spam' || sending} className="min-h-10 resize-none" /><Button size="icon" onClick={() => void sendReply()} disabled={(!draft.trim() && files.length === 0) || sending || selected.status === 'resolved' || selected.status === 'spam'}><Send className="h-4 w-4" /></Button></div>{files.length > 0 ? <div className="mt-2 flex flex-wrap gap-1">{files.map(file => <Badge key={`${file.name}-${file.size}`} variant="secondary" className="gap-1"><FileText className="h-3 w-3" />{file.name}</Badge>)}</div> : null}<p className="mt-1 text-xs text-muted-foreground">Enter para enviar · Shift + Enter para salto de línea · máximo 50 MB por archivo</p></div>
+            <div className="border-t p-3"><input ref={fileInputRef} type="file" multiple className="hidden" onChange={(event) => setFiles(Array.from(event.target.files ?? []))} /><div className="flex gap-2"><Button variant="ghost" size="icon" title="Adjuntar archivo" onClick={() => fileInputRef.current?.click()} disabled={selected.status === 'resolved' || selected.status === 'spam' || sending}><Paperclip className="h-4 w-4" /></Button><Textarea value={draft} onFocus={() => void markConversationRead(selected.id)} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void sendReply() } }} placeholder={selected.status === 'resolved' ? 'La conversación está resuelta' : 'Escribí una respuesta…'} disabled={selected.status === 'resolved' || selected.status === 'spam' || sending} className="min-h-10 resize-none" /><Button size="icon" title={sending ? 'Enviando…' : 'Enviar'} onClick={() => void sendReply()} disabled={(!draft.trim() && files.length === 0) || sending || selected.status === 'resolved' || selected.status === 'spam'}><Send className="h-4 w-4" /></Button></div>{files.length > 0 ? <div className="mt-2 flex flex-wrap gap-1">{files.map(file => <Badge key={`${file.name}-${file.size}`} variant="secondary" className="gap-1"><FileText className="h-3 w-3" />{file.name}</Badge>)}</div> : null}<p className="mt-1 text-xs text-muted-foreground">{sending ? 'Enviando… El mensaje aparecerá cuando quede guardado.' : 'Enter para enviar · Shift + Enter para salto de línea · máximo 50 MB por archivo'}</p></div>
           </>}</main>
 
         <aside className="hidden min-h-0 border-l p-4 lg:block">
