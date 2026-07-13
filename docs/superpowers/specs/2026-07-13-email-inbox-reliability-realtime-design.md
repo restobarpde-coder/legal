@@ -88,6 +88,16 @@ La lista inicial y el historial se cargarán por HTTP. Después, Realtime aplica
 
 Se descartarán respuestas HTTP pertenecientes a una selección o solicitud anterior mediante un `AbortController` o número de generación.
 
+La bandeja mantendrá una única estrategia de reconciliación para evitar que HTTP y Realtime compitan entre sí:
+
+- al seleccionar otra conversación, cancelará la carga de detalle anterior y limpiará inmediatamente los mensajes visibles para no mostrar contenido de la selección previa;
+- cada carga de lista y detalle tendrá una generación monotónica, de modo que una respuesta antigua nunca pueda reemplazar una respuesta o evento más nuevo, incluso en una secuencia rápida A → B → A;
+- los cambios de conversación se combinarán por `id`, incorporarán filas nuevas, eliminarán las que ya no coincidan con los filtros activos y ordenarán por `last_message_at` descendente;
+- los eventos consecutivos programarán una sola recarga HTTP breve y agrupada para completar relaciones que no vienen en el payload de Realtime, sin perder la actualización visual inmediata;
+- una reconexión de Realtime ejecutará una sola recarga de recuperación, no una recarga por cada cambio de estado del canal;
+- cuando una pestaña vuelva a estar visible o recupere conexión, hará una reconciliación para cubrir eventos perdidos durante la suspensión;
+- solamente la conversación seleccionada en una pestaña visible se marcará automáticamente como leída.
+
 Para enviar, el cliente generará una clave idempotente. El servidor la guardará con el mensaje y devolverá el registro completo. La UI reemplazará la fila local por esa fila; un evento Realtime con el mismo identificador o clave se combinará. Ante error SMTP, el mensaje persistido se mostrará como fallido en lugar de desaparecer silenciosamente.
 
 ## Notificaciones
@@ -118,6 +128,10 @@ Se cubrirán estos escenarios:
 8. Hostinger reintenta un webhook y no se duplica el mensaje.
 9. Un webhook omitido o fallido es recuperado por el cron de cinco minutos.
 10. Varias pestañas convergen al mismo estado después de los eventos Realtime.
+11. Cambiar rápidamente A → B → A nunca muestra mensajes de otra conversación ni permite que una respuesta anterior reemplace la actual.
+12. Una conversación nueva aparece sin recargar, y una conversación existente con actividad nueva sube al primer lugar.
+13. Cambiar el estado de una conversación la incorpora o retira de la lista según el filtro activo.
+14. Recuperar Realtime, la conexión de red o la visibilidad de la pestaña produce una sola reconciliación y no duplica mensajes.
 
 ## Entrega por etapas
 
