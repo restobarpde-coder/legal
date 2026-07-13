@@ -1,10 +1,11 @@
 import { getUserProfile } from "@/lib/auth"
+import { normalizeRole, hasRole } from "@/lib/authz"
 import { CasesClient } from './cases-client'
 import { Suspense } from 'react'
 
 export default async function CasesPage() {
   const userProfile = await getUserProfile()
-  const canCreateCases = userProfile?.role === 'lawyer' || userProfile?.role === 'admin'
+  const canCreateCases = hasRole(normalizeRole(userProfile?.role), 'lawyer')
 
   return (
     <Suspense fallback={

@@ -1,12 +1,14 @@
 import { createClient } from '@/lib/supabase/server'
-import { requireAuth } from '@/lib/auth'
+import { requireRole } from '@/lib/authz-server'
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function GET(request: NextRequest) {
   try {
+    const auth = await requireRole('assistant')
+    if (!auth.ok) return auth.response
+    const { user, role } = auth
     const supabase = await createClient()
-    const user = await requireAuth()
-    
+
     const searchParams = request.nextUrl.searchParams
     const tableName = searchParams.get('table')
     const recordId = searchParams.get('recordId')
@@ -53,17 +55,8 @@ export async function GET(request: NextRequest) {
       query = query.lte('created_at', endDate)
     }
     
-    // Check user permissions
-    // Admins can see all, others only their own unless they're case members
-    const { data: userRole } = await supabase
-      .from('users')
-      .select('role')
-      .eq('id', user.id)
-      .single()
-    
-    if (userRole?.role !== 'admin') {
-      // For non-admins, filter to show only their own actions
-      // or actions on cases they're members of
+    // Admins can see all, others only their own actions
+    if (role !== 'admin') {
       query = query.or(`user_id.eq.${user.id}`)
     }
     
@@ -84,23 +77,11 @@ export async function GET(request: NextRequest) {
 // Endpoint para verificar integridad de la cadena
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient()
-    const user = await requireAuth()
-    
     // Solo administradores pueden verificar la integridad
-    const { data: userRole } = await supabase
-      .from('users')
-      .select('role')
-      .eq('id', user.id)
-      .single()
-    
-    if (userRole?.role !== 'admin') {
-      return NextResponse.json(
-        { error: 'Solo los administradores pueden verificar la integridad' },
-        { status: 403 }
-      )
-    }
-    
+    const auth = await requireRole('admin')
+    if (!auth.ok) return auth.response
+    const supabase = await createClient()
+
     // Llamar a la función de verificación
     const { data, error } = await supabase
       .rpc('verify_audit_chain')

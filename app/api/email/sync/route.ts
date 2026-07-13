@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { syncEmailAccount } from '@/lib/inbox/imap'
+import { requireRole } from '@/lib/authz-server'
 
 export const runtime    = 'nodejs'
 export const maxDuration = 60  // seconds; raise in Vercel settings for large mailboxes
@@ -11,22 +12,8 @@ export const maxDuration = 60  // seconds; raise in Vercel settings for large ma
 // Without body: syncs ALL enabled accounts sequentially.
 
 export async function POST(request: NextRequest) {
-  const supabase = await createClient()
-
-  const { data: { user }, error: authErr } = await supabase.auth.getUser()
-  if (authErr || !user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  const { data: profile } = await supabase
-    .from('users')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-
-  if (profile?.role !== 'admin') {
-    return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
-  }
+  const auth = await requireRole('admin')
+  if (!auth.ok) return auth.response
 
   // Parse optional body
   let targetAccountId: string | null = null
@@ -79,22 +66,9 @@ export async function POST(request: NextRequest) {
 // Returns recent email webhook processing history. Admin only.
 
 export async function GET() {
+  const auth = await requireRole('admin')
+  if (!auth.ok) return auth.response
   const supabase = await createClient()
-
-  const { data: { user }, error: authErr } = await supabase.auth.getUser()
-  if (authErr || !user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  const { data: profile } = await supabase
-    .from('users')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-
-  if (profile?.role !== 'admin') {
-    return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
-  }
 
   const { data: events, error } = await supabase
     .from('inbox_webhook_events')

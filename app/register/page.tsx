@@ -5,13 +5,12 @@ import type React from "react"
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { createClient } from "@/lib/supabase/client"
+import { registerAction } from "./actions"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Loader2, Scale } from "lucide-react"
 
 export default function RegisterPage() {
@@ -19,12 +18,10 @@ export default function RegisterPage() {
   const [password, setPassword] = useState("")
   const [fullName, setFullName] = useState("")
   const [phone, setPhone] = useState("")
-  const [role, setRole] = useState<"admin" | "lawyer" | "assistant">("assistant")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [success, setSuccess] = useState(false)
   const router = useRouter()
-  const supabase = createClient()
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -33,35 +30,11 @@ export default function RegisterPage() {
     setSuccess(false)
 
     try {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo: process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || `${window.location.origin}/`,
-          data: {
-            full_name: fullName,
-            phone,
-            role,
-          },
-        },
-      })
-
-      if (error) {
-        setError(error.message)
-      } else if (data.user) {
+      const result = await registerAction({ email, password, fullName, phone })
+      if (result.success) {
         setSuccess(true)
-        // Insert user data into public.users table
-        const { error: profileError } = await supabase.from("users").insert({
-          id: data.user.id,
-          email: data.user.email!,
-          full_name: fullName,
-          phone,
-          role,
-        })
-
-        if (profileError) {
-          console.error("Error creating user profile:", profileError)
-        }
+      } else {
+        setError(result.message)
       }
     } catch (err) {
       setError("Error inesperado. Intenta nuevamente.")
@@ -146,19 +119,6 @@ export default function RegisterPage() {
                 onChange={(e) => setPhone(e.target.value)}
                 disabled={loading}
               />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="role">Rol</Label>
-              <Select value={role} onValueChange={(value: "admin" | "lawyer" | "assistant") => setRole(value)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecciona tu rol" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="assistant">Asistente</SelectItem>
-                  <SelectItem value="lawyer">Abogado</SelectItem>
-                  <SelectItem value="admin">Administrador</SelectItem>
-                </SelectContent>
-              </Select>
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Contraseña</Label>

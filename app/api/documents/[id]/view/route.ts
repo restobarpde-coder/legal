@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { requireAuth } from '@/lib/auth'
 import { NextRequest, NextResponse } from 'next/server'
+import { normalizeRole } from '@/lib/authz'
 
 // GET - Visualizar un documento específico
 export async function GET(
@@ -34,7 +35,7 @@ export async function GET(
       .eq('id', user.id)
       .single()
     
-    if (userData?.role === 'admin') {
+    if (normalizeRole(userData?.role) === 'admin') {
       hasAccess = true
     } else if (document.case_id) {
       // Si tiene caso asignado, verificar membresía

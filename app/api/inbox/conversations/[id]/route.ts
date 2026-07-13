@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { resolveInboxContact } from '@/lib/inbox/contacts'
 
 export const runtime = 'nodejs'
 
@@ -79,6 +80,33 @@ export async function PATCH(request: NextRequest, { params }: { params: Params }
   if (error) {
     const status = error.code === 'PGRST116' ? 404 : 500
     return NextResponse.json({ error: error.message }, { status })
+  }
+
+  // Keep the durable contact record in sync with the client link.
+  if ('linked_client_id' in updates) {
+    try {
+      const svc = createServiceClient()
+      const { data: conv } = await svc
+        .from('inbox_conversations')
+        .select('inbox_contact_id, contact_name, contact_email, contact_phone')
+        .eq('id', id)
+        .single()
+
+      if (updates.linked_client_id) {
+        await resolveInboxContact(svc, {
+          name: conv?.contact_name ?? null,
+          email: conv?.contact_email ?? null,
+          phone: conv?.contact_phone ?? null,
+          linkedClientId: updates.linked_client_id as string,
+        })
+      } else if (conv?.inbox_contact_id) {
+        await svc.from('inbox_contacts')
+          .update({ linked_client_id: null, kind: 'prospect' })
+          .eq('id', conv.inbox_contact_id)
+      }
+    } catch (err) {
+      console.error('[inbox/conversations] Could not sync inbox contact link', err)
+    }
   }
 
   return NextResponse.json({ conversation: data })

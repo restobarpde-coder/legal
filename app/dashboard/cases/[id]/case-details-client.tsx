@@ -8,10 +8,12 @@ import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { ArrowLeft, Edit, Users, FileText, CheckSquare, Clock, Mail, Phone, Building, StickyNote, Trash2, MoreVertical, Calendar, User, Shield, Activity, Eye, Download } from 'lucide-react'
+import { ArrowLeft, Edit, Users, FileText, CheckSquare, Clock, Mail, Phone, Building, StickyNote, Trash2, MoreVertical, Calendar, User, Shield, Activity, Eye, Download, Plus } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { CaseMembersManager } from '../case-members-manager'
+import { StartConversationDialog } from '@/components/inbox/start-conversation-dialog'
+import { ConversationList } from '@/components/inbox/conversation-list'
 import { useCaseDetails } from '@/hooks/use-case-details'
 import { CaseTimeline } from '@/components/case-timeline'
 import { TaskStatusSelect, TaskStatusBadge } from '@/components/task-status-select'
@@ -394,17 +396,47 @@ export function CaseDetailsClient({ caseId }: CaseDetailsClientProps) {
                 {/* Main content with tabs */}
                 <div className="lg:col-span-3 min-w-0">
                     <Tabs defaultValue="overview" className="space-y-6">
-                        <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6 h-auto overflow-x-auto">
+                        <TabsList className="grid w-full grid-cols-3 sm:grid-cols-7 h-auto overflow-x-auto">
                             <TabsTrigger value="overview" className="text-xs sm:text-sm">Resumen</TabsTrigger>
                             <TabsTrigger value="tasks" className="text-xs sm:text-sm">Tareas ({tasks.length})</TabsTrigger>
                             <TabsTrigger value="documents" className="text-xs sm:text-sm">Docs ({documents.length})</TabsTrigger>
                             <TabsTrigger value="notes" className="text-xs sm:text-sm">Notas ({notes.length})</TabsTrigger>
                             <TabsTrigger value="time" className="text-xs sm:text-sm">Tiempo ({timeEntries.length})</TabsTrigger>
+                            <TabsTrigger value="messages" className="text-xs sm:text-sm">Mensajes</TabsTrigger>
                             <TabsTrigger value="timeline" className="flex items-center gap-1 text-xs sm:text-sm">
                                 <Shield className="h-3 w-3" />
                                 <span className="hidden sm:inline">Historial</span>
                             </TabsTrigger>
                         </TabsList>
+
+                        <TabsContent value="messages" className="space-y-4">
+                            <Card>
+                                <CardHeader>
+                                    <div className="flex items-center justify-between gap-2">
+                                        <CardTitle>Mensajes del caso</CardTitle>
+                                        <StartConversationDialog
+                                            title={`Conversación · ${caseData.title}`}
+                                            linkedCaseId={caseData.id}
+                                            linkedClientId={caseData.clients?.id}
+                                            defaults={{
+                                                contact_name: caseData.clients?.name,
+                                                contact_email: caseData.clients?.email,
+                                                contact_phone: caseData.clients?.phone,
+                                            }}
+                                            trigger={<Button size="sm"><Plus className="h-4 w-4 mr-1" />Nueva conversación</Button>}
+                                        />
+                                    </div>
+                                </CardHeader>
+                                <CardContent>
+                                    <ConversationList
+                                        caseId={caseData.id}
+                                        clientId={caseData.clients?.id}
+                                        matchAny
+                                        emptyMessage="No hay conversaciones vinculadas a este caso o su cliente."
+                                    />
+                                </CardContent>
+                            </Card>
+                        </TabsContent>
 
                         <TabsContent value="overview" className="space-y-6">
                             {/* Case details */}

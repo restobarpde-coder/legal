@@ -25,20 +25,30 @@ export async function resolveInboxContact(supabase: any, input: InboxContactInpu
     existing = data
   }
 
-  const updates = {
+  if (existing) {
+    // Partial callers (e.g. a webhook that only knows the phone) must not
+    // wipe fields another flow already filled in.
+    const updates: Record<string, unknown> = {}
+    if (input.name) updates.name = input.name
+    if (email) updates.email = email
+    if (phone) updates.phone = phone
+    if (input.linkedClientId) {
+      updates.linked_client_id = input.linkedClientId
+      updates.kind = 'client'
+    }
+    if (Object.keys(updates).length > 0) {
+      await supabase.from('inbox_contacts').update(updates).eq('id', existing.id)
+    }
+    return existing.id
+  }
+
+  const { data, error } = await supabase.from('inbox_contacts').insert({
     name: input.name ?? null,
     email,
     phone,
     linked_client_id: input.linkedClientId ?? null,
     kind: input.linkedClientId ? 'client' : 'prospect',
-  }
-
-  if (existing) {
-    await supabase.from('inbox_contacts').update(updates).eq('id', existing.id)
-    return existing.id
-  }
-
-  const { data, error } = await supabase.from('inbox_contacts').insert(updates).select('id').single()
+  }).select('id').single()
   if (error) throw new Error(`Could not create inbox contact: ${error.message}`)
   return data.id
 }

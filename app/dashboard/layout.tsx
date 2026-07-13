@@ -1,6 +1,8 @@
 import type React from "react"
 
-import { requireAuth } from "@/lib/auth"
+import { redirect } from "next/navigation"
+import { getUserProfile } from "@/lib/auth"
+import { normalizeRole } from "@/lib/authz"
 import { DashboardShell } from "@/components/dashboard-shell"
 
 export default async function DashboardLayout({
@@ -8,8 +10,12 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode
 }) {
-  // Only check auth - don't fetch profile (moved to client-side)
-  await requireAuth()
+  // getUserProfile authenticates (redirects to /login) and self-heals a
+  // missing profile row. Users whose role doesn't map to an internal role
+  // (e.g. 'client') have no dashboard access — single choke point for the
+  // whole /dashboard tree.
+  const profile = await getUserProfile()
+  if (normalizeRole(profile?.role) === null) redirect("/login?error=sin-acceso")
 
   return <DashboardShell>{children}</DashboardShell>
 }

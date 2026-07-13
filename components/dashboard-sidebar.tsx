@@ -25,8 +25,16 @@ import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 import { useOptimizedNavigation } from "@/hooks/use-optimized-navigation"
 import { useUser } from "@/components/providers/user-context"
+import { hasRole, ROLE_LABELS, type EffectiveRole } from "@/lib/authz"
 
-const navigation = [
+type NavItem = {
+  name: string
+  href: string
+  icon: typeof LayoutDashboard
+  minRole?: EffectiveRole
+}
+
+const navigation: NavItem[] = [
   {
     name: "Dashboard",
     href: "/dashboard",
@@ -78,6 +86,18 @@ const navigation = [
     href: "/dashboard/declarations",
     icon: Mic,
   },
+  {
+    name: "Usuarios",
+    href: "/dashboard/admin/users",
+    icon: User,
+    minRole: "admin",
+  },
+  {
+    name: "Auditoría",
+    href: "/dashboard/admin/audit",
+    icon: FolderOpen,
+    minRole: "admin",
+  },
 ]
 
 
@@ -86,7 +106,8 @@ function SidebarContent() {
   const router = useRouter()
   const supabase = createClient()
   const { prefetchRoute, prefetchCommonRoutes, isCurrentRoute } = useOptimizedNavigation()
-  const { user } = useUser()
+  const { user, effectiveRole } = useUser()
+  const visibleNavigation = navigation.filter(item => !item.minRole || hasRole(effectiveRole, item.minRole))
 
   useEffect(() => {
     prefetchCommonRoutes(['/dashboard', '/dashboard/cases', '/dashboard/clients', '/dashboard/tasks'])
@@ -108,7 +129,7 @@ function SidebarContent() {
       {/* Navigation */}
       <ScrollArea className="flex-1 px-4 py-6">
         <nav className="space-y-1.5">
-          {navigation.map((item) => {
+          {visibleNavigation.map((item) => {
             const isActive = isCurrentRoute(item.href)
 
             return (
@@ -151,7 +172,7 @@ function SidebarContent() {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-sidebar-foreground truncate">{user?.full_name || 'Usuario'}</p>
-            <p className="text-xs text-sidebar-foreground/70 truncate">{user?.role || 'Cargando...'}</p>
+            <p className="text-xs text-sidebar-foreground/70 truncate">{effectiveRole ? ROLE_LABELS[effectiveRole] : 'Cargando...'}</p>
           </div>
         </div>
         <div className="space-y-1.5">

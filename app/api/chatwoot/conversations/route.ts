@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { normalizeRole } from '@/lib/authz';
 
 const CHATWOOT_BASE_URL = process.env.CHATWOOT_BASE_URL || 'https://app.chatwoot.com';
 const CHATWOOT_ACCESS_TOKEN = process.env.CHATWOOT_ACCESS_TOKEN;
@@ -75,7 +76,7 @@ export async function GET() {
       );
     }
 
-    const isAdmin = userData.role === 'admin';
+    const isAdmin = normalizeRole(userData.role) === 'admin';
     const userChatwootEmail = userData.chatwoot_agent_email || userData.email;
     const userChatwootAgentId = userData.chatwoot_agent_id;
 

@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { requireAuth } from '@/lib/auth'
 import { NextRequest, NextResponse } from 'next/server'
+import { normalizeRole } from '@/lib/authz'
 
 // DELETE - Eliminar un documento específico de un caso
 export async function DELETE(
@@ -41,8 +42,8 @@ export async function DELETE(
       .single()
     
     console.log('User role:', userData?.role)
-    const isAdmin = userData?.role === 'admin'
-    const isLawyer = userData?.role === 'lawyer'
+    const isAdmin = normalizeRole(userData?.role) === 'admin'
+    const isLawyer = normalizeRole(userData?.role) === 'lawyer'
     const isOwner = existingDoc.uploaded_by === user.id
     
     // También verificar si es miembro del caso
@@ -222,7 +223,7 @@ export async function PATCH(
       .eq('id', user.id)
       .single()
     
-    const isAdmin = userData?.role === 'admin'
+    const isAdmin = normalizeRole(userData?.role) === 'admin'
     const isOwner = existingDoc.uploaded_by === user.id
     
     if (!isAdmin && !isOwner) {

@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { requireAuth } from '@/lib/auth'
 import { NextRequest, NextResponse } from 'next/server'
+import { normalizeRole } from '@/lib/authz'
 
 export async function GET(
   request: NextRequest,
@@ -26,7 +27,7 @@ export async function GET(
       .eq('id', user.id)
       .single()
 
-    const isAdmin = userData?.role === 'admin'
+    const isAdmin = normalizeRole(userData?.role) === 'admin'
 
     if (!caseMember && !isAdmin) {
       return NextResponse.json(

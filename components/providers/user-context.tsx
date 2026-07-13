@@ -2,6 +2,7 @@
 
 import { createContext, useContext, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { normalizeRole, type EffectiveRole } from '@/lib/authz'
 
 type UserProfile = {
     id: string
@@ -13,6 +14,7 @@ type UserProfile = {
 
 type UserContextType = {
     user: UserProfile | null
+    effectiveRole: EffectiveRole | null
     isLoading: boolean
     error: Error | null
 }
@@ -37,7 +39,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     })
 
     return (
-        <UserContext.Provider value={{ user, isLoading, error: error as Error | null }}>
+        <UserContext.Provider value={{ user, effectiveRole: normalizeRole(user?.role), isLoading, error: error as Error | null }}>
             {children}
         </UserContext.Provider>
     )

@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { requireAuth } from '@/lib/auth'
 import { NextRequest, NextResponse } from 'next/server'
+import { normalizeRole } from '@/lib/authz'
 
 // GET - Obtener lista de documentos
 export async function GET(request: NextRequest) {
@@ -37,7 +38,7 @@ export async function GET(request: NextRequest) {
       .eq('id', user.id)
       .single()
 
-    const isAdmin = userData?.role === 'admin'
+    const isAdmin = normalizeRole(userData?.role) === 'admin'
     
     let filteredDocuments = []
     

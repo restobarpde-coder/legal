@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
     const searchQuery = searchParams.get('q') || ''
     const statusFilter = searchParams.get('status') || 'all'
     const priorityFilter = searchParams.get('priority') || 'all'
+    const clientFilter = searchParams.get('client_id') || ''
 
     // First, get case IDs where the current user is a member
     const { data: userCases, error: memberError } = await supabase
@@ -81,6 +82,11 @@ export async function GET(request: NextRequest) {
     // Apply priority filter
     if (priorityFilter && priorityFilter !== 'all') {
       query = query.eq('priority', priorityFilter)
+    }
+
+    // Filter by client (used by the inbox link-to-client dialog)
+    if (clientFilter) {
+      query = query.eq('client_id', clientFilter)
     }
 
     const { data: cases, error } = await query

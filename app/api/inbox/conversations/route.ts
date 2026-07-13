@@ -5,16 +5,20 @@ import { resolveInboxContact } from '@/lib/inbox/contacts'
 import { sendEmail } from '@/lib/inbox/smtp'
 import { decrypt } from '@/lib/inbox/crypto'
 import { sendWhatsAppTemplate } from '@/lib/inbox/whatsapp'
+import { normalizePhoneUY } from '@/lib/phone'
 
 export const runtime = 'nodejs'
 
 // ─── GET /api/inbox/conversations ────────────────────────────
 // Query params:
-//   channel  = 'whatsapp' | 'email' | 'all' (default: all)
-//   status   = 'open' | 'pending' | 'resolved' | 'spam' | 'all' (default: open)
-//   assigned = 'me' | 'unassigned' | 'all' (default: all)
-//   limit    = number (default: 50)
-//   offset   = number (default: 0)
+//   channel   = 'whatsapp' | 'email' | 'all' (default: all)
+//   status    = 'open' | 'pending' | 'resolved' | 'spam' | 'all' (default: open)
+//   assigned  = 'me' | 'unassigned' | 'all' (default: all)
+//   client_id = uuid — only conversations linked to this client
+//   case_id   = uuid — only conversations linked to this case
+//   match     = 'any' — with client_id AND case_id, matches either link
+//   limit     = number (default: 50)
+//   offset    = number (default: 0)
 
 export async function GET(request: NextRequest) {
   const supabase = await createClient()
@@ -28,6 +32,9 @@ export async function GET(request: NextRequest) {
   const channel  = searchParams.get('channel')  ?? 'all'
   const status   = searchParams.get('status')   ?? 'open'
   const assigned = searchParams.get('assigned') ?? 'all'
+  const clientId = searchParams.get('client_id')
+  const caseId   = searchParams.get('case_id')
+  const match    = searchParams.get('match')
   const limit    = Math.min(parseInt(searchParams.get('limit')  ?? '50', 10), 200)
   const offset   = Math.max(parseInt(searchParams.get('offset') ?? '0',  10), 0)
 
@@ -59,6 +66,12 @@ export async function GET(request: NextRequest) {
   } else if (assigned === 'unassigned') {
     query = query.is('assigned_user_id', null)
   }
+  if (clientId && caseId && match === 'any') {
+    query = query.or(`linked_client_id.eq.${clientId},linked_case_id.eq.${caseId}`)
+  } else {
+    if (clientId) query = query.eq('linked_client_id', clientId)
+    if (caseId) query = query.eq('linked_case_id', caseId)
+  }
 
   const { data, error, count } = await query
 
@@ -87,33 +100,48 @@ export async function POST(request: NextRequest) {
 
   const contactName = String(body.contact_name ?? '').trim() || null
   const contactEmail = String(body.contact_email ?? '').trim().toLowerCase() || null
-  const contactPhone = String(body.contact_phone ?? '').replace(/\s+/g, '') || null
+  const rawPhone = String(body.contact_phone ?? '').trim() || null
+  const normalizedPhone = rawPhone ? normalizePhoneUY(rawPhone) : null
+  const contactPhone = normalizedPhone?.e164 ?? rawPhone
   const linkedClientId = body.linked_client_id || null
+  const linkedCaseId = body.linked_case_id || null
   if (channel === 'email' && !contactEmail) return NextResponse.json({ error: 'El email del destinatario es obligatorio' }, { status: 400 })
-  if (channel === 'whatsapp' && !contactPhone) return NextResponse.json({ error: 'El número de WhatsApp es obligatorio' }, { status: 400 })
+  if (channel === 'whatsapp' && !rawPhone) return NextResponse.json({ error: 'El número de WhatsApp es obligatorio' }, { status: 400 })
+  if (channel === 'whatsapp' && !normalizedPhone) {
+    return NextResponse.json({ error: 'Número de teléfono inválido. Usá formato internacional (+598…) o local (099…).' }, { status: 400 })
+  }
 
   const svc = createServiceClient()
+
+  if (linkedCaseId) {
+    const { data: linkedCase } = await svc.from('cases').select('id, client_id').eq('id', linkedCaseId).single()
+    if (!linkedCase) return NextResponse.json({ error: 'El caso vinculado no existe' }, { status: 400 })
+    if (linkedClientId && linkedCase.client_id !== linkedClientId) {
+      return NextResponse.json({ error: 'El caso no pertenece al cliente indicado' }, { status: 400 })
+    }
+  }
+
   const { data: sender } = await supabase.from('users').select('full_name, email').eq('id', user.id).single()
   const senderName = sender?.full_name ?? sender?.email ?? 'Equipo'
   const inboxContactId = await resolveInboxContact(svc, { name: contactName, email: contactEmail, phone: contactPhone, linkedClientId })
 
   if (channel === 'whatsapp') {
-    const phone = contactPhone!
+    const { e164, waId } = normalizedPhone!
     const templateId = String(body.template_id ?? '')
     if (!templateId) return NextResponse.json({ error: 'Elegí una plantilla aprobada de WhatsApp' }, { status: 400 })
     const { data: template } = await supabase.from('inbox_whatsapp_templates').select('id, name, language_code').eq('id', templateId).eq('is_active', true).single()
     if (!template) return NextResponse.json({ error: 'Plantilla no disponible' }, { status: 404 })
 
     const { data: conversation, error } = await svc.from('inbox_conversations').insert({
-      channel: 'whatsapp', inbox_type: 'whatsapp_shared', contact_name: contactName || contactPhone,
-      contact_phone: phone, wa_contact_id: phone.replace(/^\+/, ''), inbox_contact_id: inboxContactId,
-      linked_client_id: linkedClientId, assigned_user_id: user.id, status: 'open',
+      channel: 'whatsapp', inbox_type: 'whatsapp_shared', contact_name: contactName || e164,
+      contact_phone: e164, wa_contact_id: waId, inbox_contact_id: inboxContactId,
+      linked_client_id: linkedClientId, linked_case_id: linkedCaseId, assigned_user_id: user.id, status: 'open',
       last_message_at: new Date().toISOString(), last_message_preview: `[Plantilla: ${template.name}]`,
     }).select('id').single()
     if (error || !conversation) return NextResponse.json({ error: error?.message ?? 'No fue posible crear la conversación' }, { status: 500 })
 
     try {
-      const { messageId } = await sendWhatsAppTemplate({ to: phone.replace(/^\+/, ''), name: template.name, languageCode: template.language_code })
+      const { messageId } = await sendWhatsAppTemplate({ to: waId, name: template.name, languageCode: template.language_code })
       await svc.from('inbox_messages').insert({
         conversation_id: conversation.id, direction: 'outbound', content: `[Plantilla: ${template.name}]`, content_type: 'text',
         sender_type: 'user', sender_user_id: user.id, sender_name: senderName, wa_message_id: messageId, wa_status: 'sent', sent_at: new Date().toISOString(),
@@ -138,6 +166,7 @@ export async function POST(request: NextRequest) {
   const { data: conversation, error } = await svc.from('inbox_conversations').insert({
     channel: 'email', inbox_type: account.account_type === 'personal' ? 'email_personal' : 'email_shared', email_account_id: account.id,
     contact_name: contactName || recipientEmail, contact_email: recipientEmail, inbox_contact_id: inboxContactId, linked_client_id: linkedClientId,
+    linked_case_id: linkedCaseId,
     assigned_user_id: user.id, email_subject: subject, status: 'open', last_message_at: new Date().toISOString(), last_message_preview: content.slice(0, 200),
   }).select('id').single()
   if (error || !conversation) return NextResponse.json({ error: error?.message ?? 'No fue posible crear la conversación' }, { status: 500 })

@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { requireAuth } from '@/lib/auth'
 import { NextRequest, NextResponse } from 'next/server'
+import { normalizeRole } from '@/lib/authz'
 
 // GET - Obtener un registro de tiempo específico
 export async function GET(
@@ -38,7 +39,7 @@ export async function GET(
     
     const isOwner = timeEntry.user_id === user.id
     
-    if (!caseMember && userData?.role !== 'admin' && !isOwner) {
+    if (!caseMember && normalizeRole(userData?.role) !== 'admin' && !isOwner) {
       return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
     }
     
@@ -78,7 +79,7 @@ export async function PUT(
       .eq('id', user.id)
       .single()
     
-    const isAdmin = userData?.role === 'admin'
+    const isAdmin = normalizeRole(userData?.role) === 'admin'
     const isOwner = existingEntry.user_id === user.id
     
     if (!isAdmin && !isOwner) {
@@ -140,7 +141,7 @@ export async function DELETE(
       .eq('id', user.id)
       .single()
     
-    const isAdmin = userData?.role === 'admin'
+    const isAdmin = normalizeRole(userData?.role) === 'admin'
     const isOwner = existingEntry.user_id === user.id
     
     if (!isAdmin && !isOwner) {

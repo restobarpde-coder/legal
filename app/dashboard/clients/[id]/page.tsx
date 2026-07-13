@@ -7,6 +7,8 @@ import { requireAuth } from "@/lib/auth"
 import { notFound } from "next/navigation"
 import { ArrowLeft, Edit, Mail, Phone, Building, MapPin, FileText, Scale, Plus } from "lucide-react"
 import Link from "next/link"
+import { ClientMessageActions } from "@/components/clients/client-message-actions"
+import { ConversationList } from "@/components/inbox/conversation-list"
 
 async function getClient(id: string) {
   const supabase = await createClient()
@@ -311,14 +313,12 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
                   Agregar Nota
                 </Link>
               </Button>
-              {client.email && (
-                <Button variant="outline" size="sm" className="w-full justify-start bg-transparent" asChild>
-                  <a href={`mailto:${client.email}`}>
-                    <Mail className="h-4 w-4 mr-2" />
-                    Enviar Email
-                  </a>
-                </Button>
-              )}
+              <ClientMessageActions
+                clientId={client.id}
+                clientName={client.name}
+                clientEmail={client.email}
+                clientPhone={client.phone}
+              />
               {client.phone && (
                 <Button variant="outline" size="sm" className="w-full justify-start bg-transparent" asChild>
                   <a href={`tel:${client.phone}`}>
@@ -327,6 +327,19 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
                   </a>
                 </Button>
               )}
+            </CardContent>
+          </Card>
+
+          {/* Linked conversations */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Conversaciones</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ConversationList
+                clientId={client.id}
+                emptyMessage="Este cliente no tiene conversaciones vinculadas."
+              />
             </CardContent>
           </Card>
         </div>

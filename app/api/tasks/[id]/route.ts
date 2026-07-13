@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { requireAuth } from '@/lib/auth'
 import { NextRequest, NextResponse } from 'next/server'
+import { normalizeRole } from '@/lib/authz'
 
 // GET - Obtener una tarea específica
 export async function GET(
@@ -39,7 +40,7 @@ export async function GET(
       
       const isAssigned = task.assigned_to === user.id
       
-      if (!caseMember && userData?.role !== 'admin' && !isAssigned) {
+      if (!caseMember && normalizeRole(userData?.role) !== 'admin' && !isAssigned) {
         return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
       }
     }
@@ -81,7 +82,7 @@ export async function PATCH(
       .eq('id', user.id)
       .single()
     
-    const isAdmin = userData?.role === 'admin'
+    const isAdmin = normalizeRole(userData?.role) === 'admin'
     const isOwner = existingTask.created_by === user.id
     const isAssigned = existingTask.assigned_to === user.id
     
@@ -172,7 +173,7 @@ export async function PUT(
       .eq('id', user.id)
       .single()
     
-    const isAdmin = userData?.role === 'admin'
+    const isAdmin = normalizeRole(userData?.role) === 'admin'
     const isOwner = existingTask.created_by === user.id
     const isAssigned = existingTask.assigned_to === user.id
     
@@ -259,8 +260,8 @@ export async function DELETE(
       .single()
     
     console.log('User role:', userData?.role)
-    const isAdmin = userData?.role === 'admin'
-    const isLawyer = userData?.role === 'lawyer'
+    const isAdmin = normalizeRole(userData?.role) === 'admin'
+    const isLawyer = normalizeRole(userData?.role) === 'lawyer'
     const isOwner = existingTask.created_by === user.id
     
     console.log('Permission check:', { isAdmin, isLawyer, isOwner })

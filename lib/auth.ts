@@ -51,7 +51,8 @@ export async function getUserProfile() {
         id: user.id,
         email: user.email || '',
         full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Usuario',
-        role: user.user_metadata?.role || 'assistant',
+        // Never trust user_metadata for role — it is client-writable.
+        role: 'assistant',
         phone: user.user_metadata?.phone || null
       }).select().single()
 

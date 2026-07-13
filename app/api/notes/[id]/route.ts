@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { requireAuth } from '@/lib/auth'
 import { NextRequest, NextResponse } from 'next/server'
+import { normalizeRole } from '@/lib/authz'
 
 // GET - Obtener una nota específica
 export async function GET(
@@ -37,7 +38,7 @@ export async function GET(
         .eq('id', user.id)
         .single()
       
-      if (!caseMember && userData?.role !== 'admin' && note.created_by !== user.id) {
+      if (!caseMember && normalizeRole(userData?.role) !== 'admin' && note.created_by !== user.id) {
         return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
       }
     }
@@ -78,7 +79,7 @@ export async function PUT(
       .eq('id', user.id)
       .single()
     
-    const isAdmin = userData?.role === 'admin'
+    const isAdmin = normalizeRole(userData?.role) === 'admin'
     const isOwner = existingNote.created_by === user.id
     
     if (!isAdmin && !isOwner) {
@@ -138,7 +139,7 @@ export async function DELETE(
       .eq('id', user.id)
       .single()
     
-    const isAdmin = userData?.role === 'admin'
+    const isAdmin = normalizeRole(userData?.role) === 'admin'
     const isOwner = existingNote.created_by === user.id
     
     if (!isAdmin && !isOwner) {

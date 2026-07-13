@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { requireRole } from '@/lib/authz-server';
 
 const CHATWOOT_BASE_URL = process.env.CHATWOOT_BASE_URL || 'https://app.chatwoot.com';
 const CHATWOOT_ACCESS_TOKEN = process.env.CHATWOOT_ACCESS_TOKEN;
@@ -7,30 +8,9 @@ const CHATWOOT_ACCOUNT_ID = process.env.CHATWOOT_ACCOUNT_ID || '1';
 
 export async function POST() {
   try {
+    const auth = await requireRole('admin');
+    if (!auth.ok) return auth.response;
     const supabase = await createClient();
-    
-    // Verificar autenticación
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    // Verificar que el usuario sea admin
-    const { data: userData } = await supabase
-      .from('users')
-      .select('role')
-      .eq('id', user.id)
-      .single();
-
-    if (userData?.role !== 'admin') {
-      return NextResponse.json(
-        { error: 'Solo administradores pueden sincronizar agentes' },
-        { status: 403 }
-      );
-    }
 
     // Obtener agentes desde Chatwoot
     const response = await fetch(
