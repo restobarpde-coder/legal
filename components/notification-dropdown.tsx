@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge'
 import { Bell, CheckSquare, Clock, AlertTriangle, X } from 'lucide-react'
 import { useNotifications, type Notification } from '@/hooks/use-notifications'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { formatDistanceToNow } from 'date-fns'
 import { es } from 'date-fns/locale'
 
@@ -44,6 +45,7 @@ function formatTimeUntilDue(hours?: number) {
 
 export function NotificationDropdown() {
   const { data: notifications, isLoading, error, isConnected, markAsRead, dismissNotification, clearAll } = useNotifications()
+  const router = useRouter()
 
   const unreadCount = notifications?.length || 0
 
@@ -109,6 +111,10 @@ export function NotificationDropdown() {
                 link = `/dashboard/tasks/${notification.related_entity_id}`
               } else if (notification.task_id) {
                 link = `/dashboard/tasks/${notification.task_id}`
+              } else if (notification.related_entity_type === 'inbox_conversation' && notification.related_entity_id) {
+                link = `/dashboard/messages?conversation=${notification.related_entity_id}`
+              } else if (notification.related_entity_type === 'inbox_message' && notification.metadata?.conversation_id) {
+                link = `/dashboard/messages?conversation=${notification.metadata.conversation_id}`
               } else if (notification.case_id) {
                 link = `/dashboard/cases/${notification.case_id}`
               }
@@ -116,7 +122,13 @@ export function NotificationDropdown() {
               return (
                 <div key={notificationId} className="relative group">
                   <DropdownMenuItem asChild className="cursor-pointer">
-                    <Link href={link} className="block">
+                    <Link href={link} className="block" onClick={async (event) => {
+                      if (link === '#') return
+                      event.preventDefault()
+                      await markAsRead(notificationId)
+                      await dismissNotification(notificationId)
+                      router.push(link)
+                    }}>
                       <div className="flex items-start gap-3 py-2">
                         <div className={`h-2 w-2 rounded-full mt-2 ${getUrgencyColor(notification)}`} />
                         <div className="flex-1 min-w-0">

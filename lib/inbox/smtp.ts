@@ -50,10 +50,14 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
     attachments,
   } = params
 
+  // Port 465 negotiates TLS immediately. Port 587 uses STARTTLS: the
+  // connection starts plain and is upgraded by Nodemailer after EHLO.
+  const secure = account.smtp_port === 465
   const transporter = nodemailer.createTransport({
     host:   account.smtp_host,
     port:   account.smtp_port,
-    secure: account.smtp_tls,
+    secure,
+    ...(account.smtp_tls && !secure ? { requireTLS: true } : {}),
     auth: {
       user: account.username,
       pass: decryptedPassword,

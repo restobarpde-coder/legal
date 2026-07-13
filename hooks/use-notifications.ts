@@ -157,6 +157,22 @@ export function useNotifications() {
     }
   }
 
+  const dismissByEntity = async (entityType: string, entityId: string) => {
+    try {
+      const response = await fetch('/api/notifications/entity/dismiss', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entity_type: entityType, entity_id: entityId }),
+      })
+      if (!response.ok) return
+      setNotifications(prev => prev.filter(notification => !(
+        notification.related_entity_type === entityType && notification.related_entity_id === entityId
+      )))
+    } catch (err) {
+      console.error('Error dismissing entity notifications:', err)
+    }
+  }
+
   const dismissAll = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser()
@@ -216,6 +232,7 @@ export function useNotifications() {
     isConnected,
     markAsRead,
     dismissNotification,
+    dismissByEntity,
     dismissAll,
     clearAll: dismissAll // Alias for compatibility
   }

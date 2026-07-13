@@ -142,24 +142,32 @@ export async function POST(request: NextRequest) {
   }).select('id').single()
   if (error || !conversation) return NextResponse.json({ error: error?.message ?? 'No fue posible crear la conversación' }, { status: 500 })
 
+  const { data: outboundMessage, error: messageError } = await svc.from('inbox_messages').insert({
+    conversation_id: conversation.id, direction: 'outbound', content, content_type: 'text', sender_type: 'user', sender_user_id: user.id,
+    sender_name: senderName, email_account_id: account.id, email_from: account.email_address, email_to: [recipientEmail], sent_at: new Date().toISOString(),
+  }).select('id').single()
+  if (messageError || !outboundMessage) {
+    await svc.from('inbox_conversations').delete().eq('id', conversation.id)
+    return NextResponse.json({ error: 'No fue posible registrar el email en la bandeja' }, { status: 500 })
+  }
+  await svc.from('inbox_delivery_attempts').insert({ message_id: outboundMessage.id, status: 'pending', attempt_number: 1 })
+
   try {
     const { messageId } = await sendEmail({
       account, decryptedPassword: decrypt(account.encrypted_password), to: [recipientEmail], subject, text: content,
     })
-    await svc.from('inbox_messages').insert({
-      conversation_id: conversation.id, direction: 'outbound', content, content_type: 'text', sender_type: 'user', sender_user_id: user.id,
-      sender_name: senderName, email_account_id: account.id, email_message_id: messageId, email_to: [recipientEmail], sent_at: new Date().toISOString(),
-    })
+    await svc.from('inbox_messages').update({ email_message_id: messageId }).eq('id', outboundMessage.id)
+    await svc.from('inbox_delivery_attempts').update({ status: 'sent', provider_message_id: messageId }).eq('message_id', outboundMessage.id)
     return NextResponse.json({ conversation_id: conversation.id }, { status: 201 })
   } catch (err) {
-    await svc.from('inbox_conversations').delete().eq('id', conversation.id)
     const code = err && typeof err === 'object' && 'code' in err ? String(err.code) : 'SMTP_ERROR'
     console.error(`[inbox/conversations] SMTP send failed (${code})`)
+    await svc.from('inbox_delivery_attempts').update({ status: 'failed', last_error: code }).eq('message_id', outboundMessage.id)
     const error = code === 'EAUTH' || code === 'EAUTHE'
       ? 'Hostinger rechazó las credenciales SMTP.'
       : code === 'ETIMEDOUT' || code === 'ESOCKET'
         ? 'No se pudo conectar al servidor SMTP. Revisá host, puerto y TLS.'
         : 'No fue posible enviar el email. Revisá la configuración SMTP.'
-    return NextResponse.json({ error, code }, { status: 502 })
+    return NextResponse.json({ error, code, conversation_id: conversation.id }, { status: 502 })
   }
 }

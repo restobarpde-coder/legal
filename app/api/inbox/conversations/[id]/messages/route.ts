@@ -39,9 +39,10 @@ export async function GET(request: NextRequest, { params }: { params: Params }) 
       id, direction, content, content_type,
       sender_type, sender_name, sender_user_id,
       wa_message_id, wa_status,
-      email_from, email_to, email_cc, email_message_id,
+      email_from, email_to, email_cc, email_message_id, email_account_id,
       attachments, is_read, read_at,
       sent_at, created_at,
+      email_account:inbox_email_accounts_safe ( id, email_address, display_name, account_type ),
       sender_user:users!sender_user_id ( id, full_name )
     `, { count: 'exact' })
     .eq('conversation_id', conversationId)

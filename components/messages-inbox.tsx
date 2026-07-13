@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import {
   CheckCheck,
   FileText,
@@ -38,7 +39,7 @@ type Conversation = {
   linked_client_id: string | null
   linked_client?: { id: string; name: string } | null
   assigned_user?: { id: string; full_name: string | null; email: string } | null
-  email_account?: { id: string; email_address: string; account_type: 'personal' | 'shared' } | null
+  email_account?: { id: string; email_address: string; display_name?: string | null; account_type: 'personal' | 'shared' } | null
 }
 
 type Message = {
@@ -48,6 +49,9 @@ type Message = {
   content: string | null
   content_type: 'text' | 'image' | 'document' | 'audio' | 'video'
   sender_name: string | null
+  email_account_id?: string | null
+  email_from?: string | null
+  email_account?: { id: string; email_address: string; display_name?: string | null; account_type: 'personal' | 'shared' } | null
   wa_status: 'pending' | 'sent' | 'delivered' | 'read' | 'failed' | null
   attachments: Array<{ attachmentId?: string; filename?: string; type?: string; mimeType?: string; size?: number }> | null
   sent_at: string | null
@@ -65,6 +69,8 @@ function channelLabel(channel: Conversation['channel']) {
 
 export function MessagesInbox() {
   const supabase = useMemo(() => createClient(), [])
+  const searchParams = useSearchParams()
+  const notificationConversationId = searchParams.get('conversation')
   const [channel, setChannel] = useState<Channel>('all')
   const [status, setStatus] = useState<Status>('open')
   const [conversations, setConversations] = useState<Conversation[]>([])
@@ -90,7 +96,7 @@ export function MessagesInbox() {
     [conversations, selectedId]
   )
 
-  const loadConversations = useCallback(async () => {
+  const loadConversations = useCallback(async (preferredId?: string) => {
     setLoading(true)
     setError(null)
     try {
@@ -99,6 +105,7 @@ export function MessagesInbox() {
       if (!response.ok) throw new Error(result.error ?? 'No fue posible cargar las conversaciones')
       setConversations(result.conversations ?? [])
       setSelectedId((current) => {
+        if (preferredId && result.conversations?.some((item: Conversation) => item.id === preferredId)) return preferredId
         if (current && result.conversations?.some((item: Conversation) => item.id === current)) return current
         return result.conversations?.[0]?.id ?? null
       })
@@ -125,7 +132,21 @@ export function MessagesInbox() {
   }, [])
 
   useEffect(() => { void loadConversations() }, [loadConversations])
+  useEffect(() => {
+    if (notificationConversationId && conversations.some(conversation => conversation.id === notificationConversationId)) {
+      setSelectedId(notificationConversationId)
+    }
+  }, [conversations, notificationConversationId])
   useEffect(() => { if (selectedId) void loadMessages(selectedId); else setMessages([]) }, [selectedId, loadMessages])
+
+  useEffect(() => {
+    if (!selectedId) return
+    void fetch('/api/notifications/entity/dismiss', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entity_type: 'inbox_conversation', entity_id: selectedId }),
+    })
+  }, [selectedId])
 
   useEffect(() => {
     if (!isComposing) return
@@ -243,15 +264,15 @@ export function MessagesInbox() {
         </aside>
 
         <main className="flex min-h-0 flex-col">
-          {isComposing ? <InboxComposer accounts={accounts} templates={templates} loading={composeLoading} onCancel={() => setIsComposing(false)} onCreated={(id) => { setIsComposing(false); void loadConversations().then(() => setSelectedId(id)) }} /> : !selected ? <div className="grid flex-1 place-items-center p-8 text-center text-muted-foreground"><MessageCircle className="mb-3 h-10 w-10" />Seleccioná una conversación para ver sus mensajes.</div> : <>
+          {isComposing ? <InboxComposer accounts={accounts} templates={templates} loading={composeLoading} onCancel={() => setIsComposing(false)} onCreated={(id) => { setIsComposing(false); void loadConversations(id) }} /> : !selected ? <div className="grid flex-1 place-items-center p-8 text-center text-muted-foreground"><MessageCircle className="mb-3 h-10 w-10" />Seleccioná una conversación para ver sus mensajes.</div> : <>
             <header className="flex items-center justify-between gap-3 border-b px-4 py-3">
-              <div className="min-w-0"><div className="flex items-center gap-2"><h2 className="truncate font-semibold">{selected.contact_name || 'Sin nombre'}</h2><Badge variant="secondary">{channelLabel(selected.channel)}</Badge>{selected.email_account ? <Badge variant="outline">{selected.email_account.account_type === 'shared' ? 'Compartida' : 'Personal'}</Badge> : null}</div><p className="truncate text-xs text-muted-foreground">{selected.contact_email || selected.contact_phone || 'Contacto sin datos'}</p></div>
+              <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h2 className="truncate font-semibold">{selected.contact_name || 'Sin nombre'}</h2><Badge variant="secondary">{channelLabel(selected.channel)}</Badge>{selected.email_account ? <Badge variant="outline">{selected.email_account.account_type === 'shared' ? 'Compartida' : 'Personal'}</Badge> : null}</div><p className="truncate text-xs text-muted-foreground">{selected.contact_email || selected.contact_phone || 'Contacto sin datos'}{selected.email_account ? ` · Desde: ${selected.email_account.display_name || selected.email_account.email_address}` : ''}</p></div>
               <select value={selected.status} onChange={(event) => void changeStatus(event.target.value as Exclude<Status, 'all'>)} className="h-9 rounded-md border bg-background px-2 text-sm"><option value="open">Abierta</option><option value="pending">Pendiente</option><option value="resolved">Resuelta</option><option value="spam">Spam</option></select>
             </header>
             <ScrollArea className="min-h-0 flex-1 bg-muted/20 p-4">
               {detailLoading ? <p className="text-sm text-muted-foreground">Cargando mensajes…</p> : null}
               <div className="space-y-3">
-                {messages.map((message) => <div key={message.id} className={cn('flex', message.direction === 'outbound' ? 'justify-end' : 'justify-start')}><div className={cn('max-w-[82%] rounded-2xl px-3 py-2 text-sm shadow-sm', message.direction === 'outbound' ? 'rounded-br-sm bg-primary text-primary-foreground' : 'rounded-bl-sm bg-background border')}><p className="whitespace-pre-wrap">{message.content || `[${message.content_type}]`}</p>{message.attachments?.length ? <div className="mt-2 space-y-1">{message.attachments.map((attachment, index) => attachment.attachmentId ? <a key={attachment.attachmentId} href={`/api/inbox/attachments/${attachment.attachmentId}`} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs underline underline-offset-2 opacity-90"><FileText className="h-3.5 w-3.5" />{attachment.filename || 'Archivo adjunto'}</a> : <div key={index} className="flex items-center gap-1.5 text-xs opacity-90"><FileText className="h-3.5 w-3.5" />{attachment.filename || attachment.type || 'Archivo adjunto'}</div>)}</div> : null}<div className="mt-1 flex items-center justify-end gap-1 text-[10px] opacity-70">{formatDate(message.sent_at || message.created_at)}{message.direction === 'outbound' && message.wa_status ? <CheckCheck className="h-3 w-3" /> : null}</div></div></div>)}
+                {messages.map((message) => <div key={message.id} className={cn('flex', message.direction === 'outbound' ? 'justify-end' : 'justify-start')}><div className={cn('max-w-[82%] rounded-2xl px-3 py-2 text-sm shadow-sm', message.direction === 'outbound' ? 'rounded-br-sm bg-primary text-primary-foreground' : 'rounded-bl-sm bg-background border')}><p className="whitespace-pre-wrap">{message.content || `[${message.content_type}]`}</p>{selected.channel === 'email' && message.email_account ? <p className="mt-2 border-t border-current/15 pt-1 text-[10px] opacity-75">{message.direction === 'outbound' ? 'Enviado desde' : 'Recibido en'}: {message.email_account.display_name || message.email_account.email_address}</p> : null}{message.attachments?.length ? <div className="mt-2 space-y-1">{message.attachments.map((attachment, index) => attachment.attachmentId ? <a key={attachment.attachmentId} href={`/api/inbox/attachments/${attachment.attachmentId}`} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs underline underline-offset-2 opacity-90"><FileText className="h-3.5 w-3.5" />{attachment.filename || 'Archivo adjunto'}</a> : <div key={index} className="flex items-center gap-1.5 text-xs opacity-90"><FileText className="h-3.5 w-3.5" />{attachment.filename || attachment.type || 'Archivo adjunto'}</div>)}</div> : null}<div className="mt-1 flex items-center justify-end gap-1 text-[10px] opacity-70">{formatDate(message.sent_at || message.created_at)}{message.direction === 'outbound' && message.wa_status ? <CheckCheck className="h-3 w-3" /> : null}</div></div></div>)}
               </div>
             </ScrollArea>
             <div className="border-t p-3"><input ref={fileInputRef} type="file" multiple className="hidden" onChange={(event) => setFiles(Array.from(event.target.files ?? []))} /><div className="flex gap-2"><Button variant="ghost" size="icon" title="Adjuntar archivo" onClick={() => fileInputRef.current?.click()} disabled={selected.status === 'resolved' || selected.status === 'spam' || sending}><Paperclip className="h-4 w-4" /></Button><Textarea value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void sendReply() } }} placeholder={selected.status === 'resolved' ? 'La conversación está resuelta' : 'Escribí una respuesta…'} disabled={selected.status === 'resolved' || selected.status === 'spam' || sending} className="min-h-10 resize-none" /><Button size="icon" onClick={() => void sendReply()} disabled={(!draft.trim() && files.length === 0) || sending || selected.status === 'resolved' || selected.status === 'spam'}><Send className="h-4 w-4" /></Button></div>{files.length > 0 ? <div className="mt-2 flex flex-wrap gap-1">{files.map(file => <Badge key={`${file.name}-${file.size}`} variant="secondary" className="gap-1"><FileText className="h-3 w-3" />{file.name}</Badge>)}</div> : null}<p className="mt-1 text-xs text-muted-foreground">Enter para enviar · Shift + Enter para salto de línea · máximo 50 MB por archivo</p></div>
