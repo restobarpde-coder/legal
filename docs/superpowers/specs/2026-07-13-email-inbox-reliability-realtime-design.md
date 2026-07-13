@@ -98,7 +98,22 @@ La bandeja mantendrá una única estrategia de reconciliación para evitar que H
 - cuando una pestaña vuelva a estar visible o recupere conexión, hará una reconciliación para cubrir eventos perdidos durante la suspensión;
 - solamente la conversación seleccionada en una pestaña visible se marcará automáticamente como leída.
 
-Para enviar, el cliente generará una clave idempotente. El servidor la guardará con el mensaje y devolverá el registro completo. La UI reemplazará la fila local por esa fila; un evento Realtime con el mismo identificador o clave se combinará. Ante error SMTP, el mensaje persistido se mostrará como fallido en lugar de desaparecer silenciosamente.
+### Base de datos como única fuente de verdad
+
+La interfaz no creará burbujas optimistas ni mensajes con identificadores locales. Tanto los mensajes enviados desde la plataforma como los recibidos por webhook se mostrarán solamente después de existir en `inbox_messages`.
+
+El envío seguirá este flujo:
+
+1. el cliente deshabilita el compositor y muestra el estado `Enviando…`;
+2. la API valida la solicitud y persiste inmediatamente el mensaje saliente con estado de entrega `pending`;
+3. el `INSERT` de Supabase Realtime incorpora esa fila real al chat usando su identificador de base de datos;
+4. la respuesta HTTP devuelve el mismo registro persistido y lo incorpora mediante upsert como respaldo si Realtime se retrasó o perdió el evento;
+5. el servidor envía por SMTP o WhatsApp y actualiza el estado a `sent` o `failed`;
+6. el `UPDATE` de Realtime combina el nuevo estado sobre la misma fila.
+
+Realtime será el transporte inmediato, no la fuente de verdad exclusiva. Las cargas HTTP iniciales, las respuestas de la API y las reconciliaciones por reconexión o visibilidad leerán la misma base y cubrirán eventos perdidos. Una instantánea HTTP en segundo plano se fusionará por `id` con el estado visible; nunca reemplazará mensajes persistidos más recientes con una respuesta anterior.
+
+Si la solicitud falla antes de persistir, no aparecerá ninguna burbuja. Si el proveedor falla después de persistir, la fila permanecerá visible como fallida en lugar de desaparecer. De este modo no habrá una copia local y otra persistida compitiendo por representar el mismo mensaje.
 
 ## Notificaciones
 
@@ -123,7 +138,7 @@ Se cubrirán estos escenarios:
 3. Un email sin `Message-ID` se deduplica por UIDVALIDITY y UID.
 4. Un mensaje llega mientras su conversación está visible y permanece leído.
 5. Un mensaje llega con la pestaña en segundo plano y permanece no leído hasta abrirlo.
-6. Una respuesta optimista se reconcilia con HTTP y Realtime sin desaparecer ni duplicarse.
+6. Un mensaje enviado aparece una sola vez cuando se persiste, conserva el mismo identificador durante `pending`, `sent` o `failed` y no desaparece durante reconciliaciones HTTP.
 7. Un fallo SMTP queda visible como fallido y puede reintentarse sin doble envío.
 8. Hostinger reintenta un webhook y no se duplica el mensaje.
 9. Un webhook omitido o fallido es recuperado por el cron de cinco minutos.
@@ -135,7 +150,7 @@ Se cubrirán estos escenarios:
 
 ## Entrega por etapas
 
-1. Corregir carreras de UI, lectura explícita, claves idempotentes e ingestión atómica.
+1. Corregir carreras de UI, adoptar la base de datos como única fuente de mensajes, implementar lectura explícita e ingestión atómica.
 2. Extraer la ingestión compartida y agregar el webhook autenticado de Hostinger.
 3. Configurar el webhook en hPanel y sus secretos en Vercel.
 4. Desplegar, ejecutar pruebas con una cuenta Hostinger y observar duplicados, latencia y reintentos.
