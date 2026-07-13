@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import {
   CheckCheck,
-  ChevronLeft,
   FileText,
   Mail,
   MessageCircle,
@@ -19,7 +18,7 @@ import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
-import { NewConversationDialog } from '@/components/new-conversation-dialog'
+import { InboxComposer, type InboxAccount } from '@/components/inbox-composer'
 import { createClient } from '@/lib/supabase/client'
 
 type Channel = 'all' | 'whatsapp' | 'email'
@@ -39,6 +38,7 @@ type Conversation = {
   linked_client_id: string | null
   linked_client?: { id: string; name: string } | null
   assigned_user?: { id: string; full_name: string | null; email: string } | null
+  email_account?: { id: string; email_address: string; account_type: 'personal' | 'shared' } | null
 }
 
 type Message = {
@@ -76,6 +76,10 @@ export function MessagesInbox() {
   const [files, setFiles] = useState<File[]>([])
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isComposing, setIsComposing] = useState(false)
+  const [accounts, setAccounts] = useState<InboxAccount[]>([])
+  const [templates, setTemplates] = useState<Array<{ id: string; name: string; language_code: string }>>([])
+  const [composeLoading, setComposeLoading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const selectedIdRef = useRef<string | null>(null)
 
@@ -122,6 +126,19 @@ export function MessagesInbox() {
 
   useEffect(() => { void loadConversations() }, [loadConversations])
   useEffect(() => { if (selectedId) void loadMessages(selectedId); else setMessages([]) }, [selectedId, loadMessages])
+
+  useEffect(() => {
+    if (!isComposing) return
+    setComposeLoading(true)
+    void Promise.all([
+      fetch('/api/inbox/email-accounts').then(response => response.json()),
+      fetch('/api/inbox/templates').then(response => response.json()),
+    ]).then(([accountResult, templateResult]) => {
+      setAccounts(accountResult.accounts ?? [])
+      setTemplates(templateResult.templates ?? [])
+    }).catch(() => setError('No fue posible cargar las opciones de redacción'))
+      .finally(() => setComposeLoading(false))
+  }, [isComposing])
 
   useEffect(() => {
     let active = true
@@ -194,7 +211,7 @@ export function MessagesInbox() {
           <h1 className="text-3xl font-bold tracking-tight">Mensajes</h1>
           <p className="mt-1 text-sm text-muted-foreground">WhatsApp y email del estudio en una sola bandeja.</p>
         </div>
-        <div className="flex gap-2"><NewConversationDialog onCreated={(id) => { void loadConversations(); setSelectedId(id) }} /><Button variant="outline" onClick={() => void loadConversations()} disabled={loading}>
+        <div className="flex gap-2"><Button onClick={() => setIsComposing(true)} disabled={isComposing}><Mail className="mr-2 h-4 w-4" />Nueva conversación</Button><Button variant="outline" onClick={() => void loadConversations()} disabled={loading || isComposing}>
           <RefreshCw className={cn('mr-2 h-4 w-4', loading && 'animate-spin')} />Actualizar
         </Button></div>
       </div>
@@ -226,9 +243,9 @@ export function MessagesInbox() {
         </aside>
 
         <main className="flex min-h-0 flex-col">
-          {!selected ? <div className="grid flex-1 place-items-center p-8 text-center text-muted-foreground"><MessageCircle className="mb-3 h-10 w-10" />Seleccioná una conversación para ver sus mensajes.</div> : <>
+          {isComposing ? <InboxComposer accounts={accounts} templates={templates} loading={composeLoading} onCancel={() => setIsComposing(false)} onCreated={(id) => { setIsComposing(false); void loadConversations().then(() => setSelectedId(id)) }} /> : !selected ? <div className="grid flex-1 place-items-center p-8 text-center text-muted-foreground"><MessageCircle className="mb-3 h-10 w-10" />Seleccioná una conversación para ver sus mensajes.</div> : <>
             <header className="flex items-center justify-between gap-3 border-b px-4 py-3">
-              <div className="min-w-0"><div className="flex items-center gap-2"><h2 className="truncate font-semibold">{selected.contact_name || 'Sin nombre'}</h2><Badge variant="secondary">{channelLabel(selected.channel)}</Badge></div><p className="truncate text-xs text-muted-foreground">{selected.contact_email || selected.contact_phone || 'Contacto sin datos'}</p></div>
+              <div className="min-w-0"><div className="flex items-center gap-2"><h2 className="truncate font-semibold">{selected.contact_name || 'Sin nombre'}</h2><Badge variant="secondary">{channelLabel(selected.channel)}</Badge>{selected.email_account ? <Badge variant="outline">{selected.email_account.account_type === 'shared' ? 'Compartida' : 'Personal'}</Badge> : null}</div><p className="truncate text-xs text-muted-foreground">{selected.contact_email || selected.contact_phone || 'Contacto sin datos'}</p></div>
               <select value={selected.status} onChange={(event) => void changeStatus(event.target.value as Exclude<Status, 'all'>)} className="h-9 rounded-md border bg-background px-2 text-sm"><option value="open">Abierta</option><option value="pending">Pendiente</option><option value="resolved">Resuelta</option><option value="spam">Spam</option></select>
             </header>
             <ScrollArea className="min-h-0 flex-1 bg-muted/20 p-4">
