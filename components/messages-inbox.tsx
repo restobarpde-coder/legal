@@ -323,13 +323,17 @@ export function MessagesInbox() {
       handledNotificationRef.current = null
       return
     }
+    if (!conversations.some(conversation => conversation.id === notificationConversationId) && status !== 'all') {
+      setStatus('all')
+      return
+    }
     if (notificationConversationId
       && notificationConversationId !== handledNotificationRef.current
       && conversations.some(conversation => conversation.id === notificationConversationId)) {
       handledNotificationRef.current = notificationConversationId
       selectConversation(notificationConversationId)
     }
-  }, [conversations, notificationConversationId, selectConversation])
+  }, [conversations, notificationConversationId, selectConversation, status])
 
   useEffect(() => {
     if (selectedId && document.visibilityState === 'visible') void markConversationRead(selectedId)
@@ -418,6 +422,25 @@ export function MessagesInbox() {
         }
         scheduleListReconciliation()
       })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, (payload) => {
+        if (!active) return
+        const notification = payload.new as {
+          related_entity_type?: string | null
+          related_entity_id?: string | null
+          metadata?: { conversation_id?: string } | null
+        }
+        const conversationId = notification.related_entity_type === 'inbox_conversation'
+          ? notification.related_entity_id
+          : notification.related_entity_type === 'inbox_message'
+            ? notification.metadata?.conversation_id
+            : null
+        if (!conversationId) return
+
+        // Notifications are persisted after message ingestion, so they are a
+        // reliable final signal to reconcile any delayed/missed message event.
+        scheduleListReconciliation(0)
+        if (conversationId === selectedIdRef.current) scheduleDetailReconciliation(0)
+      })
       .subscribe((subscriptionStatus) => {
         if (!active) return
         if (subscriptionStatus === 'SUBSCRIBED') {
@@ -462,6 +485,16 @@ export function MessagesInbox() {
     }
   }, [dismissConversationNotifications, markConversationRead, scheduleDetailReconciliation, scheduleListReconciliation])
 
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return
+      scheduleListReconciliation(0)
+      scheduleDetailReconciliation(0)
+    }, 15_000)
+
+    return () => window.clearInterval(interval)
+  }, [scheduleDetailReconciliation, scheduleListReconciliation])
+
   useEffect(() => () => {
     conversationsAbortRef.current?.abort()
     messagesAbortRef.current?.abort()
@@ -471,6 +504,7 @@ export function MessagesInbox() {
 
   async function sendReply() {
     if (!selectedId || (!draft.trim() && files.length === 0)) return
+    const conversationId = selectedId
     setSending(true)
     setError(null)
     const optimisticId = `local-${Date.now()}`
@@ -489,7 +523,7 @@ export function MessagesInbox() {
     setMessages(current => [...current, optimisticMessage])
     try {
       const uploadedFiles = await Promise.all(files.map(async file => {
-        const uploadUrlResponse = await fetch(`/api/inbox/conversations/${selectedId}/attachments/upload-url`, {
+        const uploadUrlResponse = await fetch(`/api/inbox/conversations/${conversationId}/attachments/upload-url`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ filename: file.name, mimeType: file.type, size: file.size }),
@@ -504,22 +538,40 @@ export function MessagesInbox() {
         return { path: uploadUrl.path, filename: file.name, mimeType: file.type || 'application/octet-stream', size: file.size }
       }))
 
-      const response = await fetch(`/api/inbox/conversations/${selectedId}/reply`, {
+      const response = await fetch(`/api/inbox/conversations/${conversationId}/reply`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: draft.trim(), attachments: uploadedFiles }),
       })
       const result = await response.json()
       if (!response.ok) {
-        if (result.message_id) await loadMessages(selectedId)
+        if (result.message_id && selectedIdRef.current === conversationId) {
+          await loadMessages(conversationId, { background: true })
+        }
         throw new Error(result.error ?? 'No fue posible enviar el mensaje')
       }
-      setDraft('')
-      setFiles([])
-      if (fileInputRef.current) fileInputRef.current.value = ''
-      await Promise.all([loadMessages(selectedId), loadConversations()])
+      if (selectedIdRef.current === conversationId) {
+        const persistedMessage: Message = result.message ?? {
+          ...optimisticMessage,
+          id: result.message_id,
+          wa_status: selected?.channel === 'whatsapp' ? 'sent' : null,
+        }
+        setMessages(current => upsertMessage(
+          current.filter(message => message.id !== optimisticId),
+          persistedMessage
+        ))
+        setMessagesConversationId(conversationId)
+        messagesConversationIdRef.current = conversationId
+        setDraft('')
+        setFiles([])
+        if (fileInputRef.current) fileInputRef.current.value = ''
+        scheduleDetailReconciliation()
+      }
+      void loadConversations(undefined, { background: true })
     } catch (err) {
-      setMessages(current => current.filter(message => message.id !== optimisticId))
+      if (selectedIdRef.current === conversationId) {
+        setMessages(current => current.filter(message => message.id !== optimisticId))
+      }
       setError(err instanceof Error ? err.message : 'No fue posible enviar el mensaje')
     } finally {
       setSending(false)

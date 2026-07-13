@@ -126,7 +126,8 @@ export async function POST(request: NextRequest, { params }: { params: Params })
     }
 
     await updateConversationSummary(svc, conversationId, content || `[${attachments.length} archivo${attachments.length === 1 ? '' : 's'}]`)
-    return NextResponse.json({ success: true, message_id: msg.id })
+    const persistedMessage = await getPersistedReply(svc, msg.id)
+    return NextResponse.json({ success: true, message_id: msg.id, message: persistedMessage })
   }
 
   // ── Email reply ─────────────────────────────────────────────
@@ -231,7 +232,8 @@ export async function POST(request: NextRequest, { params }: { params: Params })
     }
 
     await updateConversationSummary(svc, conversationId, content || `[${attachments.length} archivo${attachments.length === 1 ? '' : 's'}]`)
-    return NextResponse.json({ success: true, message_id: msg.id })
+    const persistedMessage = await getPersistedReply(svc, msg.id)
+    return NextResponse.json({ success: true, message_id: msg.id, message: persistedMessage })
   }
 
   return NextResponse.json({ error: `Unknown channel: ${conv.channel}` }, { status: 422 })
@@ -308,4 +310,26 @@ async function updateConversationSummary(
     last_message_at:      new Date().toISOString(),
     last_message_preview: content.slice(0, 200),
   }).eq('id', conversationId)
+}
+
+async function getPersistedReply(
+  svc: ReturnType<typeof createServiceClient>,
+  messageId: string
+) {
+  const { data } = await svc
+    .from('inbox_messages')
+    .select(`
+      id, conversation_id, direction, content, content_type,
+      sender_type, sender_name, sender_user_id,
+      wa_message_id, wa_status,
+      email_from, email_to, email_cc, email_message_id, email_account_id,
+      attachments, is_read, read_at,
+      sent_at, created_at,
+      email_account:inbox_email_accounts_safe ( id, email_address, display_name, account_type ),
+      sender_user:users!sender_user_id ( id, full_name )
+    `)
+    .eq('id', messageId)
+    .maybeSingle()
+
+  return data ?? null
 }

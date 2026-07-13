@@ -46,7 +46,7 @@ export async function GET(request: NextRequest, { params }: { params: Params }) 
       sender_user:users!sender_user_id ( id, full_name )
     `, { count: 'exact' })
     .eq('conversation_id', conversationId)
-    .order('created_at', { ascending: true })
+    .order('created_at', { ascending: false })
     .limit(limit)
 
   if (before) {
@@ -60,7 +60,7 @@ export async function GET(request: NextRequest, { params }: { params: Params }) 
   }
 
   return NextResponse.json({
-    messages: data ?? [],
+    messages: [...(data ?? [])].reverse(),
     total:    count ?? 0,
   })
 }
