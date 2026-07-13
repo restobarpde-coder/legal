@@ -2,12 +2,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
 import {
   verifyWebhookSignature,
+  downloadWhatsAppMedia,
   extractMessageText,
   toContentType,
   type WAWebhookPayload,
   type WAIncomingMessage,
   type WAContact,
 } from '@/lib/inbox/whatsapp'
+import { storeInboxAttachment } from '@/lib/inbox/attachments'
+import { resolveInboxContact } from '@/lib/inbox/contacts'
 
 export const runtime = 'nodejs'
 
@@ -100,12 +103,12 @@ async function handleIncomingMessage(
   contacts: Map<string, WAContact>
 ) {
   // Log the raw event for audit/replay
-  await supabase.from('inbox_webhook_events').insert({
+  const { data: webhookEvent } = await supabase.from('inbox_webhook_events').insert({
     channel:    'whatsapp',
     event_type: `message_${msg.type}`,
     raw_payload: msg as unknown as Record<string, unknown>,
     processing_status: 'received',
-  })
+  }).select('id').single()
 
   // Idempotency: skip if already stored
   const { data: existing } = await supabase
@@ -115,7 +118,7 @@ async function handleIncomingMessage(
     .maybeSingle()
 
   if (existing) {
-    await markWebhookProcessed(supabase, msg.id, 'ignored')
+    await markWebhookProcessed(supabase, webhookEvent?.id, 'ignored')
     return
   }
 
@@ -133,7 +136,7 @@ async function handleIncomingMessage(
   )
 
   // Persist message
-  const { error: msgErr } = await supabase.from('inbox_messages').insert({
+  const { data: storedMessage, error: msgErr } = await supabase.from('inbox_messages').insert({
     conversation_id: conversationId,
     direction:       'inbound',
     content:         textContent,
@@ -143,11 +146,32 @@ async function handleIncomingMessage(
     wa_message_id:   msg.id,
     sent_at:         sentAt.toISOString(),
     attachments:     buildAttachments(msg),
-  })
+  }).select('id').single()
 
-  if (msgErr) {
-    await markWebhookProcessed(supabase, msg.id, 'failed', msgErr.message)
+  if (msgErr || !storedMessage) {
+    await markWebhookProcessed(supabase, webhookEvent?.id, 'failed', msgErr?.message)
     return
+  }
+
+  // Media URLs from Meta expire; download and retain an encrypted/private copy.
+  // A media failure never discards the message itself, because its audit trail is more important.
+  const media = incomingMedia(msg)
+  if (media) {
+    try {
+      const downloaded = await downloadWhatsAppMedia(media.id)
+      const attachment = await storeInboxAttachment(storedMessage.id, {
+        filename: media.filename ?? downloaded.filename,
+        mimeType: downloaded.mimeType,
+        content: downloaded.content,
+        source: 'whatsapp',
+        providerMediaId: media.id,
+      })
+      await supabase.from('inbox_messages').update({
+        attachments: [{ attachmentId: attachment.id, filename: attachment.original_filename, mimeType: attachment.mime_type, size: attachment.size_bytes }],
+      }).eq('id', storedMessage.id)
+    } catch {
+      console.error(`[inbox/whatsapp] Could not archive media for ${msg.id}`)
+    }
   }
 
   // Update conversation summary
@@ -163,7 +187,7 @@ async function handleIncomingMessage(
     unread_count:         (conv?.unread_count ?? 0) + 1,
   }).eq('id', conversationId)
 
-  await markWebhookProcessed(supabase, msg.id, 'processed')
+  await markWebhookProcessed(supabase, webhookEvent?.id, 'processed')
 }
 
 async function handleStatusUpdate(
@@ -214,6 +238,12 @@ async function resolveWhatsAppConversation(
     .eq('phone', phone)
     .maybeSingle()
 
+  const inboxContactId = await resolveInboxContact(supabase, {
+    name: contactName,
+    phone,
+    linkedClientId: client?.id ?? null,
+  })
+
   const { data: conv, error } = await supabase
     .from('inbox_conversations')
     .insert({
@@ -222,6 +252,7 @@ async function resolveWhatsAppConversation(
       contact_name:     contactName,
       contact_phone:    phone,
       wa_contact_id:    waContactId,
+      inbox_contact_id: inboxContactId,
       linked_client_id: client?.id ?? null,
       status:           'open',
     })
@@ -242,12 +273,21 @@ function buildAttachments(msg: WAIncomingMessage): Record<string, unknown>[] {
   return []
 }
 
+function incomingMedia(msg: WAIncomingMessage): { id: string; filename?: string } | null {
+  if (msg.image) return { id: msg.image.id, filename: `${msg.image.id}.jpg` }
+  if (msg.document) return { id: msg.document.id, filename: msg.document.filename }
+  if (msg.audio) return { id: msg.audio.id, filename: `${msg.audio.id}.audio` }
+  if (msg.video) return { id: msg.video.id, filename: `${msg.video.id}.mp4` }
+  return null
+}
+
 async function markWebhookProcessed(
   supabase: ReturnType<typeof createServiceClient>,
-  msgId:    string,
+  webhookEventId: string | undefined,
   status:   'processed' | 'failed' | 'ignored',
   error?:   string
 ) {
+  if (!webhookEventId) return
   await supabase
     .from('inbox_webhook_events')
     .update({
@@ -255,6 +295,5 @@ async function markWebhookProcessed(
       error_message:     error ?? null,
       processed_at:      new Date().toISOString(),
     })
-    .eq('event_type', `message_${msgId}`)
-    .is('processed_at', null)
+    .eq('id', webhookEventId)
 }

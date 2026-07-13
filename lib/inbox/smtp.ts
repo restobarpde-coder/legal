@@ -20,6 +20,11 @@ export interface SendEmailParams {
   html?:             string
   inReplyTo?:        string   // Message-ID of the email being replied to
   references?:       string[] // Full References chain for threading
+  attachments?: Array<{
+    filename: string
+    content: Buffer
+    contentType: string
+  }>
 }
 
 export interface SendEmailResult {
@@ -42,6 +47,7 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
     html,
     inReplyTo,
     references,
+    attachments,
   } = params
 
   const transporter = nodemailer.createTransport({
@@ -69,6 +75,7 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
     ...(html        ? { html }                           : {}),
     ...(inReplyTo   ? { inReplyTo }                      : {}),
     ...(references?.length ? { references: references.join(' ') } : {}),
+    ...(attachments?.length ? { attachments } : {}),
   }
 
   const info = await transporter.sendMail(mailOptions)

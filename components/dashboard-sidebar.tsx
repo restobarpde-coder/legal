@@ -62,6 +62,11 @@ const navigation = [
     href: "/dashboard/time",
     icon: Clock,
   },
+  {
+    name: "Mensajes",
+    href: "/dashboard/messages",
+    icon: MessageSquare,
+  },
 
   {
     name: "AI IMPO",

@@ -42,6 +42,75 @@ export async function sendWhatsAppText(
   return { messageId }
 }
 
+export type WhatsAppMediaType = 'image' | 'document' | 'audio' | 'video'
+
+export async function uploadWhatsAppMedia(params: {
+  content: Buffer
+  mimeType: string
+  filename: string
+}): Promise<{ mediaId: string }> {
+  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID
+  const accessToken = process.env.WHATSAPP_ACCESS_TOKEN
+  if (!phoneNumberId || !accessToken) throw new Error('WhatsApp API is not configured')
+
+  const form = new FormData()
+  form.set('messaging_product', 'whatsapp')
+  const bytes = new Uint8Array(params.content.byteLength)
+  bytes.set(params.content)
+  form.set('file', new Blob([bytes], { type: params.mimeType }), params.filename)
+
+  const response = await fetch(`${GRAPH_URL}/${phoneNumberId}/media`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: form,
+  })
+  if (!response.ok) throw new Error(`WhatsApp media upload responded with status ${response.status}`)
+  const data = await response.json()
+  if (!data?.id) throw new Error('WhatsApp API returned no media ID')
+  return { mediaId: data.id }
+}
+
+export async function sendWhatsAppMedia(params: {
+  to: string
+  mediaId: string
+  type: WhatsAppMediaType
+  filename?: string
+  caption?: string
+}): Promise<{ messageId: string }> {
+  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID
+  const accessToken = process.env.WHATSAPP_ACCESS_TOKEN
+  if (!phoneNumberId || !accessToken) throw new Error('WhatsApp API is not configured')
+
+  const media = { id: params.mediaId, ...(params.caption ? { caption: params.caption } : {}), ...(params.type === 'document' && params.filename ? { filename: params.filename } : {}) }
+  const response = await fetch(`${GRAPH_URL}/${phoneNumberId}/messages`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messaging_product: 'whatsapp', to: params.to, type: params.type, [params.type]: media }),
+  })
+  if (!response.ok) throw new Error(`WhatsApp media send responded with status ${response.status}`)
+  const data = await response.json()
+  const messageId = data?.messages?.[0]?.id
+  if (!messageId) throw new Error('WhatsApp API returned no message ID')
+  return { messageId }
+}
+
+export async function downloadWhatsAppMedia(mediaId: string): Promise<{
+  content: Buffer
+  mimeType: string
+  filename: string
+}> {
+  const accessToken = process.env.WHATSAPP_ACCESS_TOKEN
+  if (!accessToken) throw new Error('WhatsApp API is not configured')
+  const infoResponse = await fetch(`${GRAPH_URL}/${mediaId}`, { headers: { Authorization: `Bearer ${accessToken}` } })
+  if (!infoResponse.ok) throw new Error(`WhatsApp media lookup responded with status ${infoResponse.status}`)
+  const info = await infoResponse.json()
+  if (!info?.url) throw new Error('WhatsApp API returned no media URL')
+  const contentResponse = await fetch(info.url, { headers: { Authorization: `Bearer ${accessToken}` } })
+  if (!contentResponse.ok) throw new Error(`WhatsApp media download responded with status ${contentResponse.status}`)
+  const mimeType = contentResponse.headers.get('content-type') ?? info.mime_type ?? 'application/octet-stream'
+  return { content: Buffer.from(await contentResponse.arrayBuffer()), mimeType, filename: mediaId }
+}
+
 // ─── Webhook signature verification ─────────────────────────
 
 /**
@@ -55,9 +124,9 @@ export function verifyWebhookSignature(
 ): boolean {
   const appSecret = process.env.WHATSAPP_APP_SECRET
   if (!appSecret) {
-    // Log a warning but allow in dev when secret is not set
+    // Development convenience only. Production must never accept unsigned webhooks.
     console.warn('[inbox/whatsapp] WHATSAPP_APP_SECRET not set – skipping signature check')
-    return true
+    return process.env.NODE_ENV !== 'production'
   }
 
   if (!signatureHeader?.startsWith('sha256=')) return false

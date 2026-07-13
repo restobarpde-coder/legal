@@ -2,6 +2,8 @@ import { ImapFlow } from 'imapflow'
 import { simpleParser, type AddressObject } from 'mailparser'
 import { createServiceClient } from '@/lib/supabase/server'
 import { decrypt } from './crypto'
+import { resolveInboxContact } from './contacts'
+import { storeInboxAttachment } from './attachments'
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -135,7 +137,7 @@ export async function syncEmailAccount(accountId: string): Promise<SyncResult> {
         })
 
         // Persist message
-        await supabase.from('inbox_messages').insert({
+        const { data: storedMessage, error: insertError } = await supabase.from('inbox_messages').insert({
           conversation_id:  conversationId,
           direction:        'inbound',
           content:          text,
@@ -153,7 +155,32 @@ export async function syncEmailAccount(accountId: string): Promise<SyncResult> {
             contentType: a.contentType,
             size:        a.size ?? null,
           })),
-        })
+        }).select('id').single()
+        if (insertError || !storedMessage) throw new Error('Could not persist incoming email message')
+
+        const savedAttachments = []
+        for (const attachment of parsed.attachments) {
+          try {
+            savedAttachments.push(await storeInboxAttachment(storedMessage.id, {
+              filename: attachment.filename ?? 'archivo-adjunto',
+              mimeType: attachment.contentType || 'application/octet-stream',
+              content: attachment.content,
+              source: 'email',
+            }))
+          } catch {
+            console.error(`[inbox/imap] Could not archive attachment for account ${accountId}`)
+          }
+        }
+        if (savedAttachments.length > 0) {
+          await supabase.from('inbox_messages').update({
+            attachments: savedAttachments.map(attachment => ({
+              attachmentId: attachment.id,
+              filename: attachment.original_filename,
+              mimeType: attachment.mime_type,
+              size: attachment.size_bytes,
+            })),
+          }).eq('id', storedMessage.id)
+        }
 
         // Update conversation summary (non-atomic: race unlikely in single sync)
         const { data: conv } = await supabase
@@ -270,6 +297,12 @@ async function createConversation(
     linkedClientId = client?.id ?? null
   }
 
+  const inboxContactId = await resolveInboxContact(supabase, {
+    name: fromName,
+    email: fromEmail,
+    linkedClientId,
+  })
+
   const { data: conv, error } = await supabase
     .from('inbox_conversations')
     .insert({
@@ -279,6 +312,7 @@ async function createConversation(
       contact_name:     fromName ?? fromEmail ?? 'Sin nombre',
       contact_email:    fromEmail,
       assigned_user_id: account.account_type === 'personal' ? account.user_id : null,
+      inbox_contact_id: inboxContactId,
       linked_client_id: linkedClientId,
       email_thread_id:  messageId,
       email_subject:    subject,
