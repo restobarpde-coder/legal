@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
 }
 
 // ─── GET /api/email/sync ──────────────────────────────────────
-// Returns recent sync run history. Admin only.
+// Returns recent email webhook processing history. Admin only.
 
 export async function GET() {
   const supabase = await createClient()
@@ -96,19 +96,19 @@ export async function GET() {
     return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
   }
 
-  const { data: runs, error } = await supabase
-    .from('inbox_sync_runs')
+  const { data: events, error } = await supabase
+    .from('inbox_webhook_events')
     .select(`
-      id, status, messages_fetched, messages_new, error_message,
-      started_at, finished_at,
-      inbox_email_accounts ( email_address, account_type )
+      id, event_type, provider_event_id, raw_payload, processing_status,
+      error_message, processed_at, created_at
     `)
-    .order('started_at', { ascending: false })
+    .eq('channel', 'email')
+    .order('created_at', { ascending: false })
     .limit(50)
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  return NextResponse.json({ runs })
+  return NextResponse.json({ events })
 }

@@ -164,26 +164,6 @@
     );
 
     -- ============================================================
-    -- inbox_sync_runs
-    -- Audit log for each IMAP sync attempt
-    -- ============================================================
-    CREATE TABLE IF NOT EXISTS inbox_sync_runs (
-        id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        email_account_id  UUID NOT NULL REFERENCES inbox_email_accounts(id) ON DELETE CASCADE,
-
-        status            TEXT NOT NULL DEFAULT 'running'
-                            CHECK (status IN ('running', 'completed', 'failed')),
-        messages_fetched  INT NOT NULL DEFAULT 0,
-        messages_new      INT NOT NULL DEFAULT 0,
-        error_message     TEXT,
-
-        started_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        finished_at       TIMESTAMPTZ,
-
-        created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-
-    -- ============================================================
     -- inbox_webhook_events
     -- Raw log of every incoming WhatsApp webhook payload
     -- ============================================================
@@ -236,9 +216,6 @@
     CREATE INDEX IF NOT EXISTS idx_inbox_msg_created         ON inbox_messages(created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_inbox_msg_email_account   ON inbox_messages(email_account_id);
 
-    CREATE INDEX IF NOT EXISTS idx_inbox_sync_account        ON inbox_sync_runs(email_account_id);
-    CREATE INDEX IF NOT EXISTS idx_inbox_sync_status         ON inbox_sync_runs(status);
-
     CREATE INDEX IF NOT EXISTS idx_inbox_webhook_status      ON inbox_webhook_events(processing_status);
     CREATE INDEX IF NOT EXISTS idx_inbox_webhook_created     ON inbox_webhook_events(created_at DESC);
 
@@ -251,7 +228,6 @@
     ALTER TABLE inbox_conversations      ENABLE ROW LEVEL SECURITY;
     ALTER TABLE inbox_messages           ENABLE ROW LEVEL SECURITY;
     ALTER TABLE inbox_email_accounts     ENABLE ROW LEVEL SECURITY;
-    ALTER TABLE inbox_sync_runs          ENABLE ROW LEVEL SECURITY;
     ALTER TABLE inbox_webhook_events     ENABLE ROW LEVEL SECURITY;
     ALTER TABLE inbox_delivery_attempts  ENABLE ROW LEVEL SECURITY;
 
@@ -324,9 +300,6 @@
         FOR DELETE USING (inbox_is_admin());
 
     -- ── operational tables: admin only ───────────────────────────
-    CREATE POLICY "inbox_sync_runs_select" ON inbox_sync_runs
-        FOR SELECT USING (inbox_is_admin());
-
     CREATE POLICY "inbox_webhook_events_select" ON inbox_webhook_events
         FOR SELECT USING (inbox_is_admin());
 

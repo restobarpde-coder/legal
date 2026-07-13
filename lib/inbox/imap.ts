@@ -60,14 +60,6 @@ export async function syncEmailAccount(accountId: string): Promise<SyncResult> {
   }
   if (!claimed) return { account_id: accountId, fetched: 0, created: 0, busy: true }
 
-  // Record this sync run
-  const { data: runRow } = await supabase
-    .from('inbox_sync_runs')
-    .insert({ email_account_id: accountId, status: 'running' })
-    .select('id')
-    .single()
-  const runId = runRow?.id ?? null
-
   let fetched = 0
   let created = 0
   let errorMessage: string | undefined
@@ -108,7 +100,6 @@ export async function syncEmailAccount(accountId: string): Promise<SyncResult> {
           .from('inbox_email_accounts')
           .update({ last_sync_at: new Date().toISOString() })
           .eq('id', accountId)
-        await finishRun(supabase, runId, 'completed', 0, 0)
         await supabase.rpc('inbox_release_email_sync', { p_account_id: accountId })
         return { account_id: accountId, fetched: 0, created: 0 }
       }
@@ -252,14 +243,6 @@ export async function syncEmailAccount(accountId: string): Promise<SyncResult> {
     console.error(`[inbox/imap] Sync failed for account ${accountId}`)
   }
 
-  await finishRun(
-    supabase,
-    runId,
-    errorMessage ? 'failed' : 'completed',
-    fetched,
-    created,
-    errorMessage
-  )
   await supabase.rpc('inbox_release_email_sync', { p_account_id: accountId })
 
   return { account_id: accountId, fetched, created, error: errorMessage }
@@ -372,22 +355,4 @@ function addressList(ao: AddressObject | AddressObject[] | undefined | null): st
   if (!ao) return []
   const objs = Array.isArray(ao) ? ao : [ao]
   return objs.flatMap(o => o.value?.map(a => a.address).filter(Boolean) ?? []) as string[]
-}
-
-async function finishRun(
-  supabase: ReturnType<typeof createServiceClient>,
-  runId:    string | null,
-  status:   'completed' | 'failed',
-  fetched:  number,
-  created:  number,
-  errorMessage?: string
-) {
-  if (!runId) return
-  await supabase.from('inbox_sync_runs').update({
-    status,
-    messages_fetched: fetched,
-    messages_new:     created,
-    error_message:    errorMessage ?? null,
-    finished_at:      new Date().toISOString(),
-  }).eq('id', runId)
 }

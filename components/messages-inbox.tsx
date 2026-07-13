@@ -176,6 +176,16 @@ export function MessagesInbox() {
   )
   const visibleMessages = messagesConversationId === selectedId ? messages : []
 
+  const shouldKeepConversationRead = useCallback((conversationId: string) => {
+    return document.visibilityState === 'visible' && conversationId === selectedIdRef.current
+  }, [])
+
+  const normalizeConversationReadState = useCallback((conversation: Conversation) => {
+    return shouldKeepConversationRead(conversation.id) && conversation.unread_count > 0
+      ? { ...conversation, unread_count: 0 }
+      : conversation
+  }, [shouldKeepConversationRead])
+
   const loadConversations = useCallback(async (preferredId?: string, options: LoadOptions = {}) => {
     conversationsAbortRef.current?.abort()
     const controller = new AbortController()
@@ -193,7 +203,9 @@ export function MessagesInbox() {
       const result = await response.json()
       if (!response.ok) throw new Error(result.error ?? 'No fue posible cargar las conversaciones')
       if (requestId !== conversationsRequestRef.current) return
-      const nextConversations = sortConversations(result.conversations ?? [])
+      const nextConversations = sortConversations(
+        (result.conversations ?? []).map((conversation: Conversation) => normalizeConversationReadState(conversation))
+      )
       setConversations(nextConversations)
       setSelectedId((current) => {
         const nextSelectedId = preferredId && nextConversations.some((item: Conversation) => item.id === preferredId)
@@ -216,7 +228,7 @@ export function MessagesInbox() {
         setLoading(false)
       }
     }
-  }, [channel, status])
+  }, [channel, normalizeConversationReadState, status])
 
   const loadMessages = useCallback(async (conversationId: string, options: LoadOptions = {}) => {
     messagesAbortRef.current?.abort()
@@ -333,6 +345,7 @@ export function MessagesInbox() {
     setMessagesConversationId(null)
     setDetailLoading(true)
     setSelectedId(conversationId)
+    if (document.visibilityState === 'visible') void markConversationRead(conversationId)
   }, [markConversationRead])
 
   useEffect(() => {
@@ -424,15 +437,16 @@ export function MessagesInbox() {
         } else {
           const updated = payload.new as Conversation
           if (updated.id) {
+            const nextConversation = normalizeConversationReadState(updated)
             setConversations(current => upsertConversation(
               current,
-              updated,
+              nextConversation,
               channelRef.current,
               statusRef.current
             ))
-            if (updated.id === selectedIdRef.current
+            if (shouldKeepConversationRead(updated.id)
               && updated.unread_count > 0
-              && document.visibilityState === 'visible') {
+            ) {
               void markConversationRead(updated.id)
             }
           }
@@ -456,7 +470,10 @@ export function MessagesInbox() {
         // Notifications are persisted after message ingestion, so they are a
         // reliable final signal to reconcile any delayed/missed message event.
         scheduleListReconciliation(0)
-        if (conversationId === selectedIdRef.current) scheduleDetailReconciliation(0)
+        if (conversationId === selectedIdRef.current) {
+          scheduleDetailReconciliation(0)
+          if (document.visibilityState === 'visible') void markConversationRead(conversationId)
+        }
       })
       .subscribe((subscriptionStatus) => {
         if (!active) return
@@ -476,7 +493,7 @@ export function MessagesInbox() {
       active = false
       void supabase.removeChannel(channel)
     }
-  }, [markConversationRead, scheduleDetailReconciliation, scheduleListReconciliation, supabase])
+  }, [markConversationRead, normalizeConversationReadState, scheduleDetailReconciliation, scheduleListReconciliation, shouldKeepConversationRead, supabase])
 
   useEffect(() => {
     const reconcileVisibleTab = () => {
@@ -566,6 +583,7 @@ export function MessagesInbox() {
         setDraft('')
         setFiles([])
         if (fileInputRef.current) fileInputRef.current.value = ''
+        void markConversationRead(conversationId)
         scheduleDetailReconciliation()
       }
       void loadConversations(undefined, { background: true })
