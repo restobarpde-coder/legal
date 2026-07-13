@@ -71,6 +71,13 @@ export async function GET(request: NextRequest, { params }: { params: Params }) 
       .in('id', unreadIds)
   }
 
+  // Opening the message view is the authoritative read action for the
+  // conversation list badge as well as for individual messages.
+  await supabase
+    .from('inbox_conversations')
+    .update({ unread_count: 0 })
+    .eq('id', conversationId)
+
   return NextResponse.json({
     messages: data ?? [],
     total:    count ?? 0,

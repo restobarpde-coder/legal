@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto'
 import { createServiceClient } from '@/lib/supabase/server'
 
-const BUCKET = 'inbox-attachments'
+export const INBOX_ATTACHMENTS_BUCKET = 'inbox-attachments'
 const MAX_BYTES = 50 * 1024 * 1024
 const BLOCKED_MIME_TYPES = new Set([
   'application/x-msdownload',
@@ -33,7 +33,7 @@ export async function storeInboxAttachment(messageId: string, input: InboxAttach
   const storagePath = `${messageId}/${randomUUID()}-${safeFilename}`
 
   const { error: uploadError } = await supabase.storage
-    .from(BUCKET)
+    .from(INBOX_ATTACHMENTS_BUCKET)
     .upload(storagePath, input.content, { contentType: input.mimeType, upsert: false })
   if (uploadError) throw new Error(`No se pudo guardar el adjunto: ${uploadError.message}`)
 
@@ -52,15 +52,35 @@ export async function storeInboxAttachment(messageId: string, input: InboxAttach
     .single()
 
   if (insertError) {
-    await supabase.storage.from(BUCKET).remove([storagePath])
+    await supabase.storage.from(INBOX_ATTACHMENTS_BUCKET).remove([storagePath])
     throw new Error(`No se pudo registrar el adjunto: ${insertError.message}`)
   }
   return data
 }
 
+export async function storeInboxAttachmentFromStorage(
+  messageId: string,
+  input: { storagePath: string; filename: string; mimeType: string; source: 'upload' | 'whatsapp' | 'email' }
+) {
+  const supabase = createServiceClient()
+  const { data, error } = await supabase.storage.from(INBOX_ATTACHMENTS_BUCKET).download(input.storagePath)
+  if (error || !data) throw new Error('No se pudo leer el archivo subido')
+
+  const content = Buffer.from(await data.arrayBuffer())
+  const saved = await storeInboxAttachment(messageId, {
+    filename: input.filename,
+    mimeType: input.mimeType || 'application/octet-stream',
+    content,
+    source: input.source,
+  })
+
+  await supabase.storage.from(INBOX_ATTACHMENTS_BUCKET).remove([input.storagePath])
+  return { ...saved, content }
+}
+
 export async function getSignedInboxAttachmentUrl(storagePath: string) {
   const supabase = createServiceClient()
-  const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(storagePath, 60)
+  const { data, error } = await supabase.storage.from(INBOX_ATTACHMENTS_BUCKET).createSignedUrl(storagePath, 60)
   if (error || !data?.signedUrl) throw new Error('No se pudo abrir el adjunto')
   return data.signedUrl
 }

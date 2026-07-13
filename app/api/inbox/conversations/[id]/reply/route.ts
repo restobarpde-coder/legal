@@ -3,7 +3,7 @@ import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { sendWhatsAppMedia, sendWhatsAppText, uploadWhatsAppMedia, type WhatsAppMediaType } from '@/lib/inbox/whatsapp'
 import { sendEmail, replySubject } from '@/lib/inbox/smtp'
 import { decrypt } from '@/lib/inbox/crypto'
-import { storeInboxAttachment } from '@/lib/inbox/attachments'
+import { storeInboxAttachment, storeInboxAttachmentFromStorage } from '@/lib/inbox/attachments'
 
 export const runtime = 'nodejs'
 
@@ -22,7 +22,7 @@ export async function POST(request: NextRequest, { params }: { params: Params })
   if (authErr || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const payload = await readReplyPayload(request)
-  if (!payload.content && payload.files.length === 0) {
+  if (!payload.content && payload.files.length === 0 && payload.storageFiles.length === 0) {
     return NextResponse.json({ error: 'Escribí un mensaje o adjuntá un archivo' }, { status: 400 })
   }
   const { content } = payload
@@ -78,7 +78,8 @@ export async function POST(request: NextRequest, { params }: { params: Params })
 
     let attachments: Awaited<ReturnType<typeof saveReplyAttachments>>
     try {
-      attachments = await saveReplyAttachments(msg.id, payload.files)
+      attachments = await saveReplyAttachments(msg.id, user.id, payload.files, payload.storageFiles)
+      await updateMessageAttachments(svc, msg.id, attachments)
     } catch (err) {
       return NextResponse.json({ error: err instanceof Error ? err.message : 'No fue posible guardar los adjuntos' }, { status: 400 })
     }
@@ -182,7 +183,8 @@ export async function POST(request: NextRequest, { params }: { params: Params })
 
     let attachments: Awaited<ReturnType<typeof saveReplyAttachments>>
     try {
-      attachments = await saveReplyAttachments(msg.id, payload.files)
+      attachments = await saveReplyAttachments(msg.id, user.id, payload.files, payload.storageFiles)
+      await updateMessageAttachments(svc, msg.id, attachments)
     } catch (err) {
       return NextResponse.json({ error: err instanceof Error ? err.message : 'No fue posible guardar los adjuntos' }, { status: 400 })
     }
@@ -236,20 +238,31 @@ export async function POST(request: NextRequest, { params }: { params: Params })
 }
 
 type UploadedReplyFile = File
+type StoredReplyFile = { path: string; filename: string; mimeType: string; size: number }
 
-async function readReplyPayload(request: NextRequest): Promise<{ content: string; files: UploadedReplyFile[] }> {
+async function readReplyPayload(request: NextRequest): Promise<{ content: string; files: UploadedReplyFile[]; storageFiles: StoredReplyFile[] }> {
   const requestType = request.headers.get('content-type') ?? ''
   if (requestType.includes('multipart/form-data')) {
     const form = await request.formData()
     const files = form.getAll('files').filter((value): value is UploadedReplyFile => value instanceof File)
-    return { content: String(form.get('content') ?? '').trim(), files }
+    return { content: String(form.get('content') ?? '').trim(), files, storageFiles: [] }
   }
   const body = await request.json()
-  return { content: String(body?.content ?? '').trim(), files: [] }
+  const storageFiles = Array.isArray(body?.attachments) ? body.attachments.filter((file: StoredReplyFile) => file?.path && file?.filename && file?.size) : []
+  return { content: String(body?.content ?? '').trim(), files: [], storageFiles }
 }
 
-async function saveReplyAttachments(messageId: string, files: UploadedReplyFile[]) {
-  return Promise.all(files.map(async file => {
+async function saveReplyAttachments(messageId: string, userId: string, files: UploadedReplyFile[], storageFiles: StoredReplyFile[]) {
+  const directFiles = await Promise.all(storageFiles.map(file => {
+    if (!file.path.startsWith(`pending/${userId}/`)) throw new Error('Referencia de archivo inválida')
+    return storeInboxAttachmentFromStorage(messageId, {
+      storagePath: file.path,
+      filename: file.filename,
+      mimeType: file.mimeType,
+      source: 'upload',
+    })
+  }))
+  const multipartFiles = await Promise.all(files.map(async file => {
     const content = Buffer.from(await file.arrayBuffer())
     const saved = await storeInboxAttachment(messageId, {
       filename: file.name,
@@ -259,6 +272,22 @@ async function saveReplyAttachments(messageId: string, files: UploadedReplyFile[
     })
     return { ...saved, content }
   }))
+  return [...directFiles, ...multipartFiles]
+}
+
+async function updateMessageAttachments(
+  svc: ReturnType<typeof createServiceClient>,
+  messageId: string,
+  attachments: Array<{ id: string; original_filename: string; mime_type: string; size_bytes: number }>
+) {
+  await svc.from('inbox_messages').update({
+    attachments: attachments.map(attachment => ({
+      attachmentId: attachment.id,
+      filename: attachment.original_filename,
+      mimeType: attachment.mime_type,
+      size: attachment.size_bytes,
+    })),
+  }).eq('id', messageId)
 }
 
 function toWhatsAppMediaType(mimeType: string): WhatsAppMediaType {
