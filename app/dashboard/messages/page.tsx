@@ -1,5 +1,5 @@
-import { MessagesInbox } from '@/components/messages-inbox'
+import { MessagesInboxChatScope } from '@/components/messages-inbox-chatscope'
 
 export default function MessagesPage() {
-  return <MessagesInbox />
+  return <MessagesInboxChatScope />
 }
