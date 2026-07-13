@@ -121,6 +121,11 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
         }
         userIdRef.current = user.id
 
+        // Ensure the Realtime socket joins with the session JWT; an `anon`
+        // join makes RLS drop every event without surfacing an error.
+        await supabase.realtime.setAuth()
+        if (!active) return
+
         const channelName = `user-notifications-${user.id}`
 
         channel = supabase

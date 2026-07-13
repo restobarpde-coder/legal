@@ -475,7 +475,12 @@ export function MessagesInbox() {
           if (document.visibilityState === 'visible') void markConversationRead(conversationId)
         }
       })
-      .subscribe((subscriptionStatus) => {
+    // The Realtime socket must carry the session JWT before the channel joins:
+    // joining as `anon` makes RLS drop every event without any client error.
+    void (async () => {
+      await supabase.realtime.setAuth()
+      if (!active) return
+      channel.subscribe((subscriptionStatus) => {
         if (!active) return
         if (subscriptionStatus === 'SUBSCRIBED') {
           if (hasSubscribed && needsRecovery) {
@@ -488,6 +493,7 @@ export function MessagesInbox() {
         }
         if (hasSubscribed) needsRecovery = true
       })
+    })()
 
     return () => {
       active = false
