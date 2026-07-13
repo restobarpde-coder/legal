@@ -151,8 +151,15 @@ export async function POST(request: NextRequest) {
       sender_name: senderName, email_account_id: account.id, email_message_id: messageId, email_to: [recipientEmail], sent_at: new Date().toISOString(),
     })
     return NextResponse.json({ conversation_id: conversation.id }, { status: 201 })
-  } catch {
+  } catch (err) {
     await svc.from('inbox_conversations').delete().eq('id', conversation.id)
-    return NextResponse.json({ error: 'No fue posible enviar el email' }, { status: 502 })
+    const code = err && typeof err === 'object' && 'code' in err ? String(err.code) : 'SMTP_ERROR'
+    console.error(`[inbox/conversations] SMTP send failed (${code})`)
+    const error = code === 'EAUTH' || code === 'EAUTHE'
+      ? 'Hostinger rechazó las credenciales SMTP.'
+      : code === 'ETIMEDOUT' || code === 'ESOCKET'
+        ? 'No se pudo conectar al servidor SMTP. Revisá host, puerto y TLS.'
+        : 'No fue posible enviar el email. Revisá la configuración SMTP.'
+    return NextResponse.json({ error, code }, { status: 502 })
   }
 }
