@@ -4,6 +4,7 @@ import { createServiceClient } from '@/lib/supabase/server'
 import { decrypt } from './crypto'
 import { resolveInboxContact } from './contacts'
 import { storeInboxAttachment } from './attachments'
+import { notifyInboxMessage } from './notifications'
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -92,6 +93,10 @@ export async function syncEmailAccount(accountId: string): Promise<SyncResult> {
       if (uidList.length === 0) {
         lock.release()
         await client.logout()
+        await supabase
+          .from('inbox_email_accounts')
+          .update({ last_sync_at: new Date().toISOString() })
+          .eq('id', accountId)
         await finishRun(supabase, runId, 'completed', 0, 0)
         return { account_id: accountId, fetched: 0, created: 0 }
       }
@@ -194,6 +199,17 @@ export async function syncEmailAccount(accountId: string): Promise<SyncResult> {
           last_message_preview: text?.slice(0, 200) ?? '',
           unread_count:         (conv?.unread_count ?? 0) + 1,
         }).eq('id', conversationId)
+
+        try {
+          await notifyInboxMessage(supabase, {
+            conversationId,
+            messageId: storedMessage.id,
+            channel: 'email',
+            preview: text?.slice(0, 200) ?? '',
+          })
+        } catch (notificationError) {
+          console.error('[inbox/imap] Could not create inbox notification', notificationError)
+        }
 
         created++
       }

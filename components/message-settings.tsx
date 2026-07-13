@@ -41,7 +41,10 @@ export function MessageSettings() {
     setMessage('Sincronizando…')
     const response = await fetch('/api/email/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(accountId ? { account_id: accountId } : {}) })
     const result = await response.json()
-    setMessage(response.ok ? 'Sincronización finalizada.' : result.error ?? 'No fue posible sincronizar')
+    const failed = (result.results ?? []).filter((item: { error?: string }) => item.error)
+    setMessage(response.ok && failed.length === 0
+      ? `Sincronización finalizada. Mensajes nuevos: ${(result.results ?? []).reduce((total: number, item: { created?: number }) => total + (item.created ?? 0), 0)}.`
+      : failed.map((item: { error?: string }) => item.error).filter(Boolean).join(' · ') || result.error || 'No fue posible sincronizar')
     await load()
   }
 

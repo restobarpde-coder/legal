@@ -63,23 +63,26 @@ export function useNotifications() {
         setNotifications(initialData as Notification[])
         setIsLoading(false)
 
-        // Subscribe to Broadcast channel (more reliable for direct notifications)
+        const addNotification = (notification: Notification) => {
+          setNotifications(prev => prev.some(item => item.id === notification.id)
+            ? prev.map(item => item.id === notification.id ? { ...item, ...notification } : item)
+            : [notification, ...prev])
+        }
+
+        // Subscribe to persisted database changes. This also works after a reconnect
+        // because the initial query above reloads the current unread state.
         const channelName = `user-notifications-${user.id}`
-        console.log('🔌 Setting up Broadcast subscription:', channelName)
+        console.log('🔌 Setting up notification subscription:', channelName)
 
         channel = supabase
           .channel(channelName)
           .on(
-            'broadcast',
-            { event: 'new-notification' },
+            'postgres_changes',
+            { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` },
             (payload) => {
-              console.log('📡 Broadcast event received:', payload)
-              const newNotification = payload.payload as Notification
+              const newNotification = payload.new as Notification
+              addNotification(newNotification)
 
-              // Add to state
-              setNotifications(prev => [newNotification, ...prev])
-
-              // Show browser notification
               if ('Notification' in window && Notification.permission === 'granted') {
                 new Notification(newNotification.title, {
                   body: newNotification.message || '',
@@ -87,7 +90,7 @@ export function useNotifications() {
                   tag: newNotification.id,
                 })
               }
-            }
+            },
           )
           .subscribe((status, err) => {
             console.log('📡 Subscription status:', status, err)

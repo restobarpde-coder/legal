@@ -20,6 +20,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import { NewConversationDialog } from '@/components/new-conversation-dialog'
+import { createClient } from '@/lib/supabase/client'
 
 type Channel = 'all' | 'whatsapp' | 'email'
 type Status = 'open' | 'pending' | 'resolved' | 'spam' | 'all'
@@ -42,6 +43,7 @@ type Conversation = {
 
 type Message = {
   id: string
+  conversation_id?: string
   direction: 'inbound' | 'outbound'
   content: string | null
   content_type: 'text' | 'image' | 'document' | 'audio' | 'video'
@@ -62,6 +64,7 @@ function channelLabel(channel: Conversation['channel']) {
 }
 
 export function MessagesInbox() {
+  const supabase = useMemo(() => createClient(), [])
   const [channel, setChannel] = useState<Channel>('all')
   const [status, setStatus] = useState<Status>('open')
   const [conversations, setConversations] = useState<Conversation[]>([])
@@ -74,6 +77,9 @@ export function MessagesInbox() {
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const selectedIdRef = useRef<string | null>(null)
+
+  useEffect(() => { selectedIdRef.current = selectedId }, [selectedId])
 
   const selected = useMemo(
     () => conversations.find((conversation) => conversation.id === selectedId) ?? null,
@@ -116,6 +122,40 @@ export function MessagesInbox() {
 
   useEffect(() => { void loadConversations() }, [loadConversations])
   useEffect(() => { if (selectedId) void loadMessages(selectedId); else setMessages([]) }, [selectedId, loadMessages])
+
+  useEffect(() => {
+    let active = true
+    const channel = supabase
+      .channel('inbox-realtime')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'inbox_messages' }, (payload) => {
+        if (!active) return
+        const message = payload.new as Message
+        if (message.conversation_id === selectedIdRef.current) {
+          setMessages(current => current.some(item => item.id === message.id)
+            ? current.map(item => item.id === message.id ? { ...item, ...message } : item)
+            : [...current, message])
+        }
+        void loadConversations()
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'inbox_messages' }, (payload) => {
+        if (!active) return
+        const message = payload.new as Message
+        if (message.conversation_id === selectedIdRef.current) {
+          setMessages(current => current.some(item => item.id === message.id)
+            ? current.map(item => item.id === message.id ? { ...item, ...message } : item)
+            : [...current, message])
+        }
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'inbox_conversations' }, () => {
+        if (active) void loadConversations()
+      })
+      .subscribe()
+
+    return () => {
+      active = false
+      void supabase.removeChannel(channel)
+    }
+  }, [loadConversations, supabase])
 
   async function sendReply() {
     if (!selectedId || !draft.trim()) return

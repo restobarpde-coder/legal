@@ -11,6 +11,7 @@ import {
 } from '@/lib/inbox/whatsapp'
 import { storeInboxAttachment } from '@/lib/inbox/attachments'
 import { resolveInboxContact } from '@/lib/inbox/contacts'
+import { notifyInboxMessage } from '@/lib/inbox/notifications'
 
 export const runtime = 'nodejs'
 
@@ -186,6 +187,17 @@ async function handleIncomingMessage(
     last_message_preview: textContent?.slice(0, 200) ?? `[${contentType}]`,
     unread_count:         (conv?.unread_count ?? 0) + 1,
   }).eq('id', conversationId)
+
+  try {
+    await notifyInboxMessage(supabase, {
+      conversationId,
+      messageId: storedMessage.id,
+      channel: 'whatsapp',
+      preview: textContent?.slice(0, 200) ?? `[${contentType}]`,
+    })
+  } catch (error) {
+    console.error('[inbox/whatsapp] Could not create inbox notification', error)
+  }
 
   await markWebhookProcessed(supabase, webhookEvent?.id, 'processed')
 }
