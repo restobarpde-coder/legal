@@ -4,8 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import {
+  ArrowLeft,
   CheckCheck,
   FileText,
+  Info,
   Mail,
   MessageCircle,
   Paperclip,
@@ -17,7 +19,9 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 import { InboxComposer, type InboxAccount } from '@/components/inbox-composer'
 import { LinkClientDialog } from '@/components/inbox/link-client-dialog'
@@ -124,6 +128,19 @@ function formatDate(value: string | null) {
   return new Intl.DateTimeFormat('es-UY', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' }).format(new Date(value))
 }
 
+function formatListDate(value: string | null) {
+  if (!value) return ''
+  const date = new Date(value)
+  const now = new Date()
+  if (date.toDateString() === now.toDateString()) {
+    return new Intl.DateTimeFormat('es-UY', { hour: '2-digit', minute: '2-digit' }).format(date)
+  }
+  const yesterday = new Date(now)
+  yesterday.setDate(now.getDate() - 1)
+  if (date.toDateString() === yesterday.toDateString()) return 'Ayer'
+  return new Intl.DateTimeFormat('es-UY', { day: '2-digit', month: 'short' }).format(date)
+}
+
 function channelLabel(channel: Conversation['channel']) {
   return channel === 'whatsapp' ? 'WhatsApp' : 'Email'
 }
@@ -145,10 +162,15 @@ export function MessagesInbox() {
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isComposing, setIsComposing] = useState(false)
+  // Master-detail en móvil: se muestra la lista o el chat, nunca ambos.
+  const [mobilePane, setMobilePane] = useState<'list' | 'chat'>('list')
+  const isMobile = useIsMobile()
   const [accounts, setAccounts] = useState<InboxAccount[]>([])
   const [templates, setTemplates] = useState<Array<{ id: string; name: string; language_code: string }>>([])
   const [composeLoading, setComposeLoading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const lastScrolledConversationRef = useRef<string | null>(null)
   const selectedIdRef = useRef<string | null>(null)
   const messagesConversationIdRef = useRef<string | null>(null)
   const channelRef = useRef<Channel>(channel)
@@ -334,6 +356,7 @@ export function MessagesInbox() {
   }, [])
 
   const selectConversation = useCallback((conversationId: string) => {
+    setMobilePane('chat')
     if (conversationId === selectedIdRef.current) {
       void markConversationRead(conversationId)
       return
@@ -536,6 +559,13 @@ export function MessagesInbox() {
     return () => window.clearInterval(interval)
   }, [scheduleDetailReconciliation, scheduleListReconciliation])
 
+  useEffect(() => {
+    if (!visibleMessages.length) return
+    const isNewConversation = lastScrolledConversationRef.current !== messagesConversationId
+    lastScrolledConversationRef.current = messagesConversationId
+    messagesEndRef.current?.scrollIntoView({ behavior: isNewConversation ? 'auto' : 'smooth', block: 'end' })
+  }, [visibleMessages, messagesConversationId])
+
   useEffect(() => () => {
     conversationsAbortRef.current?.abort()
     messagesAbortRef.current?.abort()
@@ -609,20 +639,52 @@ export function MessagesInbox() {
     if (response.ok) await loadConversations()
   }
 
-  return (
-    <div className="flex h-[calc(100vh-7rem)] min-h-[620px] flex-col gap-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Mensajes</h1>
-          <p className="mt-1 text-sm text-muted-foreground">WhatsApp y email del estudio en una sola bandeja.</p>
+  const detailsPanel = selected ? (
+    <div className="space-y-5">
+      <div>
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Contacto</p>
+        <div className="mt-2 flex items-center gap-2">
+          <div className="grid h-9 w-9 place-items-center rounded-full bg-muted"><UserRound className="h-4 w-4" /></div>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium">{selected.contact_name || 'Sin nombre'}</p>
+            <p className="truncate text-xs text-muted-foreground">{selected.contact_email || selected.contact_phone || 'Sin datos'}</p>
+          </div>
         </div>
-        <div className="flex gap-2"><Button onClick={() => setIsComposing(true)} disabled={isComposing}><Mail className="mr-2 h-4 w-4" />Nueva conversación</Button><Button variant="outline" onClick={() => void loadConversations()} disabled={loading || isComposing}>
-          <RefreshCw className={cn('mr-2 h-4 w-4', loading && 'animate-spin')} />Actualizar
-        </Button></div>
+      </div>
+      <div>
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Vinculación</p>
+        {selected.linked_client
+          ? <Link href={`/dashboard/clients/${selected.linked_client.id}`} className="mt-2 block rounded-md border p-2 text-sm hover:bg-muted"><span className="font-medium">Cliente</span><br />{selected.linked_client.name}</Link>
+          : <p className="mt-2 rounded-md border border-dashed p-2 text-sm text-muted-foreground">Consulta de potencial cliente sin vincular.</p>}
+        <LinkClientDialog conversationId={selected.id} currentClient={selected.linked_client ?? null} onLinked={() => { void loadConversations(selected.id, { background: true }) }} trigger={<Button variant="outline" size="sm" className="mt-2 w-full">{selected.linked_client ? 'Cambiar vinculación' : 'Vincular a cliente'}</Button>} />
+      </div>
+      <div>
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Asignado a</p>
+        <p className="mt-2 text-sm">{selected.assigned_user?.full_name || selected.assigned_user?.email || 'Sin asignar'}</p>
+      </div>
+    </div>
+  ) : null
+
+  return (
+    <div className="flex h-[calc(100dvh-5.5rem)] flex-col gap-3 sm:h-[calc(100dvh-6rem)] md:h-[calc(100dvh-6.5rem)] md:gap-4 lg:h-[calc(100dvh-7rem)]">
+      <div className={cn('flex flex-wrap items-center justify-between gap-3', mobilePane === 'chat' && 'hidden md:flex')}>
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Mensajes</h1>
+          <p className="mt-1 hidden text-sm text-muted-foreground sm:block">WhatsApp y email del estudio en una sola bandeja.</p>
+        </div>
+        <div className="flex gap-2">
+          <Button onClick={() => { setIsComposing(true); setMobilePane('chat') }} disabled={isComposing}><Mail className="h-4 w-4" /><span className="hidden sm:inline">Nueva conversación</span><span className="sm:hidden">Nueva</span></Button>
+          <Button variant="outline" size="icon" aria-label="Actualizar" onClick={() => void loadConversations()} disabled={loading || isComposing} className="sm:hidden">
+            <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
+          </Button>
+          <Button variant="outline" onClick={() => void loadConversations()} disabled={loading || isComposing} className="hidden sm:inline-flex">
+            <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />Actualizar
+          </Button>
+        </div>
       </div>
 
-      <div className="grid min-h-0 flex-1 overflow-hidden rounded-xl border bg-background lg:grid-cols-[330px_minmax(0,1fr)_280px]">
-        <aside className="flex min-h-0 flex-col border-b lg:border-b-0 lg:border-r">
+      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden rounded-xl border bg-background md:grid-cols-[280px_minmax(0,1fr)] lg:grid-cols-[330px_minmax(0,1fr)] xl:grid-cols-[330px_minmax(0,1fr)_300px]">
+        <aside className={cn('flex min-h-0 flex-col md:border-r', mobilePane === 'chat' && 'hidden md:flex')}>
           <div className="space-y-3 border-b p-3">
             <div className="grid grid-cols-2 gap-2">
               <select value={channel} onChange={(event) => setChannel(event.target.value as Channel)} className="h-9 rounded-md border bg-background px-2 text-sm">
@@ -638,32 +700,74 @@ export function MessagesInbox() {
             {loading ? <p className="p-4 text-sm text-muted-foreground">Cargando conversaciones…</p> : null}
             {!loading && conversations.length === 0 ? <p className="p-4 text-sm text-muted-foreground">No hay conversaciones para estos filtros.</p> : null}
             {conversations.map((conversation) => (
-              <button key={conversation.id} onClick={() => selectConversation(conversation.id)} className={cn('w-full border-b px-4 py-3 text-left transition hover:bg-muted/60', selectedId === conversation.id && 'bg-muted')}>
-                <div className="flex items-center justify-between gap-2"><span className="truncate font-medium">{conversation.contact_name || 'Sin nombre'}</span>{conversation.unread_count > 0 ? <Badge className="rounded-full px-2">{conversation.unread_count}</Badge> : null}</div>
-                <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">{conversation.channel === 'whatsapp' ? <MessageCircle className="h-3.5 w-3.5 text-emerald-600" /> : <Mail className="h-3.5 w-3.5 text-blue-600" />}<span>{channelLabel(conversation.channel)}</span><span>·</span><span>{formatDate(conversation.last_message_at)}</span></div>
-                <p className="mt-1 line-clamp-1 text-sm text-muted-foreground">{conversation.last_message_preview || conversation.email_subject || 'Sin mensajes'}</p>
+              <button key={conversation.id} onClick={() => selectConversation(conversation.id)} className={cn('w-full border-b px-3 py-3 text-left transition hover:bg-muted/60 active:bg-muted', selectedId === conversation.id && 'md:bg-muted')}>
+                <div className="flex items-start gap-3">
+                  <div className="relative grid h-10 w-10 shrink-0 place-items-center rounded-full bg-muted">
+                    <UserRound className="h-5 w-5 text-muted-foreground" />
+                    <span className="absolute -bottom-0.5 -right-0.5 grid h-4 w-4 place-items-center rounded-full border bg-background">
+                      {conversation.channel === 'whatsapp' ? <MessageCircle className="h-2.5 w-2.5 text-emerald-600" /> : <Mail className="h-2.5 w-2.5 text-blue-600" />}
+                    </span>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className={cn('truncate text-sm', conversation.unread_count > 0 ? 'font-semibold' : 'font-medium')}>{conversation.contact_name || 'Sin nombre'}</span>
+                      <span className={cn('shrink-0 text-xs', conversation.unread_count > 0 ? 'font-medium text-primary' : 'text-muted-foreground')}>{formatListDate(conversation.last_message_at)}</span>
+                    </div>
+                    <div className="mt-0.5 flex items-center justify-between gap-2">
+                      <p className={cn('line-clamp-1 text-sm', conversation.unread_count > 0 ? 'text-foreground' : 'text-muted-foreground')}>{conversation.last_message_preview || conversation.email_subject || 'Sin mensajes'}</p>
+                      {conversation.unread_count > 0 ? <Badge className="h-5 min-w-5 shrink-0 justify-center rounded-full px-1.5 text-[11px]">{conversation.unread_count}</Badge> : null}
+                    </div>
+                  </div>
+                </div>
               </button>
             ))}
           </ScrollArea>
         </aside>
 
-        <main className="flex min-h-0 flex-col">
-          {isComposing ? <InboxComposer accounts={accounts} templates={templates} loading={composeLoading} onCancel={() => setIsComposing(false)} onCreated={(id) => { setIsComposing(false); void loadConversations(id) }} /> : !selected ? <div className="grid flex-1 place-items-center p-8 text-center text-muted-foreground"><MessageCircle className="mb-3 h-10 w-10" />Seleccioná una conversación para ver sus mensajes.</div> : <>
-            <header className="flex items-center justify-between gap-3 border-b px-4 py-3">
-              <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h2 className="truncate font-semibold">{selected.contact_name || 'Sin nombre'}</h2><Badge variant="secondary">{channelLabel(selected.channel)}</Badge>{selected.email_account ? <Badge variant="outline">{selected.email_account.account_type === 'shared' ? 'Compartida' : 'Personal'}</Badge> : null}</div><p className="truncate text-xs text-muted-foreground">{selected.contact_email || selected.contact_phone || 'Contacto sin datos'}{selected.email_account ? ` · Desde: ${selected.email_account.display_name || selected.email_account.email_address}` : ''}</p></div>
-              <select value={selected.status} onChange={(event) => void changeStatus(event.target.value as Exclude<Status, 'all'>)} className="h-9 rounded-md border bg-background px-2 text-sm"><option value="open">Abierta</option><option value="pending">Pendiente</option><option value="resolved">Resuelta</option><option value="spam">Spam</option></select>
-            </header>
-            <ScrollArea className="min-h-0 flex-1 bg-muted/20 p-4">
-              {detailLoading ? <p className="text-sm text-muted-foreground">Cargando mensajes…</p> : null}
-              <div className="space-y-3">
-                {visibleMessages.map((message) => <div key={message.id} className={cn('flex', message.direction === 'outbound' ? 'justify-end' : 'justify-start')}><div className={cn('max-w-[82%] rounded-2xl px-3 py-2 text-sm shadow-sm', message.direction === 'outbound' ? 'rounded-br-sm bg-primary text-primary-foreground' : 'rounded-bl-sm bg-background border')}><p className="whitespace-pre-wrap">{message.content || `[${message.content_type}]`}</p>{selected.channel === 'email' && message.email_account ? <p className="mt-2 border-t border-current/15 pt-1 text-[10px] opacity-75">{message.direction === 'outbound' ? 'Enviado desde' : 'Recibido en'}: {message.email_account.display_name || message.email_account.email_address}</p> : null}{message.attachments?.length ? <div className="mt-2 space-y-1">{message.attachments.map((attachment, index) => attachment.attachmentId ? <a key={attachment.attachmentId} href={`/api/inbox/attachments/${attachment.attachmentId}`} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs underline underline-offset-2 opacity-90"><FileText className="h-3.5 w-3.5" />{attachment.filename || 'Archivo adjunto'}</a> : <div key={index} className="flex items-center gap-1.5 text-xs opacity-90"><FileText className="h-3.5 w-3.5" />{attachment.filename || attachment.type || 'Archivo adjunto'}</div>)}</div> : null}<div className="mt-1 flex items-center justify-end gap-1 text-[10px] opacity-70">{formatDate(message.sent_at || message.created_at)}{message.direction === 'outbound' && message.wa_status ? <CheckCheck className="h-3 w-3" /> : null}</div></div></div>)}
+        <main className={cn('flex min-h-0 min-w-0 flex-col', mobilePane === 'list' && 'hidden md:flex')}>
+          {isComposing ? <InboxComposer accounts={accounts} templates={templates} loading={composeLoading} onCancel={() => { setIsComposing(false); setMobilePane('list') }} onCreated={(id) => { setIsComposing(false); void loadConversations(id) }} /> : !selected ? <div className="grid flex-1 place-items-center p-8 text-center text-muted-foreground"><MessageCircle className="mb-3 h-10 w-10" />Seleccioná una conversación para ver sus mensajes.</div> : <>
+            <header className="flex items-center gap-1.5 border-b px-2 py-2 sm:gap-2 sm:px-4 sm:py-3">
+              <Button variant="ghost" size="icon" aria-label="Volver a la lista" className="shrink-0 md:hidden" onClick={() => setMobilePane('list')}><ArrowLeft className="h-5 w-5" /></Button>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <h2 className="truncate font-semibold">{selected.contact_name || 'Sin nombre'}</h2>
+                  <Badge variant="secondary" className="hidden shrink-0 sm:inline-flex">{channelLabel(selected.channel)}</Badge>
+                  {selected.email_account ? <Badge variant="outline" className="hidden shrink-0 lg:inline-flex">{selected.email_account.account_type === 'shared' ? 'Compartida' : 'Personal'}</Badge> : null}
+                </div>
+                <p className="truncate text-xs text-muted-foreground">{selected.contact_email || selected.contact_phone || 'Contacto sin datos'}{selected.email_account ? ` · Desde: ${selected.email_account.display_name || selected.email_account.email_address}` : ''}</p>
               </div>
+              <select value={selected.status} onChange={(event) => void changeStatus(event.target.value as Exclude<Status, 'all'>)} className="h-9 shrink-0 rounded-md border bg-background px-2 text-sm"><option value="open">Abierta</option><option value="pending">Pendiente</option><option value="resolved">Resuelta</option><option value="spam">Spam</option></select>
+              <Sheet>
+                <SheetTrigger asChild>
+                  <Button variant="ghost" size="icon" aria-label="Detalles de la conversación" className="shrink-0 xl:hidden"><Info className="h-5 w-5" /></Button>
+                </SheetTrigger>
+                <SheetContent side="right" className="w-[85vw] max-w-sm overflow-y-auto">
+                  <SheetHeader><SheetTitle>Detalles</SheetTitle></SheetHeader>
+                  <div className="px-4 pb-6">{detailsPanel}</div>
+                </SheetContent>
+              </Sheet>
+            </header>
+            <ScrollArea className="min-h-0 flex-1 bg-muted/20 p-3 sm:p-4">
+              {detailLoading ? <p className="text-sm text-muted-foreground">Cargando mensajes…</p> : null}
+              <div className="space-y-2 sm:space-y-3">
+                {visibleMessages.map((message) => <div key={message.id} className={cn('flex', message.direction === 'outbound' ? 'justify-end' : 'justify-start')}><div className={cn('max-w-[85%] rounded-2xl px-3 py-2 text-sm shadow-sm md:max-w-[75%] lg:max-w-[65%]', message.direction === 'outbound' ? 'rounded-br-sm bg-primary text-primary-foreground' : 'rounded-bl-sm bg-background border')}><p className="whitespace-pre-wrap">{message.content || `[${message.content_type}]`}</p>{selected.channel === 'email' && message.email_account ? <p className="mt-2 border-t border-current/15 pt-1 text-[10px] opacity-75">{message.direction === 'outbound' ? 'Enviado desde' : 'Recibido en'}: {message.email_account.display_name || message.email_account.email_address}</p> : null}{message.attachments?.length ? <div className="mt-2 space-y-1">{message.attachments.map((attachment, index) => attachment.attachmentId ? <a key={attachment.attachmentId} href={`/api/inbox/attachments/${attachment.attachmentId}`} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs underline underline-offset-2 opacity-90"><FileText className="h-3.5 w-3.5" />{attachment.filename || 'Archivo adjunto'}</a> : <div key={index} className="flex items-center gap-1.5 text-xs opacity-90"><FileText className="h-3.5 w-3.5" />{attachment.filename || attachment.type || 'Archivo adjunto'}</div>)}</div> : null}<div className="mt-1 flex items-center justify-end gap-1 text-[10px] opacity-70">{formatDate(message.sent_at || message.created_at)}{message.direction === 'outbound' && message.wa_status ? <CheckCheck className="h-3 w-3" /> : null}</div></div></div>)}
+              </div>
+              <div ref={messagesEndRef} />
             </ScrollArea>
-            <div className="border-t p-3"><input ref={fileInputRef} type="file" multiple className="hidden" onChange={(event) => setFiles(Array.from(event.target.files ?? []))} /><div className="flex gap-2"><Button variant="ghost" size="icon" title="Adjuntar archivo" onClick={() => fileInputRef.current?.click()} disabled={selected.status === 'resolved' || selected.status === 'spam' || sending}><Paperclip className="h-4 w-4" /></Button><Textarea value={draft} onFocus={() => void markConversationRead(selected.id)} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void sendReply() } }} placeholder={selected.status === 'resolved' ? 'La conversación está resuelta' : 'Escribí una respuesta…'} disabled={selected.status === 'resolved' || selected.status === 'spam' || sending} className="min-h-10 resize-none" /><Button size="icon" title={sending ? 'Enviando…' : 'Enviar'} onClick={() => void sendReply()} disabled={(!draft.trim() && files.length === 0) || sending || selected.status === 'resolved' || selected.status === 'spam'}><Send className="h-4 w-4" /></Button></div>{files.length > 0 ? <div className="mt-2 flex flex-wrap gap-1">{files.map(file => <Badge key={`${file.name}-${file.size}`} variant="secondary" className="gap-1"><FileText className="h-3 w-3" />{file.name}</Badge>)}</div> : null}<p className="mt-1 text-xs text-muted-foreground">{sending ? 'Enviando… El mensaje aparecerá cuando quede guardado.' : 'Enter para enviar · Shift + Enter para salto de línea · máximo 50 MB por archivo'}</p></div>
+            <div className="border-t p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:p-3 sm:pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+              <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(event) => setFiles(Array.from(event.target.files ?? []))} />
+              <div className="flex items-end gap-1.5 sm:gap-2">
+                <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0 md:h-10 md:w-10" title="Adjuntar archivo" onClick={() => fileInputRef.current?.click()} disabled={selected.status === 'resolved' || selected.status === 'spam' || sending}><Paperclip className="h-5 w-5 md:h-4 md:w-4" /></Button>
+                <Textarea rows={1} value={draft} onFocus={() => void markConversationRead(selected.id)} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !isMobile) { event.preventDefault(); void sendReply() } }} placeholder={selected.status === 'resolved' ? 'La conversación está resuelta' : 'Escribí una respuesta…'} disabled={selected.status === 'resolved' || selected.status === 'spam' || sending} className="max-h-40 min-h-11 flex-1 resize-none rounded-2xl md:min-h-10" />
+                <Button size="icon" className="h-11 w-11 shrink-0 rounded-full md:h-10 md:w-10" title={sending ? 'Enviando…' : 'Enviar'} onClick={() => void sendReply()} disabled={(!draft.trim() && files.length === 0) || sending || selected.status === 'resolved' || selected.status === 'spam'}><Send className="h-5 w-5 md:h-4 md:w-4" /></Button>
+              </div>
+              {files.length > 0 ? <div className="mt-2 flex flex-wrap gap-1">{files.map(file => <Badge key={`${file.name}-${file.size}`} variant="secondary" className="max-w-full gap-1"><FileText className="h-3 w-3" /><span className="truncate">{file.name}</span></Badge>)}</div> : null}
+              <p className={cn('mt-1 text-xs text-muted-foreground', sending ? 'block' : 'hidden md:block')}>{sending ? 'Enviando… El mensaje aparecerá cuando quede guardado.' : 'Enter para enviar · Shift + Enter para salto de línea · máximo 50 MB por archivo'}</p>
+            </div>
           </>}</main>
 
-        <aside className="hidden min-h-0 border-l p-4 lg:block">
-          {selected ? <div className="space-y-5"><div><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Contacto</p><div className="mt-2 flex items-center gap-2"><div className="grid h-9 w-9 place-items-center rounded-full bg-muted"><UserRound className="h-4 w-4" /></div><div className="min-w-0"><p className="truncate text-sm font-medium">{selected.contact_name || 'Sin nombre'}</p><p className="truncate text-xs text-muted-foreground">{selected.contact_email || selected.contact_phone || 'Sin datos'}</p></div></div></div><div><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Vinculación</p>{selected.linked_client ? <Link href={`/dashboard/clients/${selected.linked_client.id}`} className="mt-2 block rounded-md border p-2 text-sm hover:bg-muted"><span className="font-medium">Cliente</span><br />{selected.linked_client.name}</Link> : <p className="mt-2 rounded-md border border-dashed p-2 text-sm text-muted-foreground">Consulta de potencial cliente sin vincular.</p>}<LinkClientDialog conversationId={selected.id} currentClient={selected.linked_client ?? null} onLinked={() => { void loadConversations(selected.id, { background: true }) }} trigger={<Button variant="outline" size="sm" className="mt-2 w-full">{selected.linked_client ? 'Cambiar vinculación' : 'Vincular a cliente'}</Button>} /></div><div><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Asignado a</p><p className="mt-2 text-sm">{selected.assigned_user?.full_name || selected.assigned_user?.email || 'Sin asignar'}</p></div></div> : null}
+        <aside className="hidden min-h-0 overflow-y-auto border-l p-4 xl:block">
+          {detailsPanel}
         </aside>
       </div>
       {error ? <p className="text-sm text-destructive">{error}</p> : null}

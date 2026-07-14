@@ -1,159 +1,116 @@
 # 🔔 Sistema de Notificaciones - Guía Rápida
 
-## ¿Qué se implementó?
+## Arquitectura (desde julio 2026)
 
-Sistema de notificaciones en tiempo real que alerta a los usuarios sobre tareas próximas a vencer, con insistencia basada en la prioridad de cada tarea.
+Las notificaciones se crean **en la base de datos** y llegan al navegador por
+**Supabase Realtime** (`postgres_changes` sobre la tabla `notifications`), con
+reconciliación por polling cada 30 s como respaldo. No hay SSE propio.
 
-### Características
+| Evento | Quién lo crea | Dónde |
+|--------|---------------|-------|
+| Tarea asignada / reasignada | Trigger `trg_notify_task_change` | `sql/20-notifications-reliability.sql` |
+| Cambio de fecha de vencimiento | Trigger `trg_notify_task_change` | idem |
+| Tarea completada (avisa a creador y asignado) | Trigger `trg_notify_task_change` | idem |
+| Recordatorio de vencimiento | `process_task_reminders()` vía **pg_cron cada 5 min** | idem |
+| Tarea vencida | `process_task_reminders()` (una sola vez por vencimiento) | idem |
+| Mensaje de WhatsApp entrante | Webhook → `notifyInboxMessage` | `app/api/webhooks/whatsapp/route.ts` |
+| Email entrante | Webhook Hostinger → sync IMAP → `notifyInboxMessage` | `lib/inbox/imap.ts` |
 
-✅ **Notificaciones en tiempo real** via Server-Sent Events (SSE)
-✅ **Alertas según prioridad**: Urgente, Alta, Media, Baja
-✅ **Insistencia inteligente**: Las tareas urgentes notifican cada 30 min
-✅ **Indicadores visuales**: Colores según urgencia en el header
-✅ **Notificaciones del navegador**: Con permiso del usuario
-✅ **Reconexión automática**: Si se pierde la conexión
+Al vivir en la BD, los triggers cubren **todos** los caminos de escritura
+(rutas API y también inserts directos del cliente como `/dashboard/tasks/new`),
+y los recordatorios no dependen de Vercel.
 
-## Configuración de Prioridades
+### Recordatorios por prioridad
 
-| Prioridad | Notificaciones |
-|-----------|----------------|
-| **Urgente** | 30min, 1h, 2h, 4h, 8h, 12h, 24h, 48h antes |
-| **Alta** | 1h, 4h, 12h, 24h, 48h, 72h antes |
-| **Media** | 4h, 24h, 48h, 72h antes |
-| **Baja** | 24h, 72h, 168h (1 semana) antes |
+| Prioridad | Umbrales (horas antes de vencer) |
+|-----------|----------------------------------|
+| **Urgente / Crítica** | 0.5, 1, 2, 4, 8, 12, 24, 48 |
+| **Alta** | 1, 4, 12, 24, 48, 72 |
+| **Media** | 4, 24, 48, 72 |
+| **Baja** | 24, 72, 168 |
 
-## Cómo probarlo
+Cada umbral se envía **una sola vez** por (tarea, fecha de vencimiento). Si el
+cron se atrasa, el recordatorio sale tarde pero sale, y nunca se duplica. Si se
+cambia la fecha de vencimiento, la escalera se rearma.
 
-### 1. Agregar CRON_SECRET al .env.local
+## Despliegue
 
-```bash
-echo "CRON_SECRET=mi-secreto-super-seguro-123" >> .env.local
-```
+### 1. Ejecutar la migración SQL (una vez)
 
-### 2. Iniciar el servidor
+Pegar `sql/20-notifications-reliability.sql` en el **SQL Editor** de Supabase y
+ejecutar. Instala el trigger, la función de recordatorios, los jobs de pg_cron
+(recordatorios cada 5 min, limpieza diaria 03:30) y un índice de dedupe.
 
-```bash
-npm run dev
-```
+> Si `CREATE EXTENSION pg_cron` falla, habilitar **pg_cron** desde
+> Dashboard → Database → Extensions y volver a ejecutar la sección 3 del script.
 
-### 3. Crear una tarea de prueba
+### 2. Configurar `CRON_SECRET` en Vercel
 
-1. Inicia sesión en la aplicación
-2. Ve a "Tareas" → "Nueva tarea"
-3. Crea una tarea con:
-   - **Título**: "Prueba de notificación"
-   - **Usuario asignado**: Tu usuario
-   - **Fecha de vencimiento**: En 2 horas desde ahora
-   - **Prioridad**: Urgente o Alta
+El cron diario de Vercel (`vercel.json` → `/api/notifications/check`) queda
+como **respaldo**. Vercel agrega automáticamente el header
+`Authorization: Bearer $CRON_SECRET` si la variable existe. Sin `CRON_SECRET`
+configurado, el endpoint devuelve 401 (ya no hay secreto por defecto).
 
-### 4. Ejecutar el scheduler manualmente
+### 3. Desplegar el código
 
-Abre una nueva terminal y ejecuta:
+Deploy normal. Hacerlo **enseguida después** de la migración: mientras conviva
+el código viejo con el trigger nuevo, las asignaciones pueden notificarse dos
+veces.
 
-```bash
-./scripts/run-notification-scheduler.sh
-```
+## Verificación
 
-Deberías ver algo como:
-```
-🔔 Ejecutando scheduler de notificaciones...
-📍 Servidor: http://localhost:3000
-
-✅ Scheduler ejecutado exitosamente
-{
-  "success": true,
-  "message": "Revisadas 1 tareas, enviadas 1 notificaciones",
-  "total": 1,
-  "sent": 1
-}
-```
-
-### 5. Ver la notificación
-
-- **En el header**: Verás un badge rojo con el número de notificaciones
-- **En el navegador**: Si diste permisos, aparecerá una notificación nativa
-- **En la consola**: Verás el log "🔔 Conectado al servidor de notificaciones"
-
-### 6. Configurar ejecución automática (opcional)
-
-Para que las notificaciones se envíen automáticamente cada 5 minutos:
-
-```bash
-# Editar crontab
-crontab -e
-
-# Agregar esta línea (ajustar la ruta)
-0 0 * * * /home/fran/Documents/DTE/DEV/Centro\ de\ Asesoramiento/legal-studio-app/scripts/run-notification-scheduler.sh >> /tmp/notification-scheduler.log 2>&1
-Note: For Vercel Hobby accounts, cron jobs are limited to once a day. The schedule '0 0 * * *' runs daily at midnight.
-```
-
-## Visualización en el Header
-
-El icono de campana muestra:
-
-- 🔴 **Badge rojo pulsante**: Número de notificaciones sin leer
-- 🟢 **Punto verde pulsante**: Conectado al servidor SSE
-- ⚪ **Sin punto**: Desconectado (reconectando)
-
-### Colores de urgencia
-
-- 🔴 **Rojo**: Crítico (< 1 hora)
-- 🟠 **Naranja**: Alto (< 12 horas + urgente/alta)
-- 🟡 **Amarillo**: Medio (< 24 horas)
-- 🔵 **Azul**: Bajo (> 24 horas)
-
-## Solución de Problemas
-
-### No aparecen notificaciones
-
-1. Verifica que estés autenticado
-2. Verifica que la tarea tenga usuario asignado (`assigned_to`)
-3. Verifica que `due_date` esté dentro de la próxima semana
-4. Ejecuta el scheduler manualmente para ver logs
-5. Abre la consola del navegador y busca errores
-
-### Desconexión constante de SSE
-
-- Verifica que no haya proxies cerrando conexiones largas
-- El sistema reconecta automáticamente cada 5 segundos
-
-### El scheduler no encuentra tareas
-
-Verifica en la BD:
 ```sql
-SELECT id, title, due_date, assigned_to, priority, status 
-FROM tasks 
-WHERE assigned_to IS NOT NULL 
-  AND status NOT IN ('completed', 'cancelled')
-  AND due_date >= NOW() 
-  AND due_date <= NOW() + INTERVAL '7 days'
-  AND deleted_at IS NULL;
+-- Jobs programados
+SELECT jobid, jobname, schedule FROM cron.job;
+
+-- Últimas corridas del cron
+SELECT * FROM cron.job_run_details ORDER BY start_time DESC LIMIT 10;
+
+-- Corrida manual de recordatorios
+SELECT public.process_task_reminders();
+
+-- Últimas notificaciones creadas
+SELECT type, title, message, created_at FROM notifications ORDER BY created_at DESC LIMIT 10;
 ```
 
-## Archivos Principales
+Prueba end-to-end: crear una tarea asignada a otro usuario → la notificación
+debe aparecer en su campana al instante (Realtime). Crear una tarea propia con
+vencimiento en 2 horas y prioridad urgente → el recordatorio llega en la
+próxima corrida de pg_cron (≤ 5 min).
 
-```
-app/
-  api/
-    notifications/
-      stream/route.ts          # Endpoint SSE
-      check/route.ts           # Ejecutar scheduler
-      route.ts                 # API tradicional (fallback)
-      
-lib/
-  notification-scheduler.ts    # Lógica del scheduler
-  sse-connections.ts          # Gestión de conexiones SSE
-  
-hooks/
-  use-notifications.ts        # Hook React para notificaciones
-  
-components/
-  notification-dropdown.tsx   # UI en el header
-  
-scripts/
-  run-notification-scheduler.sh  # Script para ejecutar scheduler
+También se puede disparar el respaldo manualmente:
+
+```bash
+curl -X POST https://<tu-app>/api/notifications/check \
+  -H "Authorization: Bearer $CRON_SECRET"
 ```
 
-## Para más información
+## UI
 
-Ver documentación completa en: `docs/NOTIFICACIONES.md`
+- 🔴 **Badge rojo**: notificaciones pendientes.
+- 🟢 **Punto verde**: canal Realtime conectado (si falta, hay polling cada 30 s).
+- El permiso de notificaciones nativas del navegador se pide al abrir la
+  campana por primera vez; las nativas solo se muestran con la pestaña oculta.
+- Colores de urgencia: 🔴 crítico (< 1 h) · 🟠 alto · 🟡 medio · 🔵 bajo.
+
+## Solución de problemas
+
+1. **No llegan recordatorios**: revisar `cron.job_run_details`; correr
+   `SELECT public.process_task_reminders();` a mano y mirar el JSON devuelto.
+2. **No llegan en tiempo real**: verificar que `notifications` esté en la
+   publicación `supabase_realtime` (`sql/12-enable-realtime-notifications.sql`)
+   y que el socket use el JWT de sesión (`supabase.realtime.setAuth()` ya se
+   llama en `hooks/use-notifications.ts`).
+3. **Diagnóstico de tareas candidatas**:
+   `GET /api/notifications/debug?secret=$CRON_SECRET`.
+
+## Archivos principales
+
+```
+sql/20-notifications-reliability.sql   # Trigger + recordatorios + pg_cron
+app/api/notifications/check/route.ts   # Respaldo vía Vercel Cron (GET/POST)
+lib/notification-scheduler.ts          # Wrapper RPC → process_task_reminders()
+lib/inbox/notifications.ts             # Notificaciones de inbox (WhatsApp/email)
+hooks/use-notifications.ts             # Realtime + polling + estado en el cliente
+components/notification-dropdown.tsx   # Campana del header
+```

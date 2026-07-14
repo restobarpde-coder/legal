@@ -35,22 +35,44 @@ function getPriorityLabel(priority?: string) {
   return labels[priority || 'medium'] || 'Media'
 }
 
-function formatTimeUntilDue(hours?: number) {
-  if (!hours) return 'Ahora'
-  if (hours < 1) return `${Math.round(hours * 60)} minutos`
+function formatTimeUntilDue(hours: number) {
+  if (hours <= 0) return 'Ahora'
+  if (hours < 1) return `${Math.max(1, Math.round(hours * 60))} minutos`
   if (hours < 24) return `${Math.round(hours)} horas`
   const days = Math.round(hours / 24)
   return `${days} ${days === 1 ? 'día' : 'días'}`
 }
 
+// "Vence en…" calculado en vivo desde metadata.dueDate; el hoursUntilDue
+// guardado al crear la notificación queda obsoleto con el paso del tiempo.
+function dueLabel(notification: Notification) {
+  const dueDate = notification.metadata?.dueDate
+  if (!dueDate) return null
+  const hours = (new Date(dueDate).getTime() - Date.now()) / 3_600_000
+  if (Number.isNaN(hours)) return null
+  return hours < 0
+    ? `Venció ${formatDistanceToNow(new Date(dueDate), { addSuffix: true, locale: es })}`
+    : `Vence en ${formatTimeUntilDue(hours)}`
+}
+
+function isTaskNotification(notification: Notification) {
+  return notification.related_entity_type === 'task' || !!notification.task_id
+}
+
 export function NotificationDropdown() {
-  const { data: notifications, isLoading, error, isConnected, markAsRead, dismissNotification, clearAll } = useNotifications()
+  const { data: notifications, isLoading, error, isConnected, dismissNotification, clearAll } = useNotifications()
   const router = useRouter()
 
   const unreadCount = notifications?.length || 0
 
   return (
-    <DropdownMenu>
+    <DropdownMenu onOpenChange={(open) => {
+      // Pedir permiso para notificaciones nativas recién ante un gesto del
+      // usuario; los navegadores penalizan pedirlo automáticamente al cargar.
+      if (open && 'Notification' in window && Notification.permission === 'default') {
+        void Notification.requestPermission()
+      }
+    }}>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="icon" className="relative">
           <Bell className="h-5 w-5" />
@@ -67,7 +89,7 @@ export function NotificationDropdown() {
           )}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-96">
+      <DropdownMenuContent align="end" className="w-[min(24rem,calc(100vw-1rem))]">
         <div className="flex items-center justify-between">
           <DropdownMenuLabel className="flex items-center gap-2">
             Notificaciones
@@ -100,10 +122,11 @@ export function NotificationDropdown() {
               Error al cargar
             </DropdownMenuItem>
           ) : notifications && notifications.length > 0 ? (
-            notifications.map((notification, index) => {
-              const notificationId = notification.id || `notif-${index}`
+            notifications.map((notification) => {
+              const notificationId = notification.id
               const title = notification.taskTitle || notification.title || 'Notificación'
               const description = notification.taskDescription || notification.message || ''
+              const due = isTaskNotification(notification) ? dueLabel(notification) : null
               // Determine link based on notification type and data
               let link = '#'
 
@@ -122,11 +145,11 @@ export function NotificationDropdown() {
               return (
                 <div key={notificationId} className="relative group">
                   <DropdownMenuItem asChild className="cursor-pointer">
-                    <Link href={link} className="block" onClick={async (event) => {
+                    <Link href={link} className="block" onClick={(event) => {
                       if (link === '#') return
                       event.preventDefault()
-                      await markAsRead(notificationId)
-                      await dismissNotification(notificationId)
+                      // Navegar de inmediato; marcar como leída en segundo plano.
+                      void dismissNotification(notificationId)
                       router.push(link)
                     }}>
                       <div className="flex items-start gap-3 py-2">
@@ -134,12 +157,15 @@ export function NotificationDropdown() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-start justify-between gap-2">
                             <p className="font-medium text-sm line-clamp-1">{title}</p>
-                            <Badge
-                              variant="outline"
-                              className="text-xs shrink-0"
-                            >
-                              {getPriorityLabel(notification.priority)}
-                            </Badge>
+                            {isTaskNotification(notification) ? (
+                              <Badge variant="outline" className="text-xs shrink-0">
+                                {getPriorityLabel(notification.priority)}
+                              </Badge>
+                            ) : notification.type === 'inbox_message' ? (
+                              <Badge variant="outline" className="text-xs shrink-0">
+                                {notification.metadata?.channel === 'whatsapp' ? 'WhatsApp' : 'Email'}
+                              </Badge>
+                            ) : null}
                           </div>
                           {description && (
                             <p className="text-xs text-muted-foreground line-clamp-1 mt-1">
@@ -149,10 +175,7 @@ export function NotificationDropdown() {
                           <div className="flex items-center gap-2 mt-2">
                             <Clock className="h-3 w-3 text-muted-foreground" />
                             <p className="text-xs text-muted-foreground">
-                              {notification.hoursUntilDue
-                                ? `Vence en ${formatTimeUntilDue(notification.hoursUntilDue)}`
-                                : formatDistanceToNow(new Date(notification.created_at), { addSuffix: true, locale: es })
-                              }
+                              {due ?? formatDistanceToNow(new Date(notification.created_at), { addSuffix: true, locale: es })}
                             </p>
                           </div>
                         </div>

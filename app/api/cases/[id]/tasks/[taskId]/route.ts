@@ -236,66 +236,8 @@ export async function PATCH(
       return NextResponse.json({ error: 'Error al actualizar la tarea' }, { status: 500 })
     }
 
-    // Send notifications for important changes
-    if (data.assigned_to && data.assigned_to !== user.id) {
-      const serviceClient = createServiceClient()
-      let notificationType = ''
-      let notificationMessage = ''
-      let shouldNotify = false
-
-      // 1. Reassignment
-      if (body.assigned_to && body.assigned_to !== existingTask.assigned_to) {
-        notificationType = 'task_assigned'
-        notificationMessage = `Se te ha asignado la tarea "${data.title}"`
-        shouldNotify = true
-      }
-      // 2. Due Date Change (if assigned to someone else)
-      else if (body.due_date && body.due_date !== existingTask.due_date) {
-        notificationType = 'task_updated'
-        notificationMessage = `La fecha de vencimiento de "${data.title}" ha cambiado`
-        shouldNotify = true
-      }
-      // 3. Status Change (optional, maybe too noisy, but good for completion)
-      else if (body.status === 'completed' && existingTask.status !== 'completed') {
-        notificationType = 'task_completed'
-        notificationMessage = `La tarea "${data.title}" ha sido completada`
-        shouldNotify = true
-      }
-
-      if (shouldNotify) {
-        // Insert notification record
-        const { data: notifData, error: notifError } = await serviceClient
-          .from('notifications')
-          .insert({
-            user_id: data.assigned_to,
-            type: notificationType,
-            title: 'Actualización de Tarea',
-            message: notificationMessage,
-            related_entity_type: 'task',
-            related_entity_id: data.id,
-            metadata: {
-              taskTitle: data.title,
-              priority: data.priority,
-              caseId: data.case_id,
-              changeType: notificationType
-            }
-          })
-          .select()
-          .single()
-
-        if (!notifError && notifData) {
-          // Send Broadcast
-          const channelName = `user-notifications-${data.assigned_to}`
-          await serviceClient
-            .channel(channelName)
-            .send({
-              type: 'broadcast',
-              event: 'new-notification',
-              payload: notifData
-            })
-        }
-      }
-    }
+    // Las notificaciones de reasignación / cambio de fecha / completado las
+    // crea el trigger trg_notify_task_change (sql/20-notifications-reliability.sql).
 
     return NextResponse.json(data)
   } catch (error) {

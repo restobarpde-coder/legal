@@ -7,7 +7,10 @@
 source .env.local 2>/dev/null || true
 
 # Token de autorización (debe coincidir con CRON_SECRET en .env.local)
-CRON_SECRET="${CRON_SECRET:-your-secret-key}"
+if [ -z "$CRON_SECRET" ]; then
+  echo "❌ CRON_SECRET no está definido (en .env.local o el entorno)"
+  exit 1
+fi
 
 # URL del servidor (ajustar si es necesario)
 SERVER_URL="${SERVER_URL:-http://localhost:3000}"

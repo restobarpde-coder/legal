@@ -40,6 +40,19 @@ type NotificationsContextValue = {
 
 const NotificationsContext = createContext<NotificationsContextValue | null>(null)
 
+// La BD guarda priority/urgencyLevel/hoursUntilDue dentro de metadata; la UI
+// los consume en el nivel superior.
+function normalizeNotification(raw: Notification): Notification {
+  const metadata = raw.metadata ?? {}
+  return {
+    ...raw,
+    taskTitle: raw.taskTitle ?? metadata.taskTitle,
+    priority: raw.priority ?? metadata.priority,
+    urgencyLevel: raw.urgencyLevel ?? metadata.urgencyLevel,
+    hoursUntilDue: raw.hoursUntilDue ?? metadata.hoursUntilDue,
+  }
+}
+
 function sortNotifications(items: Notification[]) {
   return [...items].sort((left, right) =>
     new Date(right.created_at).getTime() - new Date(left.created_at).getTime()
@@ -87,7 +100,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     if (loadError) {
       setError(loadError)
     } else {
-      const snapshot = sortNotifications((data ?? []) as Notification[])
+      const snapshot = sortNotifications(((data ?? []) as Notification[]).map(normalizeNotification))
       const currentEventVersion = eventVersionRef.current
       const concurrentEvents = [...notificationEventsRef.current.values()]
         .filter(event => event.version > eventVersionAtStart)
@@ -134,12 +147,14 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
             'postgres_changes',
             { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` },
             (payload) => {
-              const newNotification = payload.new as Notification
+              const newNotification = normalizeNotification(payload.new as Notification)
               const version = ++eventVersionRef.current
               notificationEventsRef.current.set(newNotification.id, { version, notification: newNotification })
               setNotifications(current => upsertNotification(current, newNotification))
 
-              if ('Notification' in window && Notification.permission === 'granted') {
+              // Notificación nativa solo si la pestaña no está visible: con la
+              // app en primer plano el badge de la campana ya lo comunica.
+              if ('Notification' in window && Notification.permission === 'granted' && document.visibilityState !== 'visible') {
                 new Notification(newNotification.title, {
                   body: newNotification.message || '',
                   icon: '/favicon.ico',
@@ -152,7 +167,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
             'postgres_changes',
             { event: 'UPDATE', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` },
             (payload) => {
-              const updatedNotification = payload.new as Notification
+              const updatedNotification = normalizeNotification(payload.new as Notification)
               const version = ++eventVersionRef.current
               notificationEventsRef.current.set(updatedNotification.id, { version, notification: updatedNotification })
               setNotifications(current => upsertNotification(current, updatedNotification))
@@ -183,10 +198,6 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     }
 
     setupRealtime()
-
-    if ('Notification' in window && Notification.permission === 'default') {
-      void Notification.requestPermission()
-    }
 
     return () => {
       active = false
