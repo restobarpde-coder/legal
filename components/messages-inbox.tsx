@@ -673,7 +673,7 @@ export function MessagesInbox() {
           <p className="mt-1 hidden text-sm text-muted-foreground sm:block">WhatsApp y email del estudio en una sola bandeja.</p>
         </div>
         <div className="flex gap-2">
-          <Button onClick={() => { setIsComposing(true); setMobilePane('chat') }} disabled={isComposing}><Mail className="h-4 w-4" /><span className="hidden sm:inline">Nueva conversación</span><span className="sm:hidden">Nueva</span></Button>
+          <Button onClick={() => setIsComposing(true)} disabled={isComposing}><Mail className="h-4 w-4" /><span className="hidden sm:inline">Nueva conversación</span><span className="sm:hidden">Nueva</span></Button>
           <Button variant="outline" size="icon" aria-label="Actualizar" onClick={() => void loadConversations()} disabled={loading || isComposing} className="sm:hidden">
             <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
           </Button>
@@ -725,7 +725,7 @@ export function MessagesInbox() {
         </aside>
 
         <main className={cn('flex min-h-0 min-w-0 flex-col', mobilePane === 'list' && 'hidden md:flex')}>
-          {isComposing ? <InboxComposer accounts={accounts} templates={templates} loading={composeLoading} onCancel={() => { setIsComposing(false); setMobilePane('list') }} onCreated={(id) => { setIsComposing(false); void loadConversations(id) }} /> : !selected ? <div className="grid flex-1 place-items-center p-8 text-center text-muted-foreground"><MessageCircle className="mb-3 h-10 w-10" />Seleccioná una conversación para ver sus mensajes.</div> : <>
+          {!selected ? <div className="grid flex-1 place-items-center p-8 text-center text-muted-foreground"><MessageCircle className="mb-3 h-10 w-10" />Seleccioná una conversación para ver sus mensajes.</div> : <>
             <header className="flex items-center gap-1.5 border-b px-2 py-2 sm:gap-2 sm:px-4 sm:py-3">
               <Button variant="ghost" size="icon" aria-label="Volver a la lista" className="shrink-0 md:hidden" onClick={() => setMobilePane('list')}><ArrowLeft className="h-5 w-5" /></Button>
               <div className="min-w-0 flex-1">
@@ -771,6 +771,16 @@ export function MessagesInbox() {
         </aside>
       </div>
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
+
+      {isComposing ? (
+        <InboxComposer
+          accounts={accounts}
+          templates={templates}
+          loading={composeLoading}
+          onCancel={() => setIsComposing(false)}
+          onCreated={(id) => { setIsComposing(false); void loadConversations(id) }}
+        />
+      ) : null}
     </div>
   )
 }
