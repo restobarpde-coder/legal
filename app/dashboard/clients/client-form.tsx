@@ -32,7 +32,19 @@ export function ClientForm({ client, formAction, inline = false, onSuccess, onCa
         formState: { isSubmitting, errors: formErrors },
     } = useForm<z.infer<typeof clientSchema>>({
         resolver: zodResolver(clientSchema),
-        defaultValues: client || {},
+        defaultValues: client || {
+            name: '',
+            email: '',
+            phone: '',
+            company: '',
+            address: '',
+            rut: '',
+            ci: '',
+            departamento: '',
+            pais: '',
+            conyuge: '',
+            notes: '',
+        },
     })
 
     useEffect(() => {
@@ -74,10 +86,35 @@ export function ClientForm({ client, formAction, inline = false, onSuccess, onCa
                         <Input id="phone" {...register('phone')} />
                         {(formErrors.phone || serverErrors?.phone) && <p className="text-sm text-red-500">{String(formErrors.phone?.message || '') || serverErrors?.phone?.[0]}</p>}
                     </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="rut">Número RUT</Label>
+                        <Input id="rut" {...register('rut')} placeholder="Ej: 12.345.678-9" />
+                        {(formErrors.rut || serverErrors?.rut) && <p className="text-sm text-red-500">{String(formErrors.rut?.message || '') || serverErrors?.rut?.[0]}</p>}
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="ci">Número CI (Opcional)</Label>
+                        <Input id="ci" {...register('ci')} placeholder="Cédula de Identidad" />
+                        {(formErrors.ci || serverErrors?.ci) && <p className="text-sm text-red-500">{String(formErrors.ci?.message || '') || serverErrors?.ci?.[0]}</p>}
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="departamento">Departamento</Label>
+                        <Input id="departamento" {...register('departamento')} placeholder="Ej: Montevideo" />
+                        {(formErrors.departamento || serverErrors?.departamento) && <p className="text-sm text-red-500">{String(formErrors.departamento?.message || '') || serverErrors?.departamento?.[0]}</p>}
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="pais">País</Label>
+                        <Input id="pais" {...register('pais')} placeholder="Ej: Uruguay" />
+                        {(formErrors.pais || serverErrors?.pais) && <p className="text-sm text-red-500">{String(formErrors.pais?.message || '') || serverErrors?.pais?.[0]}</p>}
+                    </div>
                     <div className="space-y-2 md:col-span-2">
                         <Label htmlFor="address">Dirección</Label>
                         <Input id="address" {...register('address')} />
                         {(formErrors.address || serverErrors?.address) && <p className="text-sm text-red-500">{String(formErrors.address?.message || '') || serverErrors?.address?.[0]}</p>}
+                    </div>
+                    <div className="space-y-2 md:col-span-2">
+                        <Label htmlFor="conyuge">Cónyuge</Label>
+                        <Input id="conyuge" {...register('conyuge')} placeholder="Nombre del cónyuge" />
+                        {(formErrors.conyuge || serverErrors?.conyuge) && <p className="text-sm text-red-500">{String(formErrors.conyuge?.message || '') || serverErrors?.conyuge?.[0]}</p>}
                     </div>
                     {!inline && (
                         <div className="space-y-2 md:col-span-2">

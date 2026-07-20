@@ -7,6 +7,11 @@ export const clientSchema = z.object({
     address: z.string().optional(),
     company: z.string().optional(),
     notes: z.string().optional(),
+    rut: z.string().optional(),
+    ci: z.string().optional(),
+    departamento: z.string().optional(),
+    pais: z.string().optional(),
+    conyuge: z.string().optional(),
 })
 
 export type ClientFormState = {

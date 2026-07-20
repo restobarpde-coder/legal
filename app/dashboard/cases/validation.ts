@@ -6,12 +6,16 @@ const isValidOptionalDate = (date: string) => !date || !isNaN(Date.parse(date))
 const isValidOptionalHours = (hours: string | undefined) => !hours || (!isNaN(parseInt(hours)) && parseInt(hours) > 0)
 const isValidOptionalRate = (rate: string | undefined) => !rate || (!isNaN(parseFloat(rate)) && parseFloat(rate) >= 0)
 
+export const counterpartySchema = z.object({
+  name: z.string().min(2, { message: 'El nombre de la contraparte debe tener al menos 2 caracteres.' }),
+  lawyer: z.string().optional(),
+})
+
 export const caseSchema = z.object({
   title: z.string().min(2, { message: 'El título debe tener al menos 2 caracteres.' }),
   description: z.string().optional(),
   client_id: z.string().uuid({ message: 'Debe seleccionar un cliente válido.' }),
-  counterparty_name: z.string().optional(),
-  counterparty_lawyer: z.string().optional(),
+  counterparties: z.array(counterpartySchema).optional(),
   status: z.enum(['active', 'pending', 'closed', 'archived']).default('active'),
   priority: z.enum(['low', 'medium', 'high', 'urgent']).default('medium'),
   start_date: z.string().optional().refine((date) => {
@@ -23,14 +27,14 @@ export const caseSchema = z.object({
   end_date: z.string().optional().refine((date) => {
     if (!date || date.trim() === '') return true; // Allow empty strings
     return isValidDate(date);
-  }, { 
-    message: 'Fecha de finalización inválida.' 
+  }, {
+    message: 'Fecha de finalización inválida.'
   }),
-  estimated_hours: z.string().optional().refine(isValidOptionalHours, { 
-    message: 'Las horas estimadas deben ser un número positivo.' 
+  estimated_hours: z.string().optional().refine(isValidOptionalHours, {
+    message: 'Las horas estimadas deben ser un número positivo.'
   }),
-  hourly_rate: z.string().optional().refine(isValidOptionalRate, { 
-    message: 'La tarifa debe ser un número válido.' 
+  hourly_rate: z.string().optional().refine(isValidOptionalRate, {
+    message: 'La tarifa debe ser un número válido.'
   }),
   numero_archivo: z.string().optional(),
   numero_carpeta: z.string().optional(),

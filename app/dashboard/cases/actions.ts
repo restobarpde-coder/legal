@@ -41,12 +41,15 @@ export async function createCase(
   }
 
   const data = validatedFields.data
+  const counterparties = data.counterparties || []
 
   // Convert string numbers to appropriate types and handle optional dates
   const caseData = {
-    ...data,
-    counterparty_name: data.counterparty_name || null,
-    counterparty_lawyer: data.counterparty_lawyer || null,
+    title: data.title,
+    description: data.description || null,
+    client_id: data.client_id,
+    status: data.status,
+    priority: data.priority,
     estimated_hours: data.estimated_hours ? parseInt(data.estimated_hours) : null,
     hourly_rate: data.hourly_rate ? parseFloat(data.hourly_rate) : null,
     start_date: data.start_date && data.start_date.trim() !== '' ? data.start_date : null,
@@ -67,6 +70,24 @@ export async function createCase(
   if (error) {
     console.error('Create case error:', error)
     return { message: 'Error en la base de datos: No se pudo crear el caso.' }
+  }
+
+  // Add counterparties
+  if (counterparties.length > 0) {
+    const counterpartyData = counterparties.map(cp => ({
+      case_id: newCase.id,
+      name: cp.name,
+      lawyer: cp.lawyer || null
+    }))
+
+    const { error: counterpartyError } = await supabase
+      .from('case_counterparties')
+      .insert(counterpartyData)
+
+    if (counterpartyError) {
+      console.error('Create counterparties error:', counterpartyError)
+      // Continue despite error, the case was created
+    }
   }
 
   // Add the current user as a member of the case
@@ -110,12 +131,15 @@ export async function updateCase(
   }
 
   const data = validatedFields.data
+  const counterparties = data.counterparties || []
 
   // Convert string numbers to appropriate types and handle optional dates
   const caseData = {
-    ...data,
-    counterparty_name: data.counterparty_name || null,
-    counterparty_lawyer: data.counterparty_lawyer || null,
+    title: data.title,
+    description: data.description || null,
+    client_id: data.client_id,
+    status: data.status,
+    priority: data.priority,
     estimated_hours: data.estimated_hours ? parseInt(data.estimated_hours) : null,
     hourly_rate: data.hourly_rate ? parseFloat(data.hourly_rate) : null,
     start_date: data.start_date && data.start_date.trim() !== '' ? data.start_date : null,
@@ -132,6 +156,29 @@ export async function updateCase(
   if (error) {
     console.error('Update case error:', error)
     return { message: 'Error en la base de datos: No se pudo actualizar el caso.' }
+  }
+
+  // Delete existing counterparties and insert new ones
+  await supabase
+    .from('case_counterparties')
+    .delete()
+    .eq('case_id', caseId)
+
+  if (counterparties.length > 0) {
+    const counterpartyData = counterparties.map(cp => ({
+      case_id: caseId,
+      name: cp.name,
+      lawyer: cp.lawyer || null
+    }))
+
+    const { error: counterpartyError } = await supabase
+      .from('case_counterparties')
+      .insert(counterpartyData)
+
+    if (counterpartyError) {
+      console.error('Update counterparties error:', counterpartyError)
+      // Continue despite error, the case was updated
+    }
   }
 
   revalidatePath('/dashboard/cases')

@@ -32,6 +32,11 @@ export async function createClientAction(
         address: validatedFields.data.address || null,
         company: validatedFields.data.company || null,
         notes: validatedFields.data.notes || null,
+        rut: validatedFields.data.rut || null,
+        ci: validatedFields.data.ci || null,
+        departamento: validatedFields.data.departamento || null,
+        pais: validatedFields.data.pais || null,
+        conyuge: validatedFields.data.conyuge || null,
         created_by: user.id
     }
 
@@ -77,6 +82,11 @@ export async function createClientInline(
             address: null,
             company: validatedFields.data.company || null,
             notes: null,
+            rut: null,
+            ci: null,
+            departamento: null,
+            pais: null,
+            conyuge: null,
             created_by: user.id
         }
 

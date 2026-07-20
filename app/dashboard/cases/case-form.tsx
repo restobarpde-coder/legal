@@ -1,6 +1,6 @@
 'use client'
 
-import { useForm } from 'react-hook-form'
+import { useForm, useFieldArray } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { caseSchema, type CaseFormState } from './validation'
@@ -20,7 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { Loader2, Check, ChevronsUpDown, Plus } from 'lucide-react'
+import { Loader2, Check, ChevronsUpDown, Plus, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 
@@ -61,18 +61,26 @@ export function CaseForm({
     setValue,
     watch,
     formState: { isSubmitting, errors: formErrors },
+    control,
   } = useForm<z.infer<typeof caseSchema>>({
     resolver: zodResolver(caseSchema),
     defaultValues: caseData ? {
       ...caseData,
       start_date: caseData.start_date ? new Date(caseData.start_date).toISOString().split('T')[0] : undefined,
       end_date: caseData.end_date ? new Date(caseData.end_date).toISOString().split('T')[0] : undefined,
+      counterparties: caseData.counterparties || [],
     } : {
       client_id: preselectedClientId || '',
       status: 'active',
       priority: 'medium',
-      start_date: new Date().toISOString().split('T')[0]
+      start_date: new Date().toISOString().split('T')[0],
+      counterparties: [],
     },
+  })
+
+  const { fields, append, remove } = useFieldArray({
+    control,
+    name: 'counterparties'
   })
 
   const watchedClientId = watch('client_id')
@@ -223,34 +231,71 @@ export function CaseForm({
             </div>
           </div>
 
-          {/* Contraparte */}
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="counterparty_name">Nombre de la Contraparte</Label>
-              <Input 
-                id="counterparty_name" 
-                {...register('counterparty_name')} 
-                placeholder="Ej: Juan Pérez"
-              />
-              {(formErrors.counterparty_name || serverErrors?.counterparty_name) && (
-                <p className="text-sm text-red-500">
-                  {String(formErrors.counterparty_name?.message || '') || serverErrors?.counterparty_name?.[0]}
-                </p>
-              )}
+          {/* Contrapartes */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <Label>Contrapartes</Label>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => append({ name: '', lawyer: '' })}
+                disabled={isSubmitting}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Agregar Contraparte
+              </Button>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="counterparty_lawyer">Abogado de la Contraparte</Label>
-              <Input 
-                id="counterparty_lawyer" 
-                {...register('counterparty_lawyer')} 
-                placeholder="Ej: Estudio Jurídico & Asociados"
-              />
-              {(formErrors.counterparty_lawyer || serverErrors?.counterparty_lawyer) && (
-                <p className="text-sm text-red-500">
-                  {String(formErrors.counterparty_lawyer?.message || '') || serverErrors?.counterparty_lawyer?.[0]}
-                </p>
-              )}
-            </div>
+
+            {fields.length === 0 ? (
+              <p className="text-sm text-gray-500">No hay contrapartes agregadas aún. Haz clic en "Agregar Contraparte" para añadir una.</p>
+            ) : (
+              <div className="space-y-4">
+                {fields.map((field, index) => (
+                  <div key={field.id} className="grid gap-4 md:grid-cols-2 p-4 border rounded-lg bg-gray-50 dark:bg-gray-900">
+                    <div className="space-y-2">
+                      <Label htmlFor={`counterparty-${index}-name`}>Nombre de la Contraparte</Label>
+                      <Input
+                        id={`counterparty-${index}-name`}
+                        {...register(`counterparties.${index}.name`)}
+                        placeholder="Ej: Juan Pérez"
+                      />
+                      {formErrors.counterparties?.[index]?.name && (
+                        <p className="text-sm text-red-500">
+                          {String(formErrors.counterparties[index]?.name?.message || '')}
+                        </p>
+                      )}
+                    </div>
+                    <div className="space-y-2 flex flex-col">
+                      <Label htmlFor={`counterparty-${index}-lawyer`}>Abogado de la Contraparte</Label>
+                      <div className="flex gap-2 flex-1">
+                        <Input
+                          id={`counterparty-${index}-lawyer`}
+                          {...register(`counterparties.${index}.lawyer`)}
+                          placeholder="Ej: Estudio Jurídico & Asociados"
+                          className="flex-1"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          onClick={() => remove(index)}
+                          disabled={isSubmitting}
+                          className="shrink-0"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      {formErrors.counterparties?.[index]?.lawyer && (
+                        <p className="text-sm text-red-500">
+                          {String(formErrors.counterparties[index]?.lawyer?.message || '')}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Descripción */}
