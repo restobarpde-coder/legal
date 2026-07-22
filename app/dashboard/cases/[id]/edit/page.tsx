@@ -15,6 +15,11 @@ async function getCase(id: string) {
     .from('cases')
     .select(`
       *,
+      case_counterparties (
+        id,
+        name,
+        lawyer
+      ),
       case_members!inner (
         user_id,
         role
@@ -65,8 +70,10 @@ export default async function EditCasePage({ params }: { params: Promise<{ id: s
     title: caseData.title,
     description: caseData.description || '',
     client_id: caseData.client_id,
-    counterparty_name: caseData.counterparty_name || '',
-    counterparty_lawyer: caseData.counterparty_lawyer || '',
+    counterparties: caseData.case_counterparties?.map((counterparty: { name: string; lawyer: string | null }) => ({
+      name: counterparty.name,
+      lawyer: counterparty.lawyer || '',
+    })) || [],
     status: caseData.status,
     priority: caseData.priority,
     start_date: caseData.start_date,

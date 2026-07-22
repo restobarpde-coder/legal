@@ -232,18 +232,14 @@ export const CasesClient = memo(function CasesClient({ userCanCreateCases }: Cas
                         </span>
                       )}
                     </div>
-                    {(case_.counterparty_name || case_.counterparty_lawyer) && (
-                      <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700 flex items-center gap-4 text-sm text-muted-foreground">
-                        {case_.counterparty_name && (
-                          <span>
-                            <strong>Contraparte:</strong> {case_.counterparty_name}
+                    {case_.case_counterparties?.length > 0 && (
+                      <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700 flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+                        {case_.case_counterparties.map((counterparty) => (
+                          <span key={counterparty.id}>
+                            <strong>Contraparte:</strong> {counterparty.name}
+                            {counterparty.lawyer && ` - ${counterparty.lawyer}`}
                           </span>
-                        )}
-                        {case_.counterparty_lawyer && (
-                          <span>
-                            <strong>Abogado Contraparte:</strong> {case_.counterparty_lawyer}
-                          </span>
-                        )}
+                        ))}
                       </div>
                     )}
                   </div>

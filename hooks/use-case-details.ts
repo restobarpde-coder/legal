@@ -9,8 +9,12 @@ export type CaseDetails = {
     id: string
     title: string
     description?: string
-    counterparty_name: string | null
-    counterparty_lawyer: string | null
+    case_counterparties: {
+      id: string
+      name: string
+      lawyer: string | null
+      created_at?: string
+    }[]
     status: string
     priority: string
     start_date: string
@@ -230,6 +234,24 @@ export function useCaseDetails(caseId: string) {
       )
       .subscribe()
 
+    const counterpartiesChannel = supabase
+      .channel(`case-counterparties-${caseId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'case_counterparties',
+          filter: `case_id=eq.${caseId}`,
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['case', caseId] })
+          queryClient.invalidateQueries({ queryKey: ['case-edit', caseId] })
+          queryClient.invalidateQueries({ queryKey: ['cases'] })
+        }
+      )
+      .subscribe()
+
     // Cleanup subscriptions on unmount
     return () => {
       supabase.removeChannel(caseChannel)
@@ -239,6 +261,7 @@ export function useCaseDetails(caseId: string) {
       supabase.removeChannel(notesChannel)
       supabase.removeChannel(timeEntriesChannel)
       supabase.removeChannel(clientsChannel)
+      supabase.removeChannel(counterpartiesChannel)
     }
   }, [caseId, queryClient, supabase])
   

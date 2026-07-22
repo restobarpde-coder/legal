@@ -55,14 +55,17 @@ export async function GET(request: NextRequest) {
         start_date,
         end_date,
         hourly_rate,
-        counterparty_name,
-        counterparty_lawyer,
         created_at,
         client_id,
         clients (
           id,
           name,
           company
+        ),
+        case_counterparties (
+          id,
+          name,
+          lawyer
         )
       `)
       .in('id', caseIds)

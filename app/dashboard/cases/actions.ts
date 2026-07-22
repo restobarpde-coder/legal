@@ -6,6 +6,25 @@ import { redirect } from 'next/navigation'
 import { requireAuth, getUserProfile } from '@/lib/auth'
 import { caseSchema, type CaseFormState } from './validation'
 
+function parseCaseFormData(formData: FormData) {
+  const values: Record<string, unknown> = Object.fromEntries(formData.entries())
+  const counterparties: { name: string; lawyer?: string }[] = []
+
+  for (const [key, value] of formData.entries()) {
+    const match = key.match(/^counterparties\.(\d+)\.(name|lawyer)$/)
+    if (!match || typeof value !== 'string') continue
+
+    const index = Number(match[1])
+    const field = match[2] as 'name' | 'lawyer'
+    counterparties[index] = counterparties[index] || { name: '' }
+    counterparties[index][field] = value
+    delete values[key]
+  }
+
+  values.counterparties = counterparties.filter((counterparty) => counterparty.name?.trim())
+  return values
+}
+
 export async function createCase(
   prevState: CaseFormState,
   formData: FormData
@@ -27,9 +46,7 @@ export async function createCase(
 
   console.log('User profile:', userProfile)
 
-  const validatedFields = caseSchema.safeParse(
-    Object.fromEntries(formData.entries())
-  )
+  const validatedFields = caseSchema.safeParse(parseCaseFormData(formData))
 
   console.log('Validation result:', validatedFields)
 
@@ -119,9 +136,7 @@ export async function updateCase(
   const supabase = await createClient()
   const returnStateOnSuccess = formData.get('_return_state') === '1'
 
-  const validatedFields = caseSchema.safeParse(
-    Object.fromEntries(formData.entries())
-  )
+  const validatedFields = caseSchema.safeParse(parseCaseFormData(formData))
 
   if (!validatedFields.success) {
     return {

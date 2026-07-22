@@ -8,8 +8,11 @@ type Case = {
   id: string;
   title: string;
   description: string | null;
-  counterparty_name: string | null;
-  counterparty_lawyer: string | null;
+  case_counterparties: {
+    id: string;
+    name: string;
+    lawyer: string | null;
+  }[];
   status: string;
   priority: string;
   start_date: string;
@@ -86,6 +89,21 @@ export function useCases(searchQuery?: string, statusFilter?: string, priorityFi
         () => {
           // The cases list renders client name/company, so client edits must refresh it too.
           queryClient.invalidateQueries({ queryKey: ['cases'] })
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'case_counterparties',
+        },
+        (payload) => {
+          const changedCaseId =
+            (payload.new as { case_id?: string } | null)?.case_id ||
+            (payload.old as { case_id?: string } | null)?.case_id
+
+          invalidateCaseQueries(changedCaseId)
         }
       )
       .subscribe()

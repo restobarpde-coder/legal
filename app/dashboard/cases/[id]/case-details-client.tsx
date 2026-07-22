@@ -926,27 +926,27 @@ export function CaseDetailsClient({ caseId }: CaseDetailsClientProps) {
                     </Card>
 
                     {/* Counterparty info */}
-                    {(caseData.counterparty_name || caseData.counterparty_lawyer) && (
+                    {caseData.case_counterparties?.length > 0 && (
                         <Card>
                             <CardHeader>
                                 <CardTitle className="flex items-center gap-2">
                                     <Users className="h-5 w-5" />
-                                    Contraparte
+                                    Contrapartes
                                 </CardTitle>
                             </CardHeader>
                             <CardContent className="space-y-3">
-                                {caseData.counterparty_name && (
-                                    <div>
+                                {caseData.case_counterparties.map((counterparty) => (
+                                    <div key={counterparty.id}>
                                         <p className="text-sm text-muted-foreground">Nombre</p>
-                                        <p className="font-medium">{caseData.counterparty_name}</p>
+                                        <p className="font-medium">{counterparty.name}</p>
+                                        {counterparty.lawyer && (
+                                            <>
+                                                <p className="mt-2 text-sm text-muted-foreground">Abogado</p>
+                                                <p className="font-medium">{counterparty.lawyer}</p>
+                                            </>
+                                        )}
                                     </div>
-                                )}
-                                {caseData.counterparty_lawyer && (
-                                    <div>
-                                        <p className="text-sm text-muted-foreground">Abogado</p>
-                                        <p className="font-medium">{caseData.counterparty_lawyer}</p>
-                                    </div>
-                                )}
+                                ))}
                             </CardContent>
                         </Card>
                     )}

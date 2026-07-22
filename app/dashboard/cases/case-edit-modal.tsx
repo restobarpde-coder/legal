@@ -26,8 +26,11 @@ type CaseDetailsResponse = {
     title: string
     description: string | null
     client_id: string
-    counterparty_name: string | null
-    counterparty_lawyer: string | null
+    case_counterparties: {
+      id: string
+      name: string
+      lawyer: string | null
+    }[]
     status: string
     priority: string
     start_date: string
@@ -80,8 +83,10 @@ export function CaseEditModal({ caseId, open, onOpenChange }: CaseEditModalProps
       title: caseData.title,
       description: caseData.description || '',
       client_id: caseData.client_id,
-      counterparty_name: caseData.counterparty_name || '',
-      counterparty_lawyer: caseData.counterparty_lawyer || '',
+      counterparties: caseData.case_counterparties?.map((counterparty) => ({
+        name: counterparty.name,
+        lawyer: counterparty.lawyer || '',
+      })) || [],
       status: caseData.status as 'active' | 'pending' | 'closed' | 'archived',
       priority: caseData.priority as 'low' | 'medium' | 'high' | 'urgent',
       start_date: caseData.start_date,

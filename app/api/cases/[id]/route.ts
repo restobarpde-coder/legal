@@ -79,7 +79,13 @@ export async function GET(
       .from('cases')
       .select(`
         *,
-        clients (*)
+        clients (*),
+        case_counterparties (
+          id,
+          name,
+          lawyer,
+          created_at
+        )
       `)
       .eq('id', caseId)
       .single()
