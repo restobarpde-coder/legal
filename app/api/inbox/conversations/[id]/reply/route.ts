@@ -125,7 +125,6 @@ export async function POST(request: NextRequest, { params }: { params: Params })
       return NextResponse.json({ error: 'WhatsApp send failed', detail: errMsg }, { status: 502 })
     }
 
-    await updateConversationSummary(svc, conversationId, content || `[${attachments.length} archivo${attachments.length === 1 ? '' : 's'}]`)
     const persistedMessage = await getPersistedReply(svc, msg.id)
     return NextResponse.json({ success: true, message_id: msg.id, message: persistedMessage })
   }
@@ -231,7 +230,6 @@ export async function POST(request: NextRequest, { params }: { params: Params })
       return NextResponse.json({ error: 'Email send failed', message_id: msg.id }, { status: 502 })
     }
 
-    await updateConversationSummary(svc, conversationId, content || `[${attachments.length} archivo${attachments.length === 1 ? '' : 's'}]`)
     const persistedMessage = await getPersistedReply(svc, msg.id)
     return NextResponse.json({ success: true, message_id: msg.id, message: persistedMessage })
   }
@@ -297,19 +295,6 @@ function toWhatsAppMediaType(mimeType: string): WhatsAppMediaType {
   if (mimeType.startsWith('audio/')) return 'audio'
   if (mimeType.startsWith('video/')) return 'video'
   return 'document'
-}
-
-// ─── Helper ───────────────────────────────────────────────────
-
-async function updateConversationSummary(
-  svc:            ReturnType<typeof createServiceClient>,
-  conversationId: string,
-  content:        string
-) {
-  await svc.from('inbox_conversations').update({
-    last_message_at:      new Date().toISOString(),
-    last_message_preview: content.slice(0, 200),
-  }).eq('id', conversationId)
 }
 
 async function getPersistedReply(

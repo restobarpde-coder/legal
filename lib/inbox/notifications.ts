@@ -17,7 +17,7 @@ export async function notifyInboxMessage(
 ) {
   const { data: conversation, error: conversationError } = await supabase
     .from('inbox_conversations')
-    .select('id, assigned_user_id, contact_name, contact_email, contact_phone')
+    .select('id, inbox_type, assigned_user_id, contact_name, contact_email, contact_phone')
     .eq('id', input.conversationId)
     .single()
 
@@ -25,19 +25,25 @@ export async function notifyInboxMessage(
     throw new Error(`Could not load inbox conversation for notification: ${conversationError?.message ?? 'not found'}`)
   }
 
-  let recipientIds: string[] = conversation.assigned_user_id ? [conversation.assigned_user_id] : []
+  let recipientIds: string[]
 
-  if (recipientIds.length === 0) {
-    const { data: admins, error: adminsError } = await supabase
+  if (conversation.inbox_type === 'email_personal') {
+    if (!conversation.assigned_user_id) {
+      throw new Error(`Personal inbox conversation ${conversation.id} has no owner`)
+    }
+    recipientIds = [conversation.assigned_user_id]
+  } else if (conversation.inbox_type === 'email_shared' || conversation.inbox_type === 'whatsapp_shared') {
+    const { data: users, error: usersError } = await supabase
       .from('users')
       .select('id')
-      .eq('role', 'admin')
 
-    if (adminsError) {
-      throw new Error(`Could not load inbox notification recipients: ${adminsError.message}`)
+    if (usersError) {
+      throw new Error(`Could not load inbox notification recipients: ${usersError.message}`)
     }
 
-    recipientIds = (admins ?? []).map(admin => admin.id)
+    recipientIds = (users ?? []).map(user => user.id)
+  } else {
+    throw new Error(`Unsupported inbox type for conversation ${conversation.id}: ${conversation.inbox_type}`)
   }
 
   if (recipientIds.length === 0) return

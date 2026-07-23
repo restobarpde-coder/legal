@@ -75,26 +75,6 @@ function sortConversations(items: Conversation[]) {
   })
 }
 
-function matchesConversationFilters(conversation: Conversation, channel: Channel, status: Status) {
-  return (channel === 'all' || conversation.channel === channel)
-    && (status === 'all' || conversation.status === status)
-}
-
-function upsertConversation(
-  items: Conversation[],
-  incoming: Conversation,
-  channel: Channel,
-  status: Status
-) {
-  const existing = items.find(item => item.id === incoming.id)
-  const merged = existing ? { ...existing, ...incoming } : incoming
-  const withoutIncoming = items.filter(item => item.id !== incoming.id)
-  const next = matchesConversationFilters(merged, channel, status)
-    ? [...withoutIncoming, merged]
-    : withoutIncoming
-  return sortConversations(next)
-}
-
 function sortMessages(items: Message[]) {
   return [...items].sort((left, right) => {
     const leftTime = new Date(left.sent_at ?? left.created_at).getTime()
@@ -103,24 +83,13 @@ function sortMessages(items: Message[]) {
   })
 }
 
-function upsertMessage(items: Message[], incoming: Message, preferExisting = false) {
+function upsertMessage(items: Message[], incoming: Message) {
   const existing = items.find(item => item.id === incoming.id)
-  const merged = existing
-    ? preferExisting
-      ? { ...incoming, ...existing }
-      : { ...existing, ...incoming }
-    : incoming
+  const merged = existing ? { ...existing, ...incoming } : incoming
   return sortMessages([
     ...items.filter(item => item.id !== incoming.id),
     merged,
   ])
-}
-
-function mergeMessageSnapshot(items: Message[], snapshot: Message[]) {
-  return snapshot.reduce(
-    (current, message) => upsertMessage(current, message, true),
-    items
-  )
 }
 
 function formatDate(value: string | null) {
@@ -161,6 +130,7 @@ export function MessagesInbox() {
   const [files, setFiles] = useState<File[]>([])
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [realtimeConnected, setRealtimeConnected] = useState(false)
   const [isComposing, setIsComposing] = useState(false)
   // Master-detail en móvil: se muestra la lista o el chat, nunca ambos.
   const [mobilePane, setMobilePane] = useState<'list' | 'chat'>('list')
@@ -173,8 +143,6 @@ export function MessagesInbox() {
   const lastScrolledConversationRef = useRef<string | null>(null)
   const selectedIdRef = useRef<string | null>(null)
   const messagesConversationIdRef = useRef<string | null>(null)
-  const channelRef = useRef<Channel>(channel)
-  const statusRef = useRef<Status>(status)
   const conversationsRequestRef = useRef(0)
   const messagesRequestRef = useRef(0)
   const conversationsAbortRef = useRef<AbortController | null>(null)
@@ -186,9 +154,6 @@ export function MessagesInbox() {
   const handledNotificationRef = useRef<string | null>(null)
   const loadConversationsRef = useRef<(preferredId?: string, options?: LoadOptions) => Promise<void>>(async () => {})
   const loadMessagesRef = useRef<(conversationId: string, options?: LoadOptions) => Promise<void>>(async () => {})
-
-  channelRef.current = channel
-  statusRef.current = status
 
   useEffect(() => { selectedIdRef.current = selectedId }, [selectedId])
   useEffect(() => { messagesConversationIdRef.current = messagesConversationId }, [messagesConversationId])
@@ -273,9 +238,7 @@ export function MessagesInbox() {
       if (!response.ok) throw new Error(result.error ?? 'No fue posible cargar los mensajes')
       if (requestId !== messagesRequestRef.current || selectedIdRef.current !== conversationId) return
       const snapshot = sortMessages(result.messages ?? [])
-      setMessages(current => messagesConversationIdRef.current === conversationId
-        ? mergeMessageSnapshot(current, snapshot)
-        : snapshot)
+      setMessages(snapshot)
       setMessagesConversationId(conversationId)
       messagesConversationIdRef.current = conversationId
     } catch (err) {
@@ -422,108 +385,57 @@ export function MessagesInbox() {
 
   useEffect(() => {
     let active = true
-    let hasSubscribed = false
-    let needsRecovery = false
     const channel = supabase
       .channel('inbox-realtime')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'inbox_messages' }, (payload) => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'inbox_messages' }, (payload) => {
         if (!active) return
         const message = payload.new as Message
-        if (message.conversation_id && message.conversation_id === selectedIdRef.current) {
-          setMessages(current => messagesConversationIdRef.current === message.conversation_id
-            ? upsertMessage(current, message)
-            : [message])
-          setMessagesConversationId(message.conversation_id)
-          messagesConversationIdRef.current = message.conversation_id
-          scheduleDetailReconciliation()
-          if (message.direction === 'inbound' && document.visibilityState === 'visible') {
-            void markConversationRead(message.conversation_id)
-          }
-        }
-      })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'inbox_messages' }, (payload) => {
-        if (!active) return
-        const message = payload.new as Message
-        if (message.conversation_id && message.conversation_id === selectedIdRef.current) {
-          setMessages(current => messagesConversationIdRef.current === message.conversation_id
-            ? upsertMessage(current, message)
-            : [message])
-          setMessagesConversationId(message.conversation_id)
-          messagesConversationIdRef.current = message.conversation_id
-          scheduleDetailReconciliation()
-        }
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'inbox_conversations' }, (payload) => {
-        if (!active) return
-        if (payload.eventType === 'DELETE') {
-          const removed = payload.old as { id?: string }
-          if (removed.id) setConversations(current => current.filter(conversation => conversation.id !== removed.id))
-        } else {
-          const updated = payload.new as Conversation
-          if (updated.id) {
-            const nextConversation = normalizeConversationReadState(updated)
-            setConversations(current => upsertConversation(
-              current,
-              nextConversation,
-              channelRef.current,
-              statusRef.current
-            ))
-            if (shouldKeepConversationRead(updated.id)
-              && updated.unread_count > 0
-            ) {
-              void markConversationRead(updated.id)
-            }
-          }
-        }
-        scheduleListReconciliation()
-      })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, (payload) => {
-        if (!active) return
-        const notification = payload.new as {
-          related_entity_type?: string | null
-          related_entity_id?: string | null
-          metadata?: { conversation_id?: string } | null
-        }
-        const conversationId = notification.related_entity_type === 'inbox_conversation'
-          ? notification.related_entity_id
-          : notification.related_entity_type === 'inbox_message'
-            ? notification.metadata?.conversation_id
-            : null
-        if (!conversationId) return
+        if (!message.conversation_id) return
 
-        // Notifications are persisted after message ingestion, so they are a
-        // reliable final signal to reconcile any delayed/missed message event.
-        scheduleListReconciliation(0)
-        if (conversationId === selectedIdRef.current) {
+        if (payload.eventType === 'INSERT') {
+          scheduleListReconciliation(0)
+        }
+
+        if (message.conversation_id === selectedIdRef.current) {
           scheduleDetailReconciliation(0)
-          if (document.visibilityState === 'visible') void markConversationRead(conversationId)
+          if (payload.eventType === 'INSERT'
+            && message.direction === 'inbound'
+            && document.visibilityState === 'visible'
+          ) {
+            void markConversationRead(message.conversation_id)
+            window.setTimeout(() => {
+              if (active) dismissConversationNotifications(message.conversation_id!)
+            }, 500)
+          }
         }
       })
-    // The Realtime socket must carry the session JWT before the channel joins:
-    // joining as `anon` makes RLS drop every event without any client error.
+
     void (async () => {
       await supabase.realtime.setAuth()
       if (!active) return
       channel.subscribe((subscriptionStatus) => {
         if (!active) return
         if (subscriptionStatus === 'SUBSCRIBED') {
-          if (hasSubscribed && needsRecovery) {
-            scheduleListReconciliation(0)
-            scheduleDetailReconciliation(0)
-          }
-          hasSubscribed = true
-          needsRecovery = false
+          setRealtimeConnected(true)
+          scheduleListReconciliation(0)
+          scheduleDetailReconciliation(0)
           return
         }
-        if (hasSubscribed) needsRecovery = true
+        if (subscriptionStatus === 'CLOSED'
+          || subscriptionStatus === 'CHANNEL_ERROR'
+          || subscriptionStatus === 'TIMED_OUT'
+        ) {
+          setRealtimeConnected(false)
+        }
       })
     })()
 
     return () => {
       active = false
+      setRealtimeConnected(false)
       void supabase.removeChannel(channel)
     }
-  }, [markConversationRead, normalizeConversationReadState, scheduleDetailReconciliation, scheduleListReconciliation, shouldKeepConversationRead, supabase])
+  }, [dismissConversationNotifications, markConversationRead, scheduleDetailReconciliation, scheduleListReconciliation, supabase])
 
   useEffect(() => {
     const reconcileVisibleTab = () => {
@@ -550,14 +462,15 @@ export function MessagesInbox() {
   }, [dismissConversationNotifications, markConversationRead, scheduleDetailReconciliation, scheduleListReconciliation])
 
   useEffect(() => {
+    if (realtimeConnected) return
     const interval = window.setInterval(() => {
       if (document.visibilityState !== 'visible') return
       scheduleListReconciliation(0)
       scheduleDetailReconciliation(0)
-    }, 15_000)
+    }, 5_000)
 
     return () => window.clearInterval(interval)
-  }, [scheduleDetailReconciliation, scheduleListReconciliation])
+  }, [realtimeConnected, scheduleDetailReconciliation, scheduleListReconciliation])
 
   useEffect(() => {
     if (!visibleMessages.length) return

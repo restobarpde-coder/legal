@@ -203,12 +203,6 @@ export async function syncEmailAccount(accountId: string): Promise<SyncResult> {
           }).eq('id', storedMessage.id)
         }
 
-        await supabase.from('inbox_conversations').update({
-          last_message_at:      sentAt.toISOString(),
-          last_message_preview: text?.slice(0, 200) ?? '',
-        }).eq('id', conversationId)
-        await supabase.rpc('inbox_increment_unread', { p_conversation_id: conversationId })
-
         try {
           await notifyInboxMessage(supabase, {
             conversationId,

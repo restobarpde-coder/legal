@@ -175,19 +175,6 @@ async function handleIncomingMessage(
     }
   }
 
-  // Update conversation summary
-  const { data: conv } = await supabase
-    .from('inbox_conversations')
-    .select('unread_count')
-    .eq('id', conversationId)
-    .single()
-
-  await supabase.from('inbox_conversations').update({
-    last_message_at:      sentAt.toISOString(),
-    last_message_preview: textContent?.slice(0, 200) ?? `[${contentType}]`,
-    unread_count:         (conv?.unread_count ?? 0) + 1,
-  }).eq('id', conversationId)
-
   try {
     await notifyInboxMessage(supabase, {
       conversationId,
