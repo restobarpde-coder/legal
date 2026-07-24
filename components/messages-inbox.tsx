@@ -83,15 +83,6 @@ function sortMessages(items: Message[]) {
   })
 }
 
-function upsertMessage(items: Message[], incoming: Message) {
-  const existing = items.find(item => item.id === incoming.id)
-  const merged = existing ? { ...existing, ...incoming } : incoming
-  return sortMessages([
-    ...items.filter(item => item.id !== incoming.id),
-    merged,
-  ])
-}
-
 function formatDate(value: string | null) {
   if (!value) return ''
   return new Intl.DateTimeFormat('es-UY', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' }).format(new Date(value))
@@ -130,7 +121,6 @@ export function MessagesInbox() {
   const [files, setFiles] = useState<File[]>([])
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [realtimeConnected, setRealtimeConnected] = useState(false)
   const [isComposing, setIsComposing] = useState(false)
   // Master-detail en móvil: se muestra la lista o el chat, nunca ambos.
   const [mobilePane, setMobilePane] = useState<'list' | 'chat'>('list')
@@ -152,6 +142,7 @@ export function MessagesInbox() {
   const readRequestsRef = useRef(new Set<string>())
   const pendingReadRequestsRef = useRef(new Set<string>())
   const handledNotificationRef = useRef<string | null>(null)
+  const heartbeatVersionRef = useRef<{ conversations: string; messages: string } | null>(null)
   const loadConversationsRef = useRef<(preferredId?: string, options?: LoadOptions) => Promise<void>>(async () => {})
   const loadMessagesRef = useRef<(conversationId: string, options?: LoadOptions) => Promise<void>>(async () => {})
 
@@ -416,23 +407,14 @@ export function MessagesInbox() {
       channel.subscribe((subscriptionStatus) => {
         if (!active) return
         if (subscriptionStatus === 'SUBSCRIBED') {
-          setRealtimeConnected(true)
           scheduleListReconciliation(0)
           scheduleDetailReconciliation(0)
-          return
-        }
-        if (subscriptionStatus === 'CLOSED'
-          || subscriptionStatus === 'CHANNEL_ERROR'
-          || subscriptionStatus === 'TIMED_OUT'
-        ) {
-          setRealtimeConnected(false)
         }
       })
     })()
 
     return () => {
       active = false
-      setRealtimeConnected(false)
       void supabase.removeChannel(channel)
     }
   }, [dismissConversationNotifications, markConversationRead, scheduleDetailReconciliation, scheduleListReconciliation, supabase])
@@ -462,15 +444,44 @@ export function MessagesInbox() {
   }, [dismissConversationNotifications, markConversationRead, scheduleDetailReconciliation, scheduleListReconciliation])
 
   useEffect(() => {
-    if (realtimeConnected) return
-    const interval = window.setInterval(() => {
-      if (document.visibilityState !== 'visible') return
-      scheduleListReconciliation(0)
-      scheduleDetailReconciliation(0)
-    }, 5_000)
+    let active = true
+    let checking = false
 
-    return () => window.clearInterval(interval)
-  }, [realtimeConnected, scheduleDetailReconciliation, scheduleListReconciliation])
+    const checkVersion = async () => {
+      if (document.visibilityState !== 'visible') return
+      if (checking) return
+      checking = true
+      try {
+        const conversationId = selectedIdRef.current
+        const query = conversationId ? `?conversation=${encodeURIComponent(conversationId)}` : ''
+        const response = await fetch(`/api/inbox/version${query}`, { cache: 'no-store' })
+        if (!response.ok || !active) return
+        const result = await response.json() as {
+          versions: { conversations: string; messages: string }
+        }
+        const previous = heartbeatVersionRef.current
+        heartbeatVersionRef.current = result.versions
+        if (!previous || previous.conversations !== result.versions.conversations) {
+          scheduleListReconciliation(0)
+        }
+        if (!previous || previous.messages !== result.versions.messages) {
+          scheduleDetailReconciliation(0)
+        }
+      } catch {
+        // Realtime remains primary; a later heartbeat will retry automatically.
+      } finally {
+        checking = false
+      }
+    }
+
+    void checkVersion()
+    const interval = window.setInterval(() => void checkVersion(), 3_000)
+
+    return () => {
+      active = false
+      window.clearInterval(interval)
+    }
+  }, [scheduleDetailReconciliation, scheduleListReconciliation])
 
   useEffect(() => {
     if (!visibleMessages.length) return
@@ -523,20 +534,17 @@ export function MessagesInbox() {
         throw new Error(result.error ?? 'No fue posible enviar el mensaje')
       }
       if (selectedIdRef.current === conversationId) {
-        if (result.message) {
-          setMessages(current => upsertMessage(current, result.message as Message))
-          setMessagesConversationId(conversationId)
-          messagesConversationIdRef.current = conversationId
-        } else {
-          await loadMessages(conversationId, { background: true })
-        }
         setDraft('')
         setFiles([])
         if (fileInputRef.current) fileInputRef.current.value = ''
         void markConversationRead(conversationId)
-        scheduleDetailReconciliation()
       }
-      void loadConversations(undefined, { background: true })
+      await Promise.all([
+        selectedIdRef.current === conversationId
+          ? loadMessages(conversationId, { background: true })
+          : Promise.resolve(),
+        loadConversations(undefined, { background: true }),
+      ])
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No fue posible enviar el mensaje')
     } finally {

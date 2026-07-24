@@ -81,6 +81,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   const userIdRef = useRef<string | null>(null)
   const loadRequestRef = useRef(0)
   const eventVersionRef = useRef(0)
+  const heartbeatVersionRef = useRef<string | null>(null)
   const notificationEventsRef = useRef(new Map<string, { version: number; notification: Notification }>())
 
   const loadNotifications = useCallback(async (userId: string, initial = false) => {
@@ -209,20 +210,40 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   }, [loadNotifications, supabase])
 
   useEffect(() => {
-    const reconcile = () => {
-      if (document.visibilityState !== 'visible' || !userIdRef.current) return
-      void loadNotifications(userIdRef.current)
+    let active = true
+    let checking = false
+
+    const reconcile = async () => {
+      const userId = userIdRef.current
+      if (document.visibilityState !== 'visible' || !userId || checking) return
+      checking = true
+      try {
+        const response = await fetch('/api/inbox/version', { cache: 'no-store' })
+        if (!response.ok || !active) return
+        const result = await response.json() as { versions: { notifications: string } }
+        const previousVersion = heartbeatVersionRef.current
+        heartbeatVersionRef.current = result.versions.notifications
+        if (!previousVersion || previousVersion !== result.versions.notifications) {
+          void loadNotifications(userId)
+        }
+      } catch {
+        // Realtime remains primary; a later heartbeat will retry automatically.
+      } finally {
+        checking = false
+      }
     }
     const reconcileOnline = () => {
       if (userIdRef.current) void loadNotifications(userIdRef.current)
     }
-    const interval = window.setInterval(reconcile, 30_000)
+    const reconcileVisible = () => void reconcile()
+    const interval = window.setInterval(() => void reconcile(), 3_000)
 
-    document.addEventListener('visibilitychange', reconcile)
+    document.addEventListener('visibilitychange', reconcileVisible)
     window.addEventListener('online', reconcileOnline)
     return () => {
+      active = false
       window.clearInterval(interval)
-      document.removeEventListener('visibilitychange', reconcile)
+      document.removeEventListener('visibilitychange', reconcileVisible)
       window.removeEventListener('online', reconcileOnline)
     }
   }, [loadNotifications])
