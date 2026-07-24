@@ -218,12 +218,12 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       if (document.visibilityState !== 'visible' || !userId || checking) return
       checking = true
       try {
-        const response = await fetch('/api/inbox/version', { cache: 'no-store' })
+        const response = await fetch('/api/notifications/version', { cache: 'no-store' })
         if (!response.ok || !active) return
-        const result = await response.json() as { versions: { notifications: string } }
+        const result = await response.json() as { version: string }
         const previousVersion = heartbeatVersionRef.current
-        heartbeatVersionRef.current = result.versions.notifications
-        if (!previousVersion || previousVersion !== result.versions.notifications) {
+        heartbeatVersionRef.current = result.version
+        if (!previousVersion || previousVersion !== result.version) {
           void loadNotifications(userId)
         }
       } catch {

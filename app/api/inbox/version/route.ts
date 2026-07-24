@@ -24,15 +24,6 @@ export async function GET(request: NextRequest) {
     .order('updated_at', { ascending: false })
     .limit(1)
 
-  const notificationQuery = supabase
-    .from('notifications')
-    .select('id, created_at', { count: 'exact' })
-    .eq('user_id', user.id)
-    .is('read_at', null)
-    .is('dismissed_at', null)
-    .order('created_at', { ascending: false })
-    .limit(1)
-
   const messageQuery = conversationId
     ? supabase
         .from('inbox_messages')
@@ -42,13 +33,12 @@ export async function GET(request: NextRequest) {
         .limit(1)
     : Promise.resolve({ data: [], error: null })
 
-  const [conversationResult, messageResult, notificationResult] = await Promise.all([
+  const [conversationResult, messageResult] = await Promise.all([
     conversationQuery,
     messageQuery,
-    notificationQuery,
   ])
 
-  const error = conversationResult.error || messageResult.error || notificationResult.error
+  const error = conversationResult.error || messageResult.error
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
@@ -62,10 +52,6 @@ export async function GET(request: NextRequest) {
       messages: fingerprint({
         conversationId,
         latest: messageResult.data?.[0] ?? null,
-      }),
-      notifications: fingerprint({
-        count: notificationResult.count ?? 0,
-        latest: notificationResult.data?.[0] ?? null,
       }),
     },
   })
