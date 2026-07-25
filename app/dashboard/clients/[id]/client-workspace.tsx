@@ -9,22 +9,13 @@ import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ConversationList } from "@/components/inbox/conversation-list"
 import { ClientMessageActions } from "@/components/clients/client-message-actions"
-import {
-  Building,
-  CheckSquare,
-  Edit,
-  FileText,
-  FolderOpen,
-  Mail,
-  MapPin,
-  MessageSquare,
-  Mic,
-  Phone,
-  Plus,
-  Scale,
-  Users,
-} from "lucide-react"
+import { Building, Edit, Mail, MapPin, MessageSquare, Phone, Plus, Scale } from "lucide-react"
 
+/**
+ * El cliente solo conoce sus CASOS. Todo lo que se produce trabajando
+ * (documentos, declaraciones, notas, fotos, tareas) vive dentro del caso.
+ * Acá únicamente se resume cuánto trabajo abierto tiene cada uno.
+ */
 export type ClientCaseSummary = {
   id: string
   title: string
@@ -34,27 +25,8 @@ export type ClientCaseSummary = {
   start_date: string | null
   end_date: string | null
   created_at: string
-  taskCount: number
   openTaskCount: number
-  documentCount: number
-  noteCount: number
-  declarationCount: number
-}
-
-export type ActivityItem = {
-  id: string
-  kind: "task" | "document" | "note" | "declaration"
-  title: string
-  case_id: string | null
-  date: string
-}
-
-export type ClientTeamMember = {
-  user_id: string
-  name: string
-  email: string | null
-  role: string
-  case_ids: string[]
+  lastActivityAt: string | null
 }
 
 export type ClientRecord = {
@@ -76,11 +48,9 @@ export type ClientRecord = {
 type Props = {
   client: ClientRecord
   cases: ClientCaseSummary[]
-  team: ClientTeamMember[]
-  recentActivity: ActivityItem[]
 }
 
-const TAB_VALUES = ["resumen", "casos", "equipo", "chat"] as const
+const TAB_VALUES = ["datos", "casos", "chat"] as const
 
 type TabValue = (typeof TAB_VALUES)[number]
 
@@ -98,30 +68,23 @@ const PRIORITY_CLASS: Record<string, string> = {
   low: "text-gray-600 bg-gray-50 dark:text-gray-400 dark:bg-gray-950",
 }
 
-const ACTIVITY_META: Record<ActivityItem["kind"], { icon: typeof FileText; label: string }> = {
-  task: { icon: CheckSquare, label: "Tarea" },
-  document: { icon: FolderOpen, label: "Documento" },
-  note: { icon: FileText, label: "Nota" },
-  declaration: { icon: Mic, label: "Declaración" },
-}
-
 function formatDate(value: string | null) {
   if (!value) return "—"
   return new Date(value).toLocaleDateString("es-ES")
 }
 
-export function ClientWorkspace({ client, cases, team, recentActivity }: Props) {
+export function ClientWorkspace({ client, cases }: Props) {
   const router = useRouter()
   const searchParams = useSearchParams()
 
   const requestedTab = searchParams.get("tab") as TabValue | null
   const activeTab: TabValue =
-    requestedTab && TAB_VALUES.includes(requestedTab) ? requestedTab : "resumen"
+    requestedTab && TAB_VALUES.includes(requestedTab) ? requestedTab : "datos"
 
   // La pestaña vive en la URL para que se pueda compartir y sobreviva al refresh.
   const handleTabChange = (value: string) => {
     const params = new URLSearchParams(searchParams.toString())
-    if (value === "resumen") {
+    if (value === "datos") {
       params.delete("tab")
     } else {
       params.set("tab", value)
@@ -130,62 +93,22 @@ export function ClientWorkspace({ client, cases, team, recentActivity }: Props) 
     router.replace(`/dashboard/clients/${client.id}${query ? `?${query}` : ""}`, { scroll: false })
   }
 
-  const caseTitleById = new Map(cases.map(c => [c.id, c.title]))
-  const activeCases = cases.filter(c => c.status === "active")
-  const totals = cases.reduce(
-    (acc, c) => ({
-      openTasks: acc.openTasks + c.openTaskCount,
-      documents: acc.documents + c.documentCount,
-    }),
-    { openTasks: 0, documents: 0 }
-  )
-
-  const caseLabel = (caseId: string | null) =>
-    caseId ? caseTitleById.get(caseId) ?? "Caso" : "Sin caso"
+  const hasIdentification = client.rut || client.ci || client.conyuge
 
   return (
     <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
-      <TabsList className="grid w-full grid-cols-4 h-auto">
-        <TabsTrigger value="resumen" className="text-xs sm:text-sm">Resumen</TabsTrigger>
+      <TabsList className="grid w-full max-w-md grid-cols-3 h-auto">
+        <TabsTrigger value="datos" className="text-xs sm:text-sm">Datos</TabsTrigger>
         <TabsTrigger value="casos" className="text-xs sm:text-sm">Casos ({cases.length})</TabsTrigger>
-        <TabsTrigger value="equipo" className="text-xs sm:text-sm">Equipo ({team.length})</TabsTrigger>
         <TabsTrigger value="chat" className="text-xs sm:text-sm">Chat</TabsTrigger>
       </TabsList>
 
-      {/* ---------------------------------------------------------------- Resumen */}
-      <TabsContent value="resumen" className="space-y-6">
-        {/* Los totales son un rollup de los casos del cliente: se leen acá, se
-            trabajan dentro de cada caso. */}
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {[
-            { label: "Casos activos", value: activeCases.length, total: cases.length, icon: Scale },
-            { label: "Tareas abiertas", value: totals.openTasks, icon: CheckSquare },
-            { label: "Documentos", value: totals.documents, icon: FolderOpen },
-            { label: "Equipo asignado", value: team.length, icon: Users },
-          ].map(stat => (
-            <Card key={stat.label}>
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">{stat.label}</p>
-                    <p className="text-2xl font-bold">
-                      {stat.value}
-                      {stat.total !== undefined && stat.total !== stat.value && (
-                        <span className="text-base font-normal text-muted-foreground"> / {stat.total}</span>
-                      )}
-                    </p>
-                  </div>
-                  <stat.icon className="h-8 w-8 text-muted-foreground" />
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-
+      {/* ------------------------------------------------------------------ Datos */}
+      <TabsContent value="datos">
         <div className="grid gap-6 md:grid-cols-3">
           <Card className="md:col-span-2">
             <CardHeader>
-              <CardTitle>Información de Contacto</CardTitle>
+              <CardTitle>Datos de contacto</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
@@ -228,7 +151,7 @@ export function ClientWorkspace({ client, cases, team, recentActivity }: Props) 
                 )}
               </div>
 
-              {(client.rut || client.ci || client.conyuge) && (
+              {hasIdentification && (
                 <>
                   <Separator />
                   <div className="grid gap-3 sm:grid-cols-3 text-sm">
@@ -266,70 +189,31 @@ export function ClientWorkspace({ client, cases, team, recentActivity }: Props) 
             </CardContent>
           </Card>
 
-          <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Siguiente paso</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <Button size="sm" className="w-full justify-start" asChild>
-                  <Link href={`/dashboard/cases/new?client=${client.id}`}>
-                    <Scale className="h-4 w-4 mr-2" />
-                    Nuevo caso
-                  </Link>
-                </Button>
-                <ClientMessageActions
-                  clientId={client.id}
-                  clientName={client.name}
-                  clientEmail={client.email}
-                  clientPhone={client.phone}
-                />
-                <p className="pt-1 text-xs text-muted-foreground">
-                  Tareas, documentos, notas y declaraciones se crean dentro de un caso.
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Actividad reciente</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {recentActivity.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Sin actividad todavía.</p>
-                ) : (
-                  recentActivity.map(item => {
-                    const meta = ACTIVITY_META[item.kind]
-                    const content = (
-                      <>
-                        <meta.icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                        <span className="min-w-0">
-                          <span className="block truncate text-sm font-medium">{item.title}</span>
-                          <span className="block text-xs text-muted-foreground truncate">
-                            {meta.label} · {caseLabel(item.case_id)} · {formatDate(item.date)}
-                          </span>
-                        </span>
-                      </>
-                    )
-
-                    return item.case_id ? (
-                      <Link
-                        key={`${item.kind}-${item.id}`}
-                        href={`/dashboard/cases/${item.case_id}`}
-                        className="flex items-start gap-2 rounded-md p-1 -m-1 transition-colors hover:bg-muted/50"
-                      >
-                        {content}
-                      </Link>
-                    ) : (
-                      <div key={`${item.kind}-${item.id}`} className="flex items-start gap-2">
-                        {content}
-                      </div>
-                    )
-                  })
-                )}
-              </CardContent>
-            </Card>
-          </div>
+          <Card className="h-fit">
+            <CardHeader>
+              <CardTitle>Acciones</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <Button size="sm" className="w-full justify-start" asChild>
+                <Link href={`/dashboard/cases/new?client=${client.id}`}>
+                  <Scale className="h-4 w-4 mr-2" />
+                  Nuevo caso
+                </Link>
+              </Button>
+              <ClientMessageActions
+                clientId={client.id}
+                clientName={client.name}
+                clientEmail={client.email}
+                clientPhone={client.phone}
+              />
+              <Button variant="outline" size="sm" className="w-full justify-start bg-transparent" asChild>
+                <Link href={`/dashboard/clients/${client.id}/edit`}>
+                  <Edit className="h-4 w-4 mr-2" />
+                  Editar datos
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
         </div>
       </TabsContent>
 
@@ -337,11 +221,11 @@ export function ClientWorkspace({ client, cases, team, recentActivity }: Props) 
       <TabsContent value="casos">
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-4">
               <div>
-                <CardTitle>Casos del cliente</CardTitle>
+                <CardTitle>Casos</CardTitle>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Cada caso guarda sus tareas, documentos, notas y declaraciones.
+                  Entrá a un caso para ver sus documentos, declaraciones, notas, fotos y tareas.
                 </p>
               </div>
               <Button size="sm" asChild>
@@ -369,10 +253,14 @@ export function ClientWorkspace({ client, cases, team, recentActivity }: Props) 
               </div>
             ) : (
               cases.map(case_ => (
-                <div key={case_.id} className="rounded-lg border p-4">
-                  <Link href={`/dashboard/cases/${case_.id}`} className="group block">
+                <Link
+                  key={case_.id}
+                  href={`/dashboard/cases/${case_.id}`}
+                  className="flex items-center justify-between gap-4 rounded-lg border p-4 transition-colors hover:bg-muted/50"
+                >
+                  <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2 mb-1">
-                      <h4 className="font-medium truncate group-hover:underline">{case_.title}</h4>
+                      <h4 className="font-medium truncate">{case_.title}</h4>
                       <Badge variant={CASE_STATUS_VARIANT[case_.status] ?? "outline"}>{case_.status}</Badge>
                       <Badge className={PRIORITY_CLASS[case_.priority]} variant="outline">
                         {case_.priority}
@@ -383,89 +271,15 @@ export function ClientWorkspace({ client, cases, team, recentActivity }: Props) 
                       Inicio: {formatDate(case_.start_date)}
                       {case_.end_date ? ` · Fin: ${formatDate(case_.end_date)}` : ""}
                     </p>
-                  </Link>
-
-                  {/* Atajos al contenido del caso: el trabajo vive ahí adentro. */}
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {[
-                      { label: "Tareas", count: case_.taskCount, extra: case_.openTaskCount, tab: "tasks", icon: CheckSquare },
-                      { label: "Documentos", count: case_.documentCount, tab: "documents", icon: FolderOpen },
-                      { label: "Notas", count: case_.noteCount, tab: "notes", icon: FileText },
-                      { label: "Declaraciones", count: case_.declarationCount, tab: "declarations", icon: Mic },
-                    ].map(shortcut => (
-                      <Button key={shortcut.tab} variant="outline" size="sm" asChild>
-                        <Link href={`/dashboard/cases/${case_.id}?tab=${shortcut.tab}`}>
-                          <shortcut.icon className="h-3.5 w-3.5 mr-1.5" />
-                          {shortcut.label}
-                          <span className="ml-1.5 text-muted-foreground">
-                            {shortcut.count}
-                            {shortcut.extra !== undefined && shortcut.extra > 0 && ` · ${shortcut.extra} abiertas`}
-                          </span>
-                        </Link>
-                      </Button>
-                    ))}
-                  </div>
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
-      </TabsContent>
-
-      {/* ----------------------------------------------------------------- Equipo */}
-      <TabsContent value="equipo">
-        <Card>
-          <CardHeader>
-            <div>
-              <CardTitle>Equipo asignado</CardTitle>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Quiénes trabajan en los casos de este cliente. Se administra desde cada caso.
-              </p>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {team.length === 0 ? (
-              <div className="text-center py-10">
-                <Users className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-                <h3 className="font-semibold mb-1">Sin equipo asignado</h3>
-                <p className="text-sm text-muted-foreground mb-4">
-                  El equipo se administra desde cada caso del cliente.
-                </p>
-                <Button asChild size="sm">
-                  <Link
-                    href={
-                      cases[0]
-                        ? `/dashboard/cases/${cases[0].id}`
-                        : `/dashboard/cases/new?client=${client.id}`
-                    }
-                  >
-                    {cases[0] ? "Ir al caso" : "Crear primer caso"}
-                  </Link>
-                </Button>
-              </div>
-            ) : (
-              team.map(member => (
-                <div key={member.user_id} className="flex items-center gap-3 rounded-lg border p-4">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted">
-                    <Users className="h-5 w-5 text-muted-foreground" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium truncate">{member.name}</p>
-                    <p className="text-sm text-muted-foreground truncate">{member.email ?? "—"}</p>
-                    <p className="mt-1 flex flex-wrap gap-1.5 text-xs text-muted-foreground">
-                      {member.case_ids.map(caseId => (
-                        <Link
-                          key={caseId}
-                          href={`/dashboard/cases/${caseId}`}
-                          className="hover:underline"
-                        >
-                          {caseLabel(caseId)}
-                        </Link>
-                      ))}
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {case_.openTaskCount > 0
+                        ? `${case_.openTaskCount} ${case_.openTaskCount === 1 ? "tarea abierta" : "tareas abiertas"}`
+                        : "Sin tareas abiertas"}
+                      {case_.lastActivityAt ? ` · Último movimiento ${formatDate(case_.lastActivityAt)}` : ""}
                     </p>
                   </div>
-                  <Badge variant="outline" className="shrink-0">{member.role}</Badge>
-                </div>
+                  <span className="shrink-0 text-sm text-muted-foreground">Abrir caso →</span>
+                </Link>
               ))
             )}
           </CardContent>

@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { ArrowLeft, Edit, Users, FileText, CheckSquare, Clock, Mail, Phone, Building, StickyNote, Trash2, MoreVertical, Calendar, User, Shield, Activity, Eye, Download, Plus, Mic } from 'lucide-react'
+import { ArrowLeft, Edit, Users, FileText, CheckSquare, Clock, Mail, Phone, Building, StickyNote, Trash2, MoreVertical, Calendar, User, Shield, Activity, Eye, Download, Plus, Mic, Image as ImageIcon } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { CaseMembersManager } from '../case-members-manager'
@@ -16,6 +16,7 @@ import { StartConversationDialog } from '@/components/inbox/start-conversation-d
 import { ConversationList } from '@/components/inbox/conversation-list'
 import { useCaseDetails } from '@/hooks/use-case-details'
 import { CaseTimeline } from '@/components/case-timeline'
+import { CasePhotoGrid } from '@/components/case-photo-grid'
 import { EntityBreadcrumbs } from '@/components/nav/entity-breadcrumbs'
 import { TaskStatusSelect, TaskStatusBadge } from '@/components/task-status-select'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -74,7 +75,7 @@ function getPriorityLabel(priority: string) {
     }
 }
 
-const CASE_TABS = ['overview', 'tasks', 'documents', 'notes', 'declarations', 'time', 'messages', 'timeline'] as const
+const CASE_TABS = ['overview', 'tasks', 'documents', 'photos', 'notes', 'declarations', 'time', 'messages', 'timeline'] as const
 type CaseTab = (typeof CASE_TABS)[number]
 
 export function CaseDetailsClient({ caseId }: CaseDetailsClientProps) {
@@ -263,7 +264,16 @@ export function CaseDetailsClient({ caseId }: CaseDetailsClientProps) {
     // que no se mezclen con las notas escritas a mano.
     const declarations = allNotes.filter((note) => isDeclarationNote(note.content))
     const notes = allNotes.filter((note) => !isDeclarationNote(note.content))
-    const audioDocuments = documents.filter((document) => document.document_type === 'audio')
+
+    // Un mismo `documents` alimenta tres pestañas distintas según su tipo: los
+    // audios pertenecen a Declaraciones, las imágenes a Fotos, el resto a Docs.
+    const isAudio = (document: typeof documents[number]) =>
+        document.document_type === 'audio' || document.mime_type?.startsWith('audio/')
+    const isPhoto = (document: typeof documents[number]) => document.mime_type?.startsWith('image/')
+
+    const audioDocuments = documents.filter(isAudio)
+    const photos = documents.filter((document) => !isAudio(document) && isPhoto(document))
+    const files = documents.filter((document) => !isAudio(document) && !isPhoto(document))
 
     const totalHours = timeEntries.reduce((sum, entry) => sum + Number(entry.hours), 0)
     const totalBilled = timeEntries
@@ -436,10 +446,14 @@ export function CaseDetailsClient({ caseId }: CaseDetailsClientProps) {
                 {/* Main content with tabs */}
                 <div className="lg:col-span-3 min-w-0">
                     <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
-                        <TabsList className="grid w-full grid-cols-4 sm:grid-cols-8 h-auto overflow-x-auto">
+                        <TabsList className="grid w-full grid-cols-3 sm:grid-cols-5 lg:grid-cols-9 h-auto overflow-x-auto">
                             <TabsTrigger value="overview" className="text-xs sm:text-sm">Resumen</TabsTrigger>
                             <TabsTrigger value="tasks" className="text-xs sm:text-sm">Tareas ({tasks.length})</TabsTrigger>
-                            <TabsTrigger value="documents" className="text-xs sm:text-sm">Docs ({documents.length})</TabsTrigger>
+                            <TabsTrigger value="documents" className="text-xs sm:text-sm">Docs ({files.length})</TabsTrigger>
+                            <TabsTrigger value="photos" className="text-xs sm:text-sm">
+                                <ImageIcon className="h-3 w-3 sm:mr-1" />
+                                <span className="hidden sm:inline">Fotos ({photos.length})</span>
+                            </TabsTrigger>
                             <TabsTrigger value="notes" className="text-xs sm:text-sm">Notas ({notes.length})</TabsTrigger>
                             <TabsTrigger value="declarations" className="text-xs sm:text-sm">
                                 <Mic className="h-3 w-3 sm:mr-1" />
@@ -718,7 +732,7 @@ export function CaseDetailsClient({ caseId }: CaseDetailsClientProps) {
                                 </CardHeader>
                                 <CardContent>
                                     <div className="space-y-4">
-                                        {documents.length === 0 ? (
+                                        {files.length === 0 ? (
                                             <div className="text-center py-8">
                                                 <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                                                 <h3 className="text-lg font-semibold mb-2">No hay documentos</h3>
@@ -728,7 +742,7 @@ export function CaseDetailsClient({ caseId }: CaseDetailsClientProps) {
                                                 </Button>
                                             </div>
                                         ) : (
-                                            documents.map((doc) => (
+                                            files.map((doc) => (
                                                 <div key={doc.id} className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 border rounded-lg">
                                                     <div className="flex items-center gap-3 flex-1 min-w-0">
                                                         <FileText className="h-8 w-8 text-muted-foreground flex-shrink-0" />
@@ -779,6 +793,41 @@ export function CaseDetailsClient({ caseId }: CaseDetailsClientProps) {
                                             ))
                                         )}
                                     </div>
+                                </CardContent>
+                            </Card>
+                        </TabsContent>
+
+                        <TabsContent value="photos">
+                            <Card>
+                                <CardHeader>
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <CardTitle>Fotos del Caso</CardTitle>
+                                            <p className="mt-1 text-sm text-muted-foreground">
+                                                Imágenes de pruebas, lugares y documentación visual
+                                            </p>
+                                        </div>
+                                        <Button size="sm" onClick={() => setDocumentModalOpen(true)}>
+                                            <ImageIcon className="h-4 w-4 mr-2" />
+                                            Subir Foto
+                                        </Button>
+                                    </div>
+                                </CardHeader>
+                                <CardContent>
+                                    {photos.length === 0 ? (
+                                        <div className="text-center py-8">
+                                            <ImageIcon className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                                            <h3 className="text-lg font-semibold mb-2">No hay fotos</h3>
+                                            <p className="text-muted-foreground mb-4">
+                                                Subí imágenes y aparecen acá automáticamente
+                                            </p>
+                                            <Button onClick={() => setDocumentModalOpen(true)}>
+                                                Subir Foto
+                                            </Button>
+                                        </div>
+                                    ) : (
+                                        <CasePhotoGrid photos={photos} onOpen={handleViewDocument} />
+                                    )}
                                 </CardContent>
                             </Card>
                         </TabsContent>
