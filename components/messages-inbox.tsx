@@ -142,7 +142,6 @@ export function MessagesInbox() {
   const readRequestsRef = useRef(new Set<string>())
   const pendingReadRequestsRef = useRef(new Set<string>())
   const handledNotificationRef = useRef<string | null>(null)
-  const heartbeatVersionRef = useRef<{ conversations: string; messages: string } | null>(null)
   const loadConversationsRef = useRef<(preferredId?: string, options?: LoadOptions) => Promise<void>>(async () => {})
   const loadMessagesRef = useRef<(conversationId: string, options?: LoadOptions) => Promise<void>>(async () => {})
 
@@ -400,6 +399,13 @@ export function MessagesInbox() {
           }
         }
       })
+      // The conversation row carries the list's ordering, preview and unread
+      // count. Without this subscription those only moved when a message event
+      // happened to arrive as well.
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'inbox_conversations' }, () => {
+        if (!active) return
+        scheduleListReconciliation(0)
+      })
 
     void (async () => {
       await supabase.realtime.setAuth()
@@ -442,46 +448,6 @@ export function MessagesInbox() {
       window.removeEventListener('online', reconcileOnline)
     }
   }, [dismissConversationNotifications, markConversationRead, scheduleDetailReconciliation, scheduleListReconciliation])
-
-  useEffect(() => {
-    let active = true
-    let checking = false
-
-    const checkVersion = async () => {
-      if (document.visibilityState !== 'visible') return
-      if (checking) return
-      checking = true
-      try {
-        const conversationId = selectedIdRef.current
-        const query = conversationId ? `?conversation=${encodeURIComponent(conversationId)}` : ''
-        const response = await fetch(`/api/inbox/version${query}`, { cache: 'no-store' })
-        if (!response.ok || !active) return
-        const result = await response.json() as {
-          versions: { conversations: string; messages: string }
-        }
-        const previous = heartbeatVersionRef.current
-        heartbeatVersionRef.current = result.versions
-        if (!previous || previous.conversations !== result.versions.conversations) {
-          scheduleListReconciliation(0)
-        }
-        if (!previous || previous.messages !== result.versions.messages) {
-          scheduleDetailReconciliation(0)
-        }
-      } catch {
-        // Realtime remains primary; a later heartbeat will retry automatically.
-      } finally {
-        checking = false
-      }
-    }
-
-    void checkVersion()
-    const interval = window.setInterval(() => void checkVersion(), 3_000)
-
-    return () => {
-      active = false
-      window.clearInterval(interval)
-    }
-  }, [scheduleDetailReconciliation, scheduleListReconciliation])
 
   useEffect(() => {
     if (!visibleMessages.length) return

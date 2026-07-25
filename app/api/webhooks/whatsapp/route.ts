@@ -60,10 +60,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true })
   }
 
-  // Process asynchronously — Meta expects a 200 within 20 s
-  processPayload(payload).catch(err =>
-    console.error('[inbox/whatsapp] Background processing error', err)
-  )
+  // Persist before answering. A serverless runtime can freeze the instance as
+  // soon as the response is sent, so fire-and-forget processing was losing
+  // messages: by the time the row reached Postgres — if it ever did — the
+  // inbox had already missed its Realtime event. Meta allows 20 s, and the
+  // slow part (media download) happens after the message row is committed.
+  try {
+    await processPayload(payload)
+  } catch (err) {
+    // A 500 makes Meta retry. Re-delivery is safe: handleIncomingMessage
+    // skips messages whose wa_message_id is already stored.
+    console.error('[inbox/whatsapp] Processing error', err)
+    return NextResponse.json({ error: 'Processing failed' }, { status: 500 })
+  }
 
   return NextResponse.json({ ok: true })
 }

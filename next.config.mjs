@@ -61,9 +61,16 @@ const nextConfig = {
   async headers() {
     return [
       {
+        // These responses are per-user and authenticated. `public, s-maxage=60`
+        // let the CDN keep a shared copy of them: the inbox could answer a
+        // Realtime-triggered refetch with a body up to a minute old (five with
+        // stale-while-revalidate), which reads exactly like "the message only
+        // shows up after a reload" — and a shared cache of authenticated JSON
+        // can serve one user's data to another. Routes that genuinely want to
+        // be cached should set their own header.
         source: '/api/:path*',
         headers: [
-          { key: 'Cache-Control', value: 'public, s-maxage=60, stale-while-revalidate=300' },
+          { key: 'Cache-Control', value: 'private, no-store, max-age=0' },
         ],
       },
       {
