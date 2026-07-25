@@ -3,19 +3,17 @@ import { createClient } from "@/lib/supabase/server"
 import { requireAuth } from "@/lib/auth"
 import { notFound } from "next/navigation"
 import { EntityBreadcrumbs } from "@/components/nav/entity-breadcrumbs"
+import { isDeclarationNote } from "@/lib/declarations"
 import {
   ClientHeader,
   ClientWorkspace,
-  type ClientCase,
-  type ClientDocument,
-  type ClientNote,
+  type ActivityItem,
+  type ClientCaseSummary,
   type ClientRecord,
-  type ClientTask,
   type ClientTeamMember,
 } from "./client-workspace"
 
-/** Marca que deja `attachDeclarationToCase` al guardar una declaración como nota. */
-const DECLARATION_MARKER = "# Declaración"
+const RECENT_ACTIVITY_LIMIT = 6
 
 async function getClientWorkspace(id: string) {
   const supabase = await createClient()
@@ -38,80 +36,111 @@ async function getClientWorkspace(id: string) {
     .is("deleted_at", null)
     .order("created_at", { ascending: false })
 
-  const cases = (casesData ?? []) as ClientCase[]
+  const cases = casesData ?? []
   const caseIds = cases.map(c => c.id)
 
-  // Tareas, documentos, equipo y declaraciones cuelgan del caso, no del cliente:
-  // se agregan aquí para que la ficha del cliente sea la vista única del expediente.
-  const [tasksResult, documentsResult, caseNotesResult, clientNotesResult, membersResult] =
-    await Promise.all([
-      caseIds.length
-        ? supabase
-            .from("tasks")
-            .select("id, title, status, priority, due_date, case_id, users:assigned_to (full_name)")
-            .in("case_id", caseIds)
-            .is("deleted_at", null)
-            .order("due_date", { ascending: true, nullsFirst: false })
-        : Promise.resolve({ data: [] }),
-      caseIds.length
-        ? supabase
-            .from("documents")
-            .select("id, name, document_type, mime_type, created_at, case_id")
-            .in("case_id", caseIds)
-            .is("deleted_at", null)
-            .order("created_at", { ascending: false })
-        : Promise.resolve({ data: [] }),
-      caseIds.length
-        ? supabase
-            .from("notes")
-            .select("id, title, content, created_at, case_id, users:created_by (full_name)")
-            .in("case_id", caseIds)
-            .is("deleted_at", null)
-            .order("created_at", { ascending: false })
-        : Promise.resolve({ data: [] }),
-      supabase
-        .from("notes")
-        .select("id, title, content, created_at, case_id, users:created_by (full_name)")
-        .eq("client_id", id)
-        .is("deleted_at", null)
-        .order("created_at", { ascending: false }),
-      caseIds.length
-        ? supabase
-            .from("case_members")
-            .select("case_id, user_id, role, users:user_id (full_name, email)")
-            .in("case_id", caseIds)
-        : Promise.resolve({ data: [] }),
-    ])
+  // Tareas, documentos, notas y declaraciones pertenecen al CASO. Acá solo se
+  // leen para contar por caso y armar la actividad reciente del cliente; el
+  // trabajo sobre ellas se hace dentro del caso correspondiente.
+  const [tasksResult, documentsResult, notesResult, membersResult] = await Promise.all([
+    caseIds.length
+      ? supabase
+          .from("tasks")
+          .select("id, title, status, created_at, case_id")
+          .in("case_id", caseIds)
+          .is("deleted_at", null)
+      : Promise.resolve({ data: [] }),
+    caseIds.length
+      ? supabase
+          .from("documents")
+          .select("id, name, created_at, case_id")
+          .in("case_id", caseIds)
+          .is("deleted_at", null)
+      : Promise.resolve({ data: [] }),
+    caseIds.length
+      ? supabase
+          .from("notes")
+          .select("id, title, content, created_at, case_id")
+          .in("case_id", caseIds)
+          .is("deleted_at", null)
+      : Promise.resolve({ data: [] }),
+    caseIds.length
+      ? supabase
+          .from("case_members")
+          .select("case_id, user_id, role, users:user_id (full_name, email)")
+          .in("case_id", caseIds)
+      : Promise.resolve({ data: [] }),
+  ])
 
-  const tasks: ClientTask[] = ((tasksResult.data ?? []) as any[]).map(task => ({
-    id: task.id,
-    title: task.title,
-    status: task.status,
-    priority: task.priority,
-    due_date: task.due_date,
-    case_id: task.case_id,
-    assignee_name: task.users?.full_name ?? null,
+  const tasks = (tasksResult.data ?? []) as any[]
+  const documents = (documentsResult.data ?? []) as any[]
+  const notes = (notesResult.data ?? []) as any[]
+
+  const countsByCase = new Map(
+    caseIds.map(caseId => [
+      caseId,
+      { taskCount: 0, openTaskCount: 0, documentCount: 0, noteCount: 0, declarationCount: 0 },
+    ])
+  )
+
+  for (const task of tasks) {
+    const counts = countsByCase.get(task.case_id)
+    if (!counts) continue
+    counts.taskCount += 1
+    if (task.status !== "completed" && task.status !== "cancelled") {
+      counts.openTaskCount += 1
+    }
+  }
+  for (const document of documents) {
+    const counts = countsByCase.get(document.case_id)
+    if (counts) counts.documentCount += 1
+  }
+  for (const note of notes) {
+    const counts = countsByCase.get(note.case_id)
+    if (!counts) continue
+    if (isDeclarationNote(note.content)) {
+      counts.declarationCount += 1
+    } else {
+      counts.noteCount += 1
+    }
+  }
+
+  const caseSummaries: ClientCaseSummary[] = cases.map(case_ => ({
+    ...(case_ as Omit<ClientCaseSummary, "taskCount" | "openTaskCount" | "documentCount" | "noteCount" | "declarationCount">),
+    ...(countsByCase.get(case_.id) ?? {
+      taskCount: 0,
+      openTaskCount: 0,
+      documentCount: 0,
+      noteCount: 0,
+      declarationCount: 0,
+    }),
   }))
 
-  const documents = (documentsResult.data ?? []) as ClientDocument[]
-
-  const allNotes: ClientNote[] = [
-    ...((caseNotesResult.data ?? []) as any[]),
-    ...((clientNotesResult.data ?? []) as any[]),
-  ]
-    .map(note => ({
+  const recentActivity: ActivityItem[] = [
+    ...tasks.map(task => ({
+      id: task.id,
+      kind: "task" as const,
+      title: task.title,
+      case_id: task.case_id,
+      date: task.created_at,
+    })),
+    ...documents.map(document => ({
+      id: document.id,
+      kind: "document" as const,
+      title: document.name,
+      case_id: document.case_id,
+      date: document.created_at,
+    })),
+    ...notes.map(note => ({
       id: note.id,
-      title: note.title,
-      content: note.content,
-      created_at: note.created_at,
+      kind: isDeclarationNote(note.content) ? ("declaration" as const) : ("note" as const),
+      title: note.title || (isDeclarationNote(note.content) ? "Declaración grabada" : "Nota sin título"),
       case_id: note.case_id,
-      author_name: note.users?.full_name ?? null,
-    }))
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-
-  const isDeclaration = (note: ClientNote) => note.content.trimStart().startsWith(DECLARATION_MARKER)
-  const declarations = allNotes.filter(isDeclaration)
-  const notes = allNotes.filter(note => !isDeclaration(note))
+      date: note.created_at,
+    })),
+  ]
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    .slice(0, RECENT_ACTIVITY_LIMIT)
 
   // Una persona puede estar en varios casos del mismo cliente: se colapsa en una fila.
   const teamByUser = new Map<string, ClientTeamMember>()
@@ -132,12 +161,9 @@ async function getClientWorkspace(id: string) {
 
   return {
     client: client as ClientRecord,
-    cases,
-    tasks,
-    documents,
-    notes,
-    declarations,
+    cases: caseSummaries,
     team: Array.from(teamByUser.values()),
+    recentActivity,
   }
 }
 
@@ -165,11 +191,8 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
         <ClientWorkspace
           client={workspace.client}
           cases={workspace.cases}
-          tasks={workspace.tasks}
-          documents={workspace.documents}
-          notes={workspace.notes}
-          declarations={workspace.declarations}
           team={workspace.team}
+          recentActivity={workspace.recentActivity}
         />
       </Suspense>
     </div>

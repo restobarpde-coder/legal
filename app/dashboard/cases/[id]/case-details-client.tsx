@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { ArrowLeft, Edit, Users, FileText, CheckSquare, Clock, Mail, Phone, Building, StickyNote, Trash2, MoreVertical, Calendar, User, Shield, Activity, Eye, Download, Plus } from 'lucide-react'
+import { ArrowLeft, Edit, Users, FileText, CheckSquare, Clock, Mail, Phone, Building, StickyNote, Trash2, MoreVertical, Calendar, User, Shield, Activity, Eye, Download, Plus, Mic } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { CaseMembersManager } from '../case-members-manager'
@@ -19,7 +19,8 @@ import { CaseTimeline } from '@/components/case-timeline'
 import { EntityBreadcrumbs } from '@/components/nav/entity-breadcrumbs'
 import { TaskStatusSelect, TaskStatusBadge } from '@/components/task-status-select'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { isDeclarationNote } from '@/lib/declarations'
 
 // Lazy load modales pesados solo cuando se necesiten
 const NoteModal = dynamic(() => import('@/components/modals/note-modal').then(mod => ({ default: mod.NoteModal })), { ssr: false })
@@ -73,6 +74,9 @@ function getPriorityLabel(priority: string) {
     }
 }
 
+const CASE_TABS = ['overview', 'tasks', 'documents', 'notes', 'declarations', 'time', 'messages', 'timeline'] as const
+type CaseTab = (typeof CASE_TABS)[number]
+
 export function CaseDetailsClient({ caseId }: CaseDetailsClientProps) {
     const [noteModalOpen, setNoteModalOpen] = useState(false)
     const [taskModalOpen, setTaskModalOpen] = useState(false)
@@ -82,7 +86,25 @@ export function CaseDetailsClient({ caseId }: CaseDetailsClientProps) {
     const [deleteTarget, setDeleteTarget] = useState<{ type: string, id: string, name: string } | null>(null)
     const [deleteLoading, setDeleteLoading] = useState(false)
     const router = useRouter()
-    
+    const searchParams = useSearchParams()
+
+    // La pestaña vive en la URL para poder entrar directo desde la ficha del cliente.
+    const requestedTab = searchParams.get('tab')
+    const activeTab = requestedTab && CASE_TABS.includes(requestedTab as CaseTab)
+        ? (requestedTab as CaseTab)
+        : 'overview'
+
+    const handleTabChange = (value: string) => {
+        const params = new URLSearchParams(searchParams.toString())
+        if (value === 'overview') {
+            params.delete('tab')
+        } else {
+            params.set('tab', value)
+        }
+        const query = params.toString()
+        router.replace(`/dashboard/cases/${caseId}${query ? `?${query}` : ''}`, { scroll: false })
+    }
+
     // Fetch case details using React Query
     const { data: caseDetails, isLoading, error, refetch } = useCaseDetails(caseId)
     
@@ -235,7 +257,14 @@ export function CaseDetailsClient({ caseId }: CaseDetailsClientProps) {
         )
     }
 
-    const { caseData, tasks, documents, notes, timeEntries, assignableUsers, canManage } = caseDetails
+    const { caseData, tasks, documents, notes: allNotes, timeEntries, assignableUsers, canManage } = caseDetails
+
+    // Las declaraciones se guardan como notas del caso; se muestran aparte para
+    // que no se mezclen con las notas escritas a mano.
+    const declarations = allNotes.filter((note) => isDeclarationNote(note.content))
+    const notes = allNotes.filter((note) => !isDeclarationNote(note.content))
+    const audioDocuments = documents.filter((document) => document.document_type === 'audio')
+
     const totalHours = timeEntries.reduce((sum, entry) => sum + Number(entry.hours), 0)
     const totalBilled = timeEntries
         .filter((entry) => entry.billable)
@@ -406,12 +435,16 @@ export function CaseDetailsClient({ caseId }: CaseDetailsClientProps) {
             <div className="grid gap-6 lg:grid-cols-4 max-w-full">
                 {/* Main content with tabs */}
                 <div className="lg:col-span-3 min-w-0">
-                    <Tabs defaultValue="overview" className="space-y-6">
-                        <TabsList className="grid w-full grid-cols-3 sm:grid-cols-7 h-auto overflow-x-auto">
+                    <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
+                        <TabsList className="grid w-full grid-cols-4 sm:grid-cols-8 h-auto overflow-x-auto">
                             <TabsTrigger value="overview" className="text-xs sm:text-sm">Resumen</TabsTrigger>
                             <TabsTrigger value="tasks" className="text-xs sm:text-sm">Tareas ({tasks.length})</TabsTrigger>
                             <TabsTrigger value="documents" className="text-xs sm:text-sm">Docs ({documents.length})</TabsTrigger>
                             <TabsTrigger value="notes" className="text-xs sm:text-sm">Notas ({notes.length})</TabsTrigger>
+                            <TabsTrigger value="declarations" className="text-xs sm:text-sm">
+                                <Mic className="h-3 w-3 sm:mr-1" />
+                                <span className="hidden sm:inline">Declaraciones ({declarations.length})</span>
+                            </TabsTrigger>
                             <TabsTrigger value="time" className="text-xs sm:text-sm">Tiempo ({timeEntries.length})</TabsTrigger>
                             <TabsTrigger value="messages" className="text-xs sm:text-sm">Mensajes</TabsTrigger>
                             <TabsTrigger value="timeline" className="flex items-center gap-1 text-xs sm:text-sm">
@@ -803,6 +836,104 @@ export function CaseDetailsClient({ caseId }: CaseDetailsClientProps) {
                                                     </div>
                                                 </div>
                                             ))
+                                        )}
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </TabsContent>
+
+                        <TabsContent value="declarations">
+                            <Card>
+                                <CardHeader>
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <CardTitle>Declaraciones</CardTitle>
+                                            <p className="mt-1 text-sm text-muted-foreground">
+                                                Grabaciones transcriptas y adjuntas a este caso
+                                            </p>
+                                        </div>
+                                        <Button size="sm" asChild>
+                                            <Link href={`/dashboard/declarations?case=${caseData.id}&client=${caseData.clients?.id ?? ''}`}>
+                                                <Mic className="h-4 w-4 mr-2" />
+                                                Grabar
+                                            </Link>
+                                        </Button>
+                                    </div>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="space-y-4">
+                                        {declarations.length === 0 ? (
+                                            <div className="text-center py-8">
+                                                <Mic className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                                                <h3 className="text-lg font-semibold mb-2">No hay declaraciones</h3>
+                                                <p className="text-muted-foreground mb-4">
+                                                    Grabá una declaración y queda adjunta a este caso como texto y audio
+                                                </p>
+                                                <Button asChild>
+                                                    <Link href={`/dashboard/declarations?case=${caseData.id}&client=${caseData.clients?.id ?? ''}`}>
+                                                        Grabar declaración
+                                                    </Link>
+                                                </Button>
+                                            </div>
+                                        ) : (
+                                            declarations.map((declaration) => (
+                                                <div key={declaration.id} className="p-4 border rounded-lg">
+                                                    <div className="flex items-start justify-between gap-2">
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="text-xs text-muted-foreground mb-2">
+                                                                {new Date(declaration.created_at).toLocaleString("es-ES")}
+                                                            </p>
+                                                            <p className="text-sm whitespace-pre-wrap">{declaration.content}</p>
+                                                        </div>
+                                                        <DropdownMenu>
+                                                            <DropdownMenuTrigger asChild>
+                                                                <Button variant="ghost" size="icon">
+                                                                    <MoreVertical className="h-4 w-4" />
+                                                                </Button>
+                                                            </DropdownMenuTrigger>
+                                                            <DropdownMenuContent align="end">
+                                                                <DropdownMenuItem
+                                                                    onClick={() => handleDelete('note', declaration.id, 'Declaración')}
+                                                                    className="text-red-600"
+                                                                >
+                                                                    <Trash2 className="h-4 w-4 mr-2" />
+                                                                    Eliminar
+                                                                </DropdownMenuItem>
+                                                            </DropdownMenuContent>
+                                                        </DropdownMenu>
+                                                    </div>
+                                                </div>
+                                            ))
+                                        )}
+
+                                        {audioDocuments.length > 0 && (
+                                            <div className="pt-2">
+                                                <p className="mb-2 text-sm font-medium">Audios grabados</p>
+                                                <div className="space-y-2">
+                                                    {audioDocuments.map((document) => (
+                                                        <div
+                                                            key={document.id}
+                                                            className="flex items-center gap-3 rounded-lg border p-3"
+                                                        >
+                                                            <Mic className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                                            <div className="min-w-0 flex-1">
+                                                                <p className="truncate text-sm font-medium">{document.name}</p>
+                                                                <p className="text-xs text-muted-foreground">
+                                                                    {new Date(document.created_at).toLocaleDateString("es-ES")}
+                                                                </p>
+                                                            </div>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                onClick={() => handleViewDocument(document.id)}
+                                                            >
+                                                                <Eye className="h-4 w-4 mr-1" />
+                                                                Abrir
+                                                            </Button>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
                                         )}
                                     </div>
                                 </CardContent>

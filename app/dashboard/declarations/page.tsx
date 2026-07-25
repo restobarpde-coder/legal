@@ -15,8 +15,11 @@ export default async function DeclarationsPage({
   const cases = await getCasesForSelection()
   const clients = await getClientsForSelection()
 
-  // Al entrar desde la ficha de un cliente solo se ofrecen sus casos.
-  const contextClient = clientId ? clients.find(c => c.id === clientId) : undefined
+  // La declaración termina adjunta a un CASO. Si llegamos desde un caso o desde
+  // un cliente, se acota la selección a ese contexto.
+  const contextCase = caseId ? cases.find(c => c.id === caseId) : undefined
+  const contextClientId = contextCase?.client_id ?? clientId
+  const contextClient = contextClientId ? clients.find(c => c.id === contextClientId) : undefined
   const visibleCases = contextClient ? cases.filter(c => c.client_id === contextClient.id) : cases
 
   return (
@@ -25,8 +28,11 @@ export default async function DeclarationsPage({
         <EntityBreadcrumbs
           items={[
             { label: "Clientes", href: "/dashboard/clients" },
-            { label: contextClient.name, href: `/dashboard/clients/${contextClient.id}` },
-            { label: "Declaraciones" },
+            { label: contextClient.name, href: `/dashboard/clients/${contextClient.id}?tab=casos` },
+            ...(contextCase
+              ? [{ label: contextCase.title, href: `/dashboard/cases/${contextCase.id}?tab=declarations` }]
+              : []),
+            { label: "Nueva declaración" },
           ]}
         />
       )}
@@ -34,9 +40,11 @@ export default async function DeclarationsPage({
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Declaraciones</h1>
         <p className="text-muted-foreground">
-          {contextClient
-            ? `Grabá una declaración para ${contextClient.name} y adjuntala a uno de sus casos`
-            : "Graba y procesa declaraciones de clientes"}
+          {contextCase
+            ? `Grabá una declaración y quedará adjunta al caso "${contextCase.title}"`
+            : contextClient
+              ? `Grabá una declaración para ${contextClient.name} y adjuntala a uno de sus casos`
+              : "Graba y procesa declaraciones. Cada una queda adjunta a un caso."}
         </p>
       </div>
 
@@ -47,22 +55,22 @@ export default async function DeclarationsPage({
         defaultClientId={contextClient?.id ?? ''}
       />
 
-      {contextClient ? (
+      {contextCase ? (
         <p className="text-sm text-muted-foreground">
           ¿Buscás las declaraciones ya guardadas?{" "}
           <Link
-            href={`/dashboard/clients/${contextClient.id}?tab=declaraciones`}
+            href={`/dashboard/cases/${contextCase.id}?tab=declarations`}
             className="text-primary hover:underline"
           >
-            Verlas en la ficha del cliente
+            Verlas en el caso
           </Link>
           .
         </p>
       ) : (
         <div className="rounded-lg border border-dashed p-8 text-center">
           <p className="text-sm text-muted-foreground">
-            Cada declaración queda guardada dentro del caso al que la adjuntás, y se ve en la
-            pestaña <strong>Declaraciones</strong> de la ficha del cliente.
+            Cada declaración queda guardada dentro del caso al que la adjuntás, en su
+            pestaña <strong>Declaraciones</strong>.
           </p>
         </div>
       )}

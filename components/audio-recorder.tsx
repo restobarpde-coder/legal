@@ -227,7 +227,7 @@ export function AudioRecorder({
         if (result.success) {
           toast.success('Declaración adjuntada al caso')
           setShowSaveDialog(false)
-          router.push(`/dashboard/cases/${selectedCaseId}`)
+          router.push(`/dashboard/cases/${selectedCaseId}?tab=declarations`)
         } else {
           throw new Error(result.message || 'Error al adjuntar')
         }
@@ -251,7 +251,7 @@ export function AudioRecorder({
         if (result.success) {
           toast.success('Caso creado exitosamente')
           setShowSaveDialog(false)
-          router.push(`/dashboard/cases/${result.caseId}`)
+          router.push(`/dashboard/cases/${result.caseId}?tab=declarations`)
         } else {
           throw new Error(result.message || 'Error al crear caso')
         }

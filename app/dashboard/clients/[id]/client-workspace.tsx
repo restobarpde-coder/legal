@@ -25,7 +25,7 @@ import {
   Users,
 } from "lucide-react"
 
-export type ClientCase = {
+export type ClientCaseSummary = {
   id: string
   title: string
   case_number: string | null
@@ -34,37 +34,20 @@ export type ClientCase = {
   start_date: string | null
   end_date: string | null
   created_at: string
+  taskCount: number
+  openTaskCount: number
+  documentCount: number
+  noteCount: number
+  declarationCount: number
 }
 
-export type ClientTask = {
+export type ActivityItem = {
   id: string
+  kind: "task" | "document" | "note" | "declaration"
   title: string
-  status: string
-  priority: string
-  due_date: string | null
   case_id: string | null
-  assignee_name: string | null
+  date: string
 }
-
-export type ClientDocument = {
-  id: string
-  name: string
-  document_type: string | null
-  mime_type: string | null
-  created_at: string
-  case_id: string | null
-}
-
-export type ClientNote = {
-  id: string
-  title: string | null
-  content: string
-  created_at: string
-  case_id: string | null
-  author_name: string | null
-}
-
-export type ClientDeclaration = ClientNote
 
 export type ClientTeamMember = {
   user_id: string
@@ -92,24 +75,12 @@ export type ClientRecord = {
 
 type Props = {
   client: ClientRecord
-  cases: ClientCase[]
-  tasks: ClientTask[]
-  documents: ClientDocument[]
-  notes: ClientNote[]
-  declarations: ClientDeclaration[]
+  cases: ClientCaseSummary[]
   team: ClientTeamMember[]
+  recentActivity: ActivityItem[]
 }
 
-const TAB_VALUES = [
-  "resumen",
-  "casos",
-  "tareas",
-  "documentos",
-  "notas",
-  "declaraciones",
-  "equipo",
-  "chat",
-] as const
+const TAB_VALUES = ["resumen", "casos", "equipo", "chat"] as const
 
 type TabValue = (typeof TAB_VALUES)[number]
 
@@ -127,11 +98,11 @@ const PRIORITY_CLASS: Record<string, string> = {
   low: "text-gray-600 bg-gray-50 dark:text-gray-400 dark:bg-gray-950",
 }
 
-const TASK_STATUS_LABELS: Record<string, string> = {
-  pending: "Pendiente",
-  in_progress: "En progreso",
-  completed: "Completada",
-  cancelled: "Cancelada",
+const ACTIVITY_META: Record<ActivityItem["kind"], { icon: typeof FileText; label: string }> = {
+  task: { icon: CheckSquare, label: "Tarea" },
+  document: { icon: FolderOpen, label: "Documento" },
+  note: { icon: FileText, label: "Nota" },
+  declaration: { icon: Mic, label: "Declaración" },
 }
 
 function formatDate(value: string | null) {
@@ -139,44 +110,7 @@ function formatDate(value: string | null) {
   return new Date(value).toLocaleDateString("es-ES")
 }
 
-/** Mensaje uniforme para cada pestaña vacía, siempre con el siguiente paso a mano. */
-function EmptyState({
-  icon: Icon,
-  title,
-  description,
-  action,
-}: {
-  icon: typeof Scale
-  title: string
-  description: string
-  action?: { label: string; href: string }
-}) {
-  return (
-    <div className="text-center py-10">
-      <Icon className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-      <h3 className="font-semibold mb-1">{title}</h3>
-      <p className="text-sm text-muted-foreground mb-4">{description}</p>
-      {action && (
-        <Button asChild size="sm">
-          <Link href={action.href}>
-            <Plus className="h-4 w-4 mr-2" />
-            {action.label}
-          </Link>
-        </Button>
-      )}
-    </div>
-  )
-}
-
-export function ClientWorkspace({
-  client,
-  cases,
-  tasks,
-  documents,
-  notes,
-  declarations,
-  team,
-}: Props) {
+export function ClientWorkspace({ client, cases, team, recentActivity }: Props) {
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -198,57 +132,53 @@ export function ClientWorkspace({
 
   const caseTitleById = new Map(cases.map(c => [c.id, c.title]))
   const activeCases = cases.filter(c => c.status === "active")
-  const openTasks = tasks.filter(c => c.status !== "completed" && c.status !== "cancelled")
-  const firstCaseId = cases[0]?.id
+  const totals = cases.reduce(
+    (acc, c) => ({
+      openTasks: acc.openTasks + c.openTaskCount,
+      documents: acc.documents + c.documentCount,
+    }),
+    { openTasks: 0, documents: 0 }
+  )
 
   const caseLabel = (caseId: string | null) =>
     caseId ? caseTitleById.get(caseId) ?? "Caso" : "Sin caso"
 
   return (
     <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
-      <TabsList className="grid w-full grid-cols-4 lg:grid-cols-8 h-auto">
+      <TabsList className="grid w-full grid-cols-4 h-auto">
         <TabsTrigger value="resumen" className="text-xs sm:text-sm">Resumen</TabsTrigger>
         <TabsTrigger value="casos" className="text-xs sm:text-sm">Casos ({cases.length})</TabsTrigger>
-        <TabsTrigger value="tareas" className="text-xs sm:text-sm">Tareas ({tasks.length})</TabsTrigger>
-        <TabsTrigger value="documentos" className="text-xs sm:text-sm">Docs ({documents.length})</TabsTrigger>
-        <TabsTrigger value="notas" className="text-xs sm:text-sm">Notas ({notes.length})</TabsTrigger>
-        <TabsTrigger value="declaraciones" className="text-xs sm:text-sm">Declaraciones ({declarations.length})</TabsTrigger>
         <TabsTrigger value="equipo" className="text-xs sm:text-sm">Equipo ({team.length})</TabsTrigger>
         <TabsTrigger value="chat" className="text-xs sm:text-sm">Chat</TabsTrigger>
       </TabsList>
 
       {/* ---------------------------------------------------------------- Resumen */}
       <TabsContent value="resumen" className="space-y-6">
+        {/* Los totales son un rollup de los casos del cliente: se leen acá, se
+            trabajan dentro de cada caso. */}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {[
-            { label: "Casos activos", value: activeCases.length, total: cases.length, icon: Scale, tab: "casos" },
-            { label: "Tareas abiertas", value: openTasks.length, total: tasks.length, icon: CheckSquare, tab: "tareas" },
-            { label: "Documentos", value: documents.length, icon: FolderOpen, tab: "documentos" },
-            { label: "Equipo asignado", value: team.length, icon: Users, tab: "equipo" },
+            { label: "Casos activos", value: activeCases.length, total: cases.length, icon: Scale },
+            { label: "Tareas abiertas", value: totals.openTasks, icon: CheckSquare },
+            { label: "Documentos", value: totals.documents, icon: FolderOpen },
+            { label: "Equipo asignado", value: team.length, icon: Users },
           ].map(stat => (
-            <button
-              key={stat.label}
-              type="button"
-              onClick={() => handleTabChange(stat.tab)}
-              className="text-left"
-            >
-              <Card className="h-full transition-colors hover:bg-muted/50">
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-muted-foreground">{stat.label}</p>
-                      <p className="text-2xl font-bold">
-                        {stat.value}
-                        {stat.total !== undefined && stat.total !== stat.value && (
-                          <span className="text-base font-normal text-muted-foreground"> / {stat.total}</span>
-                        )}
-                      </p>
-                    </div>
-                    <stat.icon className="h-8 w-8 text-muted-foreground" />
+            <Card key={stat.label}>
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-muted-foreground">{stat.label}</p>
+                    <p className="text-2xl font-bold">
+                      {stat.value}
+                      {stat.total !== undefined && stat.total !== stat.value && (
+                        <span className="text-base font-normal text-muted-foreground"> / {stat.total}</span>
+                      )}
+                    </p>
                   </div>
-                </CardContent>
-              </Card>
-            </button>
+                  <stat.icon className="h-8 w-8 text-muted-foreground" />
+                </div>
+              </CardContent>
+            </Card>
           ))}
         </div>
 
@@ -348,30 +278,15 @@ export function ClientWorkspace({
                     Nuevo caso
                   </Link>
                 </Button>
-                <Button variant="outline" size="sm" className="w-full justify-start bg-transparent" asChild>
-                  <Link href={firstCaseId ? `/dashboard/tasks/new?case=${firstCaseId}` : "/dashboard/tasks/new"}>
-                    <CheckSquare className="h-4 w-4 mr-2" />
-                    Nueva tarea
-                  </Link>
-                </Button>
-                <Button variant="outline" size="sm" className="w-full justify-start bg-transparent" asChild>
-                  <Link href={firstCaseId ? `/dashboard/documents/upload?case=${firstCaseId}` : "/dashboard/documents/upload"}>
-                    <FolderOpen className="h-4 w-4 mr-2" />
-                    Subir documento
-                  </Link>
-                </Button>
-                <Button variant="outline" size="sm" className="w-full justify-start bg-transparent" asChild>
-                  <Link href={`/dashboard/declarations?client=${client.id}`}>
-                    <Mic className="h-4 w-4 mr-2" />
-                    Grabar declaración
-                  </Link>
-                </Button>
                 <ClientMessageActions
                   clientId={client.id}
                   clientName={client.name}
                   clientEmail={client.email}
                   clientPhone={client.phone}
                 />
+                <p className="pt-1 text-xs text-muted-foreground">
+                  Tareas, documentos, notas y declaraciones se crean dentro de un caso.
+                </p>
               </CardContent>
             </Card>
 
@@ -380,27 +295,37 @@ export function ClientWorkspace({
                 <CardTitle>Actividad reciente</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                {notes.length === 0 && tasks.length === 0 ? (
+                {recentActivity.length === 0 ? (
                   <p className="text-sm text-muted-foreground">Sin actividad todavía.</p>
                 ) : (
-                  <>
-                    {notes.slice(0, 3).map(note => (
-                      <div key={note.id} className="text-sm">
-                        <p className="font-medium truncate">{note.title || "Nota sin título"}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {caseLabel(note.case_id)} · {formatDate(note.created_at)}
-                        </p>
+                  recentActivity.map(item => {
+                    const meta = ACTIVITY_META[item.kind]
+                    const content = (
+                      <>
+                        <meta.icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-medium">{item.title}</span>
+                          <span className="block text-xs text-muted-foreground truncate">
+                            {meta.label} · {caseLabel(item.case_id)} · {formatDate(item.date)}
+                          </span>
+                        </span>
+                      </>
+                    )
+
+                    return item.case_id ? (
+                      <Link
+                        key={`${item.kind}-${item.id}`}
+                        href={`/dashboard/cases/${item.case_id}`}
+                        className="flex items-start gap-2 rounded-md p-1 -m-1 transition-colors hover:bg-muted/50"
+                      >
+                        {content}
+                      </Link>
+                    ) : (
+                      <div key={`${item.kind}-${item.id}`} className="flex items-start gap-2">
+                        {content}
                       </div>
-                    ))}
-                    {openTasks.slice(0, 3).map(task => (
-                      <div key={task.id} className="text-sm">
-                        <p className="font-medium truncate">{task.title}</p>
-                        <p className="text-xs text-muted-foreground">
-                          Vence {formatDate(task.due_date)} · {caseLabel(task.case_id)}
-                        </p>
-                      </div>
-                    ))}
-                  </>
+                    )
+                  })
                 )}
               </CardContent>
             </Card>
@@ -413,7 +338,12 @@ export function ClientWorkspace({
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
-              <CardTitle>Casos del cliente</CardTitle>
+              <div>
+                <CardTitle>Casos del cliente</CardTitle>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Cada caso guarda sus tareas, documentos, notas y declaraciones.
+                </p>
+              </div>
               <Button size="sm" asChild>
                 <Link href={`/dashboard/cases/new?client=${client.id}`}>
                   <Plus className="h-4 w-4 mr-2" />
@@ -424,22 +354,25 @@ export function ClientWorkspace({
           </CardHeader>
           <CardContent className="space-y-3">
             {cases.length === 0 ? (
-              <EmptyState
-                icon={Scale}
-                title="No hay casos"
-                description="Todo el trabajo cuelga de un caso. Creá el primero para empezar."
-                action={{ label: "Crear primer caso", href: `/dashboard/cases/new?client=${client.id}` }}
-              />
+              <div className="text-center py-10">
+                <Scale className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+                <h3 className="font-semibold mb-1">No hay casos</h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Todo el trabajo cuelga de un caso. Creá el primero para empezar.
+                </p>
+                <Button asChild size="sm">
+                  <Link href={`/dashboard/cases/new?client=${client.id}`}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Crear primer caso
+                  </Link>
+                </Button>
+              </div>
             ) : (
               cases.map(case_ => (
-                <Link
-                  key={case_.id}
-                  href={`/dashboard/cases/${case_.id}`}
-                  className="flex items-center justify-between gap-4 rounded-lg border p-4 transition-colors hover:bg-muted/50"
-                >
-                  <div className="min-w-0 flex-1">
+                <div key={case_.id} className="rounded-lg border p-4">
+                  <Link href={`/dashboard/cases/${case_.id}`} className="group block">
                     <div className="flex flex-wrap items-center gap-2 mb-1">
-                      <h4 className="font-medium truncate">{case_.title}</h4>
+                      <h4 className="font-medium truncate group-hover:underline">{case_.title}</h4>
                       <Badge variant={CASE_STATUS_VARIANT[case_.status] ?? "outline"}>{case_.status}</Badge>
                       <Badge className={PRIORITY_CLASS[case_.priority]} variant="outline">
                         {case_.priority}
@@ -450,206 +383,28 @@ export function ClientWorkspace({
                       Inicio: {formatDate(case_.start_date)}
                       {case_.end_date ? ` · Fin: ${formatDate(case_.end_date)}` : ""}
                     </p>
-                  </div>
-                  <span className="text-sm text-muted-foreground shrink-0">Ver caso →</span>
-                </Link>
-              ))
-            )}
-          </CardContent>
-        </Card>
-      </TabsContent>
-
-      {/* ----------------------------------------------------------------- Tareas */}
-      <TabsContent value="tareas">
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle>Tareas de todos sus casos</CardTitle>
-              <Button size="sm" asChild disabled={!firstCaseId}>
-                <Link href={firstCaseId ? `/dashboard/tasks/new?case=${firstCaseId}` : "/dashboard/tasks/new"}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Nueva tarea
-                </Link>
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {tasks.length === 0 ? (
-              <EmptyState
-                icon={CheckSquare}
-                title="Sin tareas"
-                description="Las tareas se crean sobre un caso del cliente."
-                action={
-                  firstCaseId
-                    ? { label: "Crear tarea", href: `/dashboard/tasks/new?case=${firstCaseId}` }
-                    : { label: "Crear primer caso", href: `/dashboard/cases/new?client=${client.id}` }
-                }
-              />
-            ) : (
-              tasks.map(task => (
-                <Link
-                  key={task.id}
-                  href={`/dashboard/tasks/${task.id}`}
-                  className="flex items-center justify-between gap-4 rounded-lg border p-4 transition-colors hover:bg-muted/50"
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2 mb-1">
-                      <h4 className="font-medium truncate">{task.title}</h4>
-                      <Badge variant="outline">{TASK_STATUS_LABELS[task.status] ?? task.status}</Badge>
-                      <Badge className={PRIORITY_CLASS[task.priority]} variant="outline">
-                        {task.priority}
-                      </Badge>
-                    </div>
-                    <p className="text-sm text-muted-foreground truncate">
-                      {caseLabel(task.case_id)} · Vence {formatDate(task.due_date)}
-                      {task.assignee_name ? ` · ${task.assignee_name}` : ""}
-                    </p>
-                  </div>
-                </Link>
-              ))
-            )}
-          </CardContent>
-        </Card>
-      </TabsContent>
-
-      {/* ------------------------------------------------------------- Documentos */}
-      <TabsContent value="documentos">
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle>Documentos y archivos</CardTitle>
-              <Button size="sm" asChild>
-                <Link href={firstCaseId ? `/dashboard/documents/upload?case=${firstCaseId}` : "/dashboard/documents/upload"}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Subir
-                </Link>
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {documents.length === 0 ? (
-              <EmptyState
-                icon={FolderOpen}
-                title="Sin documentos"
-                description="Los archivos se guardan dentro del caso al que pertenecen."
-                action={
-                  firstCaseId
-                    ? { label: "Subir documento", href: `/dashboard/documents/upload?case=${firstCaseId}` }
-                    : { label: "Crear primer caso", href: `/dashboard/cases/new?client=${client.id}` }
-                }
-              />
-            ) : (
-              documents.map(document => (
-                <div key={document.id} className="flex items-center gap-3 rounded-lg border p-4">
-                  <FileText className="h-5 w-5 text-muted-foreground shrink-0" />
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium truncate">{document.name}</p>
-                    <p className="text-sm text-muted-foreground truncate">
-                      {caseLabel(document.case_id)} · {formatDate(document.created_at)}
-                      {document.document_type ? ` · ${document.document_type}` : ""}
-                    </p>
-                  </div>
-                  {document.case_id && (
-                    <Button variant="ghost" size="sm" asChild>
-                      <Link href={`/dashboard/cases/${document.case_id}`}>Ver caso</Link>
-                    </Button>
-                  )}
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
-      </TabsContent>
-
-      {/* ------------------------------------------------------------------ Notas */}
-      <TabsContent value="notas">
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle>Notas</CardTitle>
-              {firstCaseId && (
-                <Button size="sm" asChild>
-                  <Link href={`/dashboard/cases/${firstCaseId}/notes/new`}>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Nueva nota
                   </Link>
-                </Button>
-              )}
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {notes.length === 0 ? (
-              <EmptyState
-                icon={FileText}
-                title="Sin notas"
-                description="Anotá acuerdos, llamadas y decisiones del cliente o de sus casos."
-                action={
-                  firstCaseId
-                    ? { label: "Escribir nota", href: `/dashboard/cases/${firstCaseId}/notes/new` }
-                    : undefined
-                }
-              />
-            ) : (
-              notes.map(note => (
-                <div key={note.id} className="rounded-lg border p-4">
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <h4 className="font-medium truncate">{note.title || "Nota sin título"}</h4>
-                    <span className="text-xs text-muted-foreground shrink-0">{formatDate(note.created_at)}</span>
-                  </div>
-                  <p className="text-sm text-muted-foreground whitespace-pre-line line-clamp-4">{note.content}</p>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    {caseLabel(note.case_id)}
-                    {note.author_name ? ` · ${note.author_name}` : ""}
-                  </p>
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
-      </TabsContent>
 
-      {/* ---------------------------------------------------------- Declaraciones */}
-      <TabsContent value="declaraciones">
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle>Declaraciones grabadas</CardTitle>
-              <Button size="sm" asChild>
-                <Link href={`/dashboard/declarations?client=${client.id}`}>
-                  <Mic className="h-4 w-4 mr-2" />
-                  Grabar
-                </Link>
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {declarations.length === 0 ? (
-              <EmptyState
-                icon={Mic}
-                title="Sin declaraciones"
-                description="Grabá una declaración y quedará adjunta al caso como nota y audio."
-                action={{ label: "Grabar declaración", href: `/dashboard/declarations?client=${client.id}` }}
-              />
-            ) : (
-              declarations.map(declaration => (
-                <div key={declaration.id} className="rounded-lg border p-4">
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <Mic className="h-4 w-4 text-muted-foreground shrink-0" />
-                      <h4 className="font-medium truncate">{caseLabel(declaration.case_id)}</h4>
-                    </div>
-                    <span className="text-xs text-muted-foreground shrink-0">
-                      {formatDate(declaration.created_at)}
-                    </span>
+                  {/* Atajos al contenido del caso: el trabajo vive ahí adentro. */}
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {[
+                      { label: "Tareas", count: case_.taskCount, extra: case_.openTaskCount, tab: "tasks", icon: CheckSquare },
+                      { label: "Documentos", count: case_.documentCount, tab: "documents", icon: FolderOpen },
+                      { label: "Notas", count: case_.noteCount, tab: "notes", icon: FileText },
+                      { label: "Declaraciones", count: case_.declarationCount, tab: "declarations", icon: Mic },
+                    ].map(shortcut => (
+                      <Button key={shortcut.tab} variant="outline" size="sm" asChild>
+                        <Link href={`/dashboard/cases/${case_.id}?tab=${shortcut.tab}`}>
+                          <shortcut.icon className="h-3.5 w-3.5 mr-1.5" />
+                          {shortcut.label}
+                          <span className="ml-1.5 text-muted-foreground">
+                            {shortcut.count}
+                            {shortcut.extra !== undefined && shortcut.extra > 0 && ` · ${shortcut.extra} abiertas`}
+                          </span>
+                        </Link>
+                      </Button>
+                    ))}
                   </div>
-                  <p className="text-sm text-muted-foreground whitespace-pre-line line-clamp-4">
-                    {declaration.content}
-                  </p>
-                  {declaration.case_id && (
-                    <Button variant="ghost" size="sm" className="mt-2 px-0" asChild>
-                      <Link href={`/dashboard/cases/${declaration.case_id}`}>Ver en el caso →</Link>
-                    </Button>
-                  )}
                 </div>
               ))
             )}
@@ -661,20 +416,33 @@ export function ClientWorkspace({
       <TabsContent value="equipo">
         <Card>
           <CardHeader>
-            <CardTitle>Equipo asignado</CardTitle>
+            <div>
+              <CardTitle>Equipo asignado</CardTitle>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Quiénes trabajan en los casos de este cliente. Se administra desde cada caso.
+              </p>
+            </div>
           </CardHeader>
           <CardContent className="space-y-3">
             {team.length === 0 ? (
-              <EmptyState
-                icon={Users}
-                title="Sin equipo asignado"
-                description="El equipo se administra desde cada caso del cliente."
-                action={
-                  firstCaseId
-                    ? { label: "Ir al caso", href: `/dashboard/cases/${firstCaseId}` }
-                    : { label: "Crear primer caso", href: `/dashboard/cases/new?client=${client.id}` }
-                }
-              />
+              <div className="text-center py-10">
+                <Users className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+                <h3 className="font-semibold mb-1">Sin equipo asignado</h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                  El equipo se administra desde cada caso del cliente.
+                </p>
+                <Button asChild size="sm">
+                  <Link
+                    href={
+                      cases[0]
+                        ? `/dashboard/cases/${cases[0].id}`
+                        : `/dashboard/cases/new?client=${client.id}`
+                    }
+                  >
+                    {cases[0] ? "Ir al caso" : "Crear primer caso"}
+                  </Link>
+                </Button>
+              </div>
             ) : (
               team.map(member => (
                 <div key={member.user_id} className="flex items-center gap-3 rounded-lg border p-4">
@@ -684,13 +452,19 @@ export function ClientWorkspace({
                   <div className="min-w-0 flex-1">
                     <p className="font-medium truncate">{member.name}</p>
                     <p className="text-sm text-muted-foreground truncate">{member.email ?? "—"}</p>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <Badge variant="outline">{member.role}</Badge>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {member.case_ids.length} {member.case_ids.length === 1 ? "caso" : "casos"}
+                    <p className="mt-1 flex flex-wrap gap-1.5 text-xs text-muted-foreground">
+                      {member.case_ids.map(caseId => (
+                        <Link
+                          key={caseId}
+                          href={`/dashboard/cases/${caseId}`}
+                          className="hover:underline"
+                        >
+                          {caseLabel(caseId)}
+                        </Link>
+                      ))}
                     </p>
                   </div>
+                  <Badge variant="outline" className="shrink-0">{member.role}</Badge>
                 </div>
               ))
             )}

@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { requireAuth } from '@/lib/auth'
+import { DECLARATION_MARKER } from '@/lib/declarations'
 
 export type DeclarationData = {
   summary: string
@@ -81,7 +82,7 @@ export async function attachDeclarationToCase(
     }
 
     // Create a note for the case with the declaration content
-    const noteContent = `# Declaración\n\n## Resumen\n${declaration.summary}\n\n${declaration.transcription ? `## Transcripción Completa\n${declaration.transcription}\n\n` : ''}${audioDocumentId ? `_Audio guardado como documento_` : ''}`
+    const noteContent = `${DECLARATION_MARKER}\n\n## Resumen\n${declaration.summary}\n\n${declaration.transcription ? `## Transcripción Completa\n${declaration.transcription}\n\n` : ''}${audioDocumentId ? `_Audio guardado como documento_` : ''}`
 
     const { data, error } = await supabase
       .from('notes')
