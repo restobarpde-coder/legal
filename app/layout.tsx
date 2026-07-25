@@ -8,6 +8,7 @@ import { ThemeProvider } from "@/components/theme-provider"
 import { QueryProvider } from "@/components/providers/query-provider"
 import { NavigationProgress } from "@/components/navigation-progress"
 import { Toaster } from "@/components/ui/sonner"
+import { PWARegister } from "@/components/pwa-register"
 import { Suspense } from "react"
 import "./globals.css"
 
@@ -16,9 +17,34 @@ const geistSans = GeistSans
 const geistMono = GeistMono
 
 export const metadata: Metadata = {
-  title: "Estudio Jurídico MVP",
-  description: "Sistema de gestión para estudios jurídicos",
+  title: "CA - Plataforma Legal",
+  description: "Plataforma de gestión legal optimizada para tablets y celulares",
   generator: "v0.app",
+  manifest: "/manifest.json",
+  viewport: {
+    width: "device-width",
+    initialScale: 1,
+    maximumScale: 5,
+    userScalable: true,
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "CA Legal",
+  },
+  formatDetection: {
+    telephone: false,
+  },
+  icons: {
+    icon: [
+      { url: "/placeholder-logo.png", sizes: "192x192", type: "image/png" },
+      { url: "/placeholder-logo.svg", sizes: "any", type: "image/svg+xml" },
+    ],
+    apple: [
+      { url: "/placeholder-logo.png", sizes: "192x192" },
+    ],
+  },
+  themeColor: "#ffffff",
 }
 
 // Revalidación para reducir carga del servidor
@@ -33,6 +59,7 @@ export default function RootLayout({
     <html lang="es" suppressHydrationWarning>
       <body className={`font-sans ${geistSans.variable} ${geistMono.variable} antialiased`}>
         <Suspense fallback={null}>
+          <PWARegister />
           <NavigationProgress />
           <QueryProvider>
             <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
