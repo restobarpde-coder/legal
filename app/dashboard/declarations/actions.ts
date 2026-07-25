@@ -187,7 +187,7 @@ export async function getCasesForSelection() {
     // Get case details
     const { data: cases, error: casesError } = await supabase
       .from('cases')
-      .select('id, title, status, clients(name)')
+      .select('id, title, status, client_id, clients(name)')
       .in('id', caseIds)
       .eq('status', 'active')
       .order('created_at', { ascending: false })
@@ -201,6 +201,7 @@ export async function getCasesForSelection() {
     return (cases || []).map(c => ({
       id: c.id,
       title: c.title,
+      client_id: c.client_id as string,
       clients: Array.isArray(c.clients) && c.clients.length > 0 ? c.clients[0] : null
     }))
   } catch (error) {

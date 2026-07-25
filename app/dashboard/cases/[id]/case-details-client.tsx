@@ -16,6 +16,7 @@ import { StartConversationDialog } from '@/components/inbox/start-conversation-d
 import { ConversationList } from '@/components/inbox/conversation-list'
 import { useCaseDetails } from '@/hooks/use-case-details'
 import { CaseTimeline } from '@/components/case-timeline'
+import { EntityBreadcrumbs } from '@/components/nav/entity-breadcrumbs'
 import { TaskStatusSelect, TaskStatusBadge } from '@/components/task-status-select'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useRouter } from 'next/navigation'
@@ -363,9 +364,19 @@ export function CaseDetailsClient({ caseId }: CaseDetailsClientProps) {
         <div className="space-y-6 max-w-full overflow-x-hidden">
             {/* Header */}
             <div className="space-y-4">
+                <EntityBreadcrumbs
+                    items={[
+                        { label: 'Clientes', href: '/dashboard/clients' },
+                        ...(caseData.clients
+                            ? [{ label: caseData.clients.name, href: `/dashboard/clients/${caseData.clients.id}` }]
+                            : []),
+                        { label: caseData.title },
+                    ]}
+                />
+
                 <div className="flex items-center gap-2">
                     <Button variant="ghost" size="icon" asChild>
-                        <Link href="/dashboard/cases">
+                        <Link href={caseData.clients ? `/dashboard/clients/${caseData.clients.id}?tab=casos` : '/dashboard/cases'}>
                             <ArrowLeft className="h-4 w-4" />
                         </Link>
                     </Button>
@@ -894,7 +905,12 @@ export function CaseDetailsClient({ caseId }: CaseDetailsClientProps) {
                         </CardHeader>
                         <CardContent className="space-y-3">
                             <div>
-                                <p className="font-medium">{caseData.clients.name}</p>
+                                <Link
+                                    href={`/dashboard/clients/${caseData.clients.id}`}
+                                    className="font-medium hover:underline"
+                                >
+                                    {caseData.clients.name}
+                                </Link>
                                 {caseData.clients.company && <p className="text-sm text-muted-foreground">{caseData.clients.company}</p>}
                             </div>
                             <Separator />

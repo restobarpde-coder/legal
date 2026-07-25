@@ -2,8 +2,8 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { Suspense, useState, useEffect } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -27,10 +27,12 @@ interface User {
   role: string
 }
 
-export default function NewTaskPage() {
+function NewTaskForm() {
+  const searchParams = useSearchParams()
+  const preselectedCaseId = searchParams.get("case") ?? ""
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
-  const [caseId, setCaseId] = useState("")
+  const [caseId, setCaseId] = useState(preselectedCaseId)
   const [assignedTo, setAssignedTo] = useState("")
   const [priority, setPriority] = useState<"low" | "medium" | "high" | "urgent">("medium")
   const [dueDate, setDueDate] = useState("")
@@ -116,7 +118,7 @@ export default function NewTaskPage() {
       {/* Header */}
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" asChild>
-          <Link href="/dashboard/tasks">
+          <Link href={preselectedCaseId ? `/dashboard/cases/${preselectedCaseId}` : "/dashboard/tasks"}>
             <ArrowLeft className="h-4 w-4" />
           </Link>
         </Button>
@@ -241,12 +243,22 @@ export default function NewTaskPage() {
                 )}
               </Button>
               <Button type="button" variant="outline" asChild>
-                <Link href="/dashboard/tasks">Cancelar</Link>
+                <Link href={preselectedCaseId ? `/dashboard/cases/${preselectedCaseId}` : "/dashboard/tasks"}>
+                  Cancelar
+                </Link>
               </Button>
             </div>
           </form>
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+export default function NewTaskPage() {
+  return (
+    <Suspense fallback={null}>
+      <NewTaskForm />
+    </Suspense>
   )
 }

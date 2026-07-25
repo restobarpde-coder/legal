@@ -59,6 +59,71 @@ function isTaskNotification(notification: Notification) {
   return notification.related_entity_type === 'task' || !!notification.task_id
 }
 
+// Casos y agenda también guardan `metadata.dueDate`, así que muestran el mismo
+// "vence en…" en vivo que las tareas.
+function hasDeadline(notification: Notification) {
+  return isTaskNotification(notification)
+    || notification.type === 'case_deadline'
+    || notification.type === 'appointment_reminder'
+}
+
+/** Destino de la notificación, de lo más específico a lo más general. */
+function notificationLink(notification: Notification) {
+  const entityId = notification.related_entity_id
+  const caseId = notification.metadata?.caseId
+
+  switch (notification.related_entity_type) {
+    case 'task':
+      if (entityId) return `/dashboard/tasks/${entityId}`
+      break
+    case 'case':
+      if (entityId) return `/dashboard/cases/${entityId}`
+      break
+    case 'appointment':
+      return '/dashboard/calendar'
+    case 'document':
+      return caseId ? `/dashboard/cases/${caseId}` : '/dashboard/documents'
+    case 'inbox_conversation':
+      if (entityId) return `/dashboard/messages?conversation=${entityId}`
+      break
+    case 'inbox_message':
+      if (notification.metadata?.conversation_id) {
+        return `/dashboard/messages?conversation=${notification.metadata.conversation_id}`
+      }
+      break
+  }
+
+  if (notification.task_id) return `/dashboard/tasks/${notification.task_id}`
+  if (notification.case_id) return `/dashboard/cases/${notification.case_id}`
+  if (caseId) return `/dashboard/cases/${caseId}`
+  return '#'
+}
+
+/** Etiqueta corta a la derecha del título. */
+function notificationBadge(notification: Notification) {
+  if (isTaskNotification(notification)) return getPriorityLabel(notification.priority)
+
+  switch (notification.type) {
+    case 'inbox_whatsapp':
+      return 'WhatsApp'
+    case 'inbox_email':
+      return 'Email'
+    case 'inbox_message':
+      return notification.metadata?.channel === 'whatsapp' ? 'WhatsApp' : 'Email'
+    case 'case_assigned':
+    case 'case_status_changed':
+      return 'Caso'
+    case 'case_deadline':
+      return 'Vencimiento'
+    case 'appointment_reminder':
+      return 'Agenda'
+    case 'document_uploaded':
+      return 'Documento'
+    default:
+      return null
+  }
+}
+
 export function NotificationDropdown() {
   const { data: notifications, isLoading, error, isConnected, dismissNotification, clearAll } = useNotifications()
   const router = useRouter()
@@ -126,21 +191,9 @@ export function NotificationDropdown() {
               const notificationId = notification.id
               const title = notification.taskTitle || notification.title || 'Notificación'
               const description = notification.taskDescription || notification.message || ''
-              const due = isTaskNotification(notification) ? dueLabel(notification) : null
-              // Determine link based on notification type and data
-              let link = '#'
-
-              if (notification.related_entity_type === 'task' && notification.related_entity_id) {
-                link = `/dashboard/tasks/${notification.related_entity_id}`
-              } else if (notification.task_id) {
-                link = `/dashboard/tasks/${notification.task_id}`
-              } else if (notification.related_entity_type === 'inbox_conversation' && notification.related_entity_id) {
-                link = `/dashboard/messages?conversation=${notification.related_entity_id}`
-              } else if (notification.related_entity_type === 'inbox_message' && notification.metadata?.conversation_id) {
-                link = `/dashboard/messages?conversation=${notification.metadata.conversation_id}`
-              } else if (notification.case_id) {
-                link = `/dashboard/cases/${notification.case_id}`
-              }
+              const due = hasDeadline(notification) ? dueLabel(notification) : null
+              const badge = notificationBadge(notification)
+              const link = notificationLink(notification)
 
               return (
                 <div key={notificationId} className="relative group">
@@ -157,15 +210,11 @@ export function NotificationDropdown() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-start justify-between gap-2">
                             <p className="font-medium text-sm line-clamp-1">{title}</p>
-                            {isTaskNotification(notification) ? (
+                            {badge && (
                               <Badge variant="outline" className="text-xs shrink-0">
-                                {getPriorityLabel(notification.priority)}
+                                {badge}
                               </Badge>
-                            ) : notification.type === 'inbox_message' ? (
-                              <Badge variant="outline" className="text-xs shrink-0">
-                                {notification.metadata?.channel === 'whatsapp' ? 'WhatsApp' : 'Email'}
-                              </Badge>
-                            ) : null}
+                            )}
                           </div>
                           {description && (
                             <p className="text-xs text-muted-foreground line-clamp-1 mt-1">

@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { filterByNotificationPreference } from '@/lib/notifications/preferences'
 
 type InboxChannel = 'whatsapp' | 'email'
 
@@ -36,6 +37,8 @@ export async function notifyInboxMessage(
     const { data: users, error: usersError } = await supabase
       .from('users')
       .select('id')
+      .is('deleted_at', null)
+      .neq('is_active', false)
 
     if (usersError) {
       throw new Error(`Could not load inbox notification recipients: ${usersError.message}`)
@@ -48,13 +51,19 @@ export async function notifyInboxMessage(
 
   if (recipientIds.length === 0) return
 
+  // El correo y WhatsApp se apagan por separado desde el panel de configuración.
+  const notificationType = input.channel === 'whatsapp' ? 'inbox_whatsapp' : 'inbox_email'
+  recipientIds = await filterByNotificationPreference(supabase, recipientIds, notificationType)
+
+  if (recipientIds.length === 0) return
+
   const title = input.channel === 'email' ? 'Nuevo email' : 'Nuevo mensaje de WhatsApp'
   const message = input.preview || `Nuevo mensaje de ${input.channel}`
 
   const { error } = await supabase.from('notifications').insert(
     recipientIds.map(userId => ({
       user_id: userId,
-      type: 'inbox_message',
+      type: notificationType,
       title,
       message,
       related_entity_type: 'inbox_conversation',

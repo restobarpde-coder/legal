@@ -2,6 +2,12 @@
 
 import { createContext, createElement, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import {
+  NOTIFICATION_PREFERENCES_CHANGED_EVENT,
+  defaultPreferences,
+  resolveNotificationType,
+  type NotificationPreference,
+} from '@/lib/notifications/catalog'
 
 export type Notification = {
   id: string
@@ -63,6 +69,17 @@ function isPendingNotification(notification: Notification) {
   return !notification.read_at && !notification.dismissed_at
 }
 
+/**
+ * Si el tipo está apagado la fila ni siquiera se crea (lo corta
+ * `create_notification` en la base), así que acá solo se decide el aviso
+ * nativo del sistema.
+ */
+function shouldPushNatively(notification: Notification, pushByType: Record<string, boolean>) {
+  const type = resolveNotificationType(notification.type, notification.metadata?.channel)
+  if (!type) return true
+  return pushByType[type] ?? true
+}
+
 function upsertNotification(items: Notification[], incoming: Notification) {
   if (!isPendingNotification(incoming)) {
     return items.filter(item => item.id !== incoming.id)
@@ -83,6 +100,9 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   const eventVersionRef = useRef(0)
   const heartbeatVersionRef = useRef<string | null>(null)
   const notificationEventsRef = useRef(new Map<string, { version: number; notification: Notification }>())
+  const pushByTypeRef = useRef<Record<string, boolean>>(
+    Object.fromEntries(defaultPreferences().map(preference => [preference.type, preference.push]))
+  )
 
   const loadNotifications = useCallback(async (userId: string, initial = false) => {
     const requestId = ++loadRequestRef.current
@@ -155,7 +175,10 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
 
               // Notificación nativa solo si la pestaña no está visible: con la
               // app en primer plano el badge de la campana ya lo comunica.
-              if ('Notification' in window && Notification.permission === 'granted' && document.visibilityState !== 'visible') {
+              if (shouldPushNatively(newNotification, pushByTypeRef.current)
+                && 'Notification' in window
+                && Notification.permission === 'granted'
+                && document.visibilityState !== 'visible') {
                 new Notification(newNotification.title, {
                   body: newNotification.message || '',
                   icon: '/favicon.ico',
@@ -208,6 +231,39 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       if (channel) void supabase.removeChannel(channel)
     }
   }, [loadNotifications, supabase])
+
+  // Los flags de push solo deciden el aviso nativo, así que un fallo de carga
+  // deja los defaults del catálogo sin afectar la campana.
+  useEffect(() => {
+    let active = true
+
+    const loadPushPreferences = async () => {
+      try {
+        const response = await fetch('/api/notifications/preferences', { cache: 'no-store' })
+        if (!response.ok || !active) return
+        const result = await response.json() as { preferences: NotificationPreference[] }
+        pushByTypeRef.current = Object.fromEntries(
+          result.preferences.map(preference => [preference.type, preference.push])
+        )
+      } catch {
+        // Se mantienen los defaults del catálogo.
+      }
+    }
+
+    const reload = () => void loadPushPreferences()
+    const reloadIfVisible = () => {
+      if (document.visibilityState === 'visible') reload()
+    }
+
+    reload()
+    window.addEventListener(NOTIFICATION_PREFERENCES_CHANGED_EVENT, reload)
+    document.addEventListener('visibilitychange', reloadIfVisible)
+    return () => {
+      active = false
+      window.removeEventListener(NOTIFICATION_PREFERENCES_CHANGED_EVENT, reload)
+      document.removeEventListener('visibilitychange', reloadIfVisible)
+    }
+  }, [])
 
   useEffect(() => {
     let active = true

@@ -15,9 +15,18 @@ interface AudioRecorderProps {
   onTranscriptionComplete?: (summary: string) => void
   cases?: Array<{ id: string; title: string; clients?: { name: string } | null }>
   clients?: Array<{ id: string; name: string; company: string | null }>
+  /** Preselección al llegar desde la ficha de un cliente o de un caso. */
+  defaultCaseId?: string
+  defaultClientId?: string
 }
 
-export function AudioRecorder({ onTranscriptionComplete, cases = [], clients = [] }: AudioRecorderProps) {
+export function AudioRecorder({
+  onTranscriptionComplete,
+  cases = [],
+  clients = [],
+  defaultCaseId = '',
+  defaultClientId = '',
+}: AudioRecorderProps) {
   const router = useRouter()
   const [isRecording, setIsRecording] = useState(false)
   const [isPaused, setIsPaused] = useState(false)
@@ -28,8 +37,8 @@ export function AudioRecorder({ onTranscriptionComplete, cases = [], clients = [
   const [transcription, setTranscription] = useState<string>('')
   const [showSaveDialog, setShowSaveDialog] = useState(false)
   const [saveAction, setSaveAction] = useState<'attach' | 'create'>('attach')
-  const [selectedCaseId, setSelectedCaseId] = useState<string>('')
-  const [selectedClientId, setSelectedClientId] = useState<string>('')
+  const [selectedCaseId, setSelectedCaseId] = useState<string>(defaultCaseId)
+  const [selectedClientId, setSelectedClientId] = useState<string>(defaultClientId)
   const [newCaseTitle, setNewCaseTitle] = useState<string>('')
   const [isSaving, setIsSaving] = useState(false)
   
