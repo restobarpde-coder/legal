@@ -3,9 +3,11 @@
 import { useState, useRef, useEffect } from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Send } from 'lucide-react'
-import { Card, CardContent, CardFooter } from '@/components/ui/card'
+import { Scale, Send } from 'lucide-react'
+import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import type { SelectableCase } from '@/lib/case-selection'
 
 interface Message {
   sender: 'user' | 'bot'
@@ -14,11 +16,22 @@ interface Message {
 
 const WEBHOOK_URL = '/api/chat-proxy'
 
-export function ChatWebhookClient() {
+const NO_CASE = 'none'
+
+type Props = {
+  cases: SelectableCase[]
+  defaultCaseId?: string
+}
+
+export function ChatWebhookClient({ cases, defaultCaseId }: Props) {
   const [messages, setMessages] = useState<Message[]>([])
   const [inputMessage, setInputMessage] = useState<string>('')
   const [isLoading, setIsLoading] = useState<boolean>(false)
+  // Al elegir un caso, el proxy adjunta su contexto completo al webhook.
+  const [selectedCaseId, setSelectedCaseId] = useState<string>(defaultCaseId || NO_CASE)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  const selectedCase = cases.find(c => c.id === selectedCaseId)
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -42,7 +55,10 @@ export function ChatWebhookClient() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ text: inputMessage }),
+        body: JSON.stringify({
+          text: inputMessage,
+          caseId: selectedCaseId === NO_CASE ? null : selectedCaseId,
+        }),
       })
 
       if (!response.ok) {
@@ -83,9 +99,40 @@ export function ChatWebhookClient() {
 
   return (
     <Card className="flex flex-col h-[70vh]">
+      <CardHeader className="border-b py-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <Scale className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <Select value={selectedCaseId} onValueChange={setSelectedCaseId}>
+            <SelectTrigger className="h-9 w-full sm:w-80">
+              <SelectValue placeholder="Sin caso" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NO_CASE}>Sin caso — consulta general</SelectItem>
+              {cases.map(case_ => (
+                <SelectItem key={case_.id} value={case_.id}>
+                  {case_.title}
+                  {case_.clients?.name ? ` — ${case_.clients.name}` : ''}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            {selectedCase
+              ? 'La AI recibe el expediente completo: partes, tareas, notas, declaraciones y archivos.'
+              : 'Elegí un caso para que la AI responda con su expediente a la vista.'}
+          </p>
+        </div>
+      </CardHeader>
       <CardContent className="flex-1 p-4 overflow-hidden">
         <ScrollArea className="h-full pr-4">
           <div className="flex flex-col gap-3">
+            {messages.length === 0 && !isLoading && (
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                {selectedCase
+                  ? `Preguntá lo que quieras sobre "${selectedCase.title}".`
+                  : 'Escribí tu consulta. Si la scopeás a un caso, las respuestas son mucho más precisas.'}
+              </p>
+            )}
             {messages.map((message, index) => (
               <div
                 key={index}

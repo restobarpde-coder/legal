@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuthAPI } from '@/lib/auth'
+import { buildCaseContext, serializeCaseContext } from '@/lib/case-context'
 
 // Force dynamic to prevent static caching of 404s
 export const dynamic = 'force-dynamic'
@@ -25,19 +26,38 @@ export async function POST(request: NextRequest) {
 
     // 3. Parse Request
     const body = await request.json()
-    const { text } = body
+    const { text, caseId } = body
 
     if (!text) {
       return NextResponse.json({ error: 'Message text is required' }, { status: 400 })
     }
 
-    // 4. Forward to Webhook
+    // 4. Build case context when the conversation is scoped to a case.
+    //    buildCaseContext ya valida el acceso: si el usuario no puede leer el
+    //    caso devuelve null y el mensaje se envía sin contexto.
+    let caseContext = null
+    let caseContextMarkdown: string | null = null
+
+    if (caseId) {
+      caseContext = await buildCaseContext(caseId, user.id)
+      if (caseContext) {
+        caseContextMarkdown = serializeCaseContext(caseContext)
+        console.log(`📎 Case context attached (${caseContextMarkdown.length} chars)`)
+      } else {
+        console.warn(`⚠️ No access to case ${caseId} for user ${user.id} — sending without context`)
+      }
+    }
+
+    // 5. Forward to Webhook
     console.log('📤 Forwarding message to webhook...')
     const payload = {
       text,
       userId: user.id,
       userEmail: user.email,
-      userName: user.user_metadata?.full_name || user.email
+      userName: user.user_metadata?.full_name || user.email,
+      caseId: caseContext ? caseId : null,
+      caseContext,
+      caseContextMarkdown,
     }
 
     const response = await fetch(EXTERNAL_WEBHOOK_URL, {

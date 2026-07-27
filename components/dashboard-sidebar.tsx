@@ -44,10 +44,13 @@ type NavSection = {
 }
 
 /**
- * Navegación cliente-céntrica: el cliente es la puerta de entrada y dentro de su
- * ficha viven casos, tareas, documentos, notas, declaraciones, equipo y WhatsApp.
- * Las secciones de abajo son vistas transversales (todo el estudio a la vez),
- * no el camino habitual de trabajo.
+ * La navegación refleja el flujo real: cliente → caso → trabajo.
+ *
+ *  - El primer bloque ES el flujo. Se entra por Clientes; Casos está al lado
+ *    para quien ya sabe a qué expediente va.
+ *  - "Mi trabajo" son cortes personales que cruzan todos los casos.
+ *  - "Herramientas" son puertas de entrada que siempre terminan en un caso
+ *    (grabar una declaración, preguntarle a la AI) más la bandeja y el archivo.
  */
 const navigation: NavSection[] = [
   {
@@ -61,18 +64,19 @@ const navigation: NavSection[] = [
         name: "Clientes",
         href: "/dashboard/clients",
         icon: Users,
-        description: "Casos, tareas y chat de cada cliente",
+        description: "Contacto y casos",
       },
-    ],
-  },
-  {
-    label: "Vistas transversales",
-    items: [
       {
         name: "Casos",
         href: "/dashboard/cases",
         icon: Scale,
+        description: "Docs, notas, fotos y tareas",
       },
+    ],
+  },
+  {
+    label: "Mi trabajo",
+    items: [
       {
         name: "Tareas",
         href: "/dashboard/tasks",
@@ -84,9 +88,9 @@ const navigation: NavSection[] = [
         icon: Calendar,
       },
       {
-        name: "Documentos",
-        href: "/dashboard/documents",
-        icon: FolderOpen,
+        name: "Tiempo",
+        href: "/dashboard/time",
+        icon: Clock,
       },
     ],
   },
@@ -99,19 +103,21 @@ const navigation: NavSection[] = [
         icon: MessageSquare,
       },
       {
-        name: "Declaraciones",
+        name: "AI IMPO",
+        href: "/dashboard/chat-webhook",
+        icon: Bot,
+        description: "Consultar un caso",
+      },
+      {
+        name: "Grabar declaración",
         href: "/dashboard/declarations",
         icon: Mic,
       },
       {
-        name: "Tiempo",
-        href: "/dashboard/time",
-        icon: Clock,
-      },
-      {
-        name: "AI IMPO",
-        href: "/dashboard/chat-webhook",
-        icon: Bot,
+        name: "Documentos",
+        href: "/dashboard/documents",
+        icon: FolderOpen,
+        description: "Archivo de todos los casos",
       },
     ],
   },
@@ -136,7 +142,8 @@ const navigation: NavSection[] = [
 
 
 
-function SidebarContent() {
+/** `onNavigate` lo usa el drawer mobile para cerrarse al elegir un destino. */
+function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const router = useRouter()
   const supabase = createClient()
   const { prefetchRoute, prefetchCommonRoutes, isCurrentRoute } = useOptimizedNavigation()
@@ -153,6 +160,7 @@ function SidebarContent() {
   }, [prefetchCommonRoutes])
 
   const handleSignOut = async () => {
+    onNavigate?.()
     await supabase.auth.signOut()
     router.push("/login")
     router.refresh()
@@ -161,9 +169,13 @@ function SidebarContent() {
   return (
     <div className="flex h-full flex-col bg-sidebar">
       {/* Logo */}
-      <div className="flex h-16 items-center justify-center border-b border-sidebar-border px-6">
+      <Link
+        href="/dashboard"
+        onClick={onNavigate}
+        className="flex h-16 items-center justify-center border-b border-sidebar-border px-6 transition-colors hover:bg-sidebar-accent/40"
+      >
         <span className="text-2xl font-bold text-sidebar-foreground">CA</span>
-      </div>
+      </Link>
 
       {/* Navigation */}
       <ScrollArea className="flex-1 px-4 py-6">
@@ -182,6 +194,7 @@ function SidebarContent() {
                   <Link
                     key={item.name}
                     href={item.href}
+                    onClick={onNavigate}
                     onMouseEnter={() => prefetchRoute(item.href)}
                     onFocus={() => prefetchRoute(item.href)}
                     className={cn(
@@ -242,7 +255,11 @@ function SidebarContent() {
             size="sm"
             className="w-full justify-start gap-2.5 text-sidebar-foreground hover:bg-sidebar-accent transition-all duration-200 hover:scale-[1.02]"
           >
-            <Link href="/dashboard/settings" onMouseEnter={() => prefetchRoute('/dashboard/settings')}>
+            <Link
+              href="/dashboard/settings"
+              onClick={onNavigate}
+              onMouseEnter={() => prefetchRoute('/dashboard/settings')}
+            >
               <Settings className="h-4 w-4" />
               <span className="text-[0.9375rem]">Configuración</span>
             </Link>
@@ -275,7 +292,7 @@ export function MobileDashboardSidebar() {
       </SheetTrigger>
       <SheetContent side="left" className="p-0 w-64">
         <SheetTitle className="sr-only">Menú de navegación</SheetTitle>
-        <SidebarContent />
+        <SidebarContent onNavigate={() => setOpen(false)} />
       </SheetContent>
     </Sheet>
   )

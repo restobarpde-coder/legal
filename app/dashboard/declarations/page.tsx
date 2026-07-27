@@ -2,7 +2,8 @@ import Link from "next/link"
 import { requireAuth } from "@/lib/auth"
 import { AudioRecorder } from "@/components/audio-recorder"
 import { EntityBreadcrumbs } from "@/components/nav/entity-breadcrumbs"
-import { getCasesForSelection, getClientsForSelection } from './actions'
+import { getCasesForSelection } from '@/lib/case-selection'
+import { getClientsForSelection } from './actions'
 
 export default async function DeclarationsPage({
   searchParams,

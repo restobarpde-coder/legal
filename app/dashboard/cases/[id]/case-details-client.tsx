@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { ArrowLeft, Edit, Users, FileText, CheckSquare, Clock, Mail, Phone, Building, StickyNote, Trash2, MoreVertical, Calendar, User, Shield, Activity, Eye, Download, Plus, Mic, Image as ImageIcon } from 'lucide-react'
+import { ArrowLeft, Edit, Users, FileText, CheckSquare, Clock, Mail, Phone, Building, StickyNote, Trash2, MoreVertical, Calendar, User, Shield, Activity, Eye, Download, Plus, Mic, Bot, Image as ImageIcon } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { CaseMembersManager } from '../case-members-manager'
@@ -17,6 +17,7 @@ import { ConversationList } from '@/components/inbox/conversation-list'
 import { useCaseDetails } from '@/hooks/use-case-details'
 import { CaseTimeline } from '@/components/case-timeline'
 import { CasePhotoGrid } from '@/components/case-photo-grid'
+import { CaseAiActions } from '@/components/case-ai-actions'
 import { EntityBreadcrumbs } from '@/components/nav/entity-breadcrumbs'
 import { TaskStatusSelect, TaskStatusBadge } from '@/components/task-status-select'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -1118,6 +1119,19 @@ export function CaseDetailsClient({ caseId }: CaseDetailsClientProps) {
                                     </div>
                                 )}
                             </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* AI */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <Bot className="h-5 w-5" />
+                                Asistente
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <CaseAiActions caseId={caseData.id} />
                         </CardContent>
                     </Card>
 
