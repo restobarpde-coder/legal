@@ -104,7 +104,28 @@ Agente:
 → Proporciona análisis completo
 ```
 
+## Historial de Chats & Contexto (NUEVO)
+
+El agente ahora:
+- ✅ Guarda cada conversación en Supabase
+- ✅ Recupera últimos 5 chats automáticamente
+- ✅ Mantiene contexto entre preguntas
+- ✅ Evita repetir análisis
+
+**Ejemplo:**
+```
+Chat 1: "Analiza el caso ABC"
+Chat 2: "¿Qué riesgos ves?" 
+→ Agente recuerda análisis anterior
+```
+
 ## Próximas Mejoras
+
+### Fase 2: Vector Embeddings (RAG Completo)
+- Embeddings de chats con OpenAI
+- Vector search con pgvector en Supabase
+- Recuperación semántica inteligente
+- Escalable a 1000+ chats
 
 ### Fase 3: Generación de Documentos
 - Generar escritos legales
