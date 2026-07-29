@@ -45,7 +45,9 @@ No se agregan dependencias nuevas: grabación con `MediaRecorder`, waveform con 
 - `GET /api/cases?client_id=X` — ya existe (`app/api/cases/route.ts:25`), no requiere cambios.
 - Envío de audio/imagen/video/documento por WhatsApp — ya funciona end-to-end vía `app/api/inbox/conversations/[id]/reply/route.ts` (sube a `inbox-attachments`, luego `uploadWhatsAppMedia` + `sendWhatsAppMedia` según `mime_type`). Las notas de voz grabadas se envían por ese mismo camino, como un `File` más.
 
-**Sin migraciones de esquema.** Duración y picos de waveform se calculan al vuelo en el cliente (no se persisten); no hacía falta agregar columnas a `inbox_attachments`.
+**Sin migraciones de tablas.** Duración y picos de waveform se calculan al vuelo en el cliente (no se persisten); no hace falta agregar columnas a `inbox_attachments`.
+
+**Una migración de configuración de storage sí es necesaria** (descubierta durante la implementación, no prevista en el diseño inicial): el bucket `documents` (definido en `sql/04-storage-and-validation-FIXED.sql`) restringe `allowed_mime_types` a PDF/Word/Excel/texto/imagen/zip — no incluye audio ni video. Sin ampliarlo, "Guardar en caso" fallaría en el storage para notas de voz y videos. Migración: `supabase/migrations/20260729150000_extend_documents_bucket_media_types.sql`, que agrega los mime types de audio/video de WhatsApp y sube el límite a 100MB (el máximo de documento de Meta). Debe aplicarse manualmente vía SQL Editor de Supabase (este proyecto no tiene el CLI vinculado, ver flujo habitual del repo).
 
 ## Límites y validación
 
@@ -104,8 +106,9 @@ No se agregan dependencias nuevas: grabación con `MediaRecorder`, waveform con 
 | `components/inbox/composer-attachment-tray.tsx` | Nuevo |
 | `lib/inbox/image-compression.ts` | Nuevo — helper de compresión con `<canvas>` |
 | `app/api/inbox/attachments/[id]/save-to-case/route.ts` | Nuevo endpoint `POST` |
+| `supabase/migrations/20260729150000_extend_documents_bucket_media_types.sql` | Nuevo — amplía `allowed_mime_types`/`file_size_limit` del bucket `documents` para aceptar audio y video |
 
-No se requieren migraciones de esquema/DB.
+No se requieren migraciones de tablas; sí una migración de configuración de storage (ver arriba).
 
 ## Verificación
 

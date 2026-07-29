@@ -5,8 +5,6 @@ import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import {
   ArrowLeft,
-  CheckCheck,
-  FileText,
   Info,
   Mail,
   MessageCircle,
@@ -25,6 +23,12 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 import { InboxComposer, type InboxAccount } from '@/components/inbox-composer'
 import { LinkClientDialog } from '@/components/inbox/link-client-dialog'
+import { MessageBubble } from '@/components/inbox/message-bubble'
+import { ComposerAttachmentTray } from '@/components/inbox/composer-attachment-tray'
+import { AudioRecorderButton } from '@/components/inbox/audio-recorder-button'
+import { MediaLightbox, type LightboxItem } from '@/components/inbox/media-lightbox'
+import { compressImageIfNeeded } from '@/lib/inbox/image-compression'
+import { WHATSAPP_MEDIA_LIMITS, validateWhatsAppMediaSize } from '@/lib/inbox/media-limits'
 import { createClient } from '@/lib/supabase/client'
 
 type Channel = 'all' | 'whatsapp' | 'email'
@@ -43,6 +47,8 @@ type Conversation = {
   last_message_preview: string | null
   linked_client_id: string | null
   linked_client?: { id: string; name: string } | null
+  linked_case_id: string | null
+  linked_case?: { id: string; title: string } | null
   assigned_user?: { id: string; full_name: string | null; email: string } | null
   email_account?: { id: string; email_address: string; display_name?: string | null; account_type: 'personal' | 'shared' } | null
 }
@@ -128,6 +134,9 @@ export function MessagesInbox() {
   const [accounts, setAccounts] = useState<InboxAccount[]>([])
   const [templates, setTemplates] = useState<Array<{ id: string; name: string; language_code: string }>>([])
   const [composeLoading, setComposeLoading] = useState(false)
+  const [isRecorderActive, setIsRecorderActive] = useState(false)
+  const [isDraggingFile, setIsDraggingFile] = useState(false)
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const lastScrolledConversationRef = useRef<string | null>(null)
@@ -153,6 +162,30 @@ export function MessagesInbox() {
     [conversations, selectedId]
   )
   const visibleMessages = messagesConversationId === selectedId ? messages : []
+
+  const mediaItems = useMemo<LightboxItem[]>(() => {
+    const items: LightboxItem[] = []
+    for (const message of visibleMessages) {
+      if (message.content_type !== 'image' && message.content_type !== 'video') continue
+      for (const attachment of message.attachments ?? []) {
+        if (!attachment.attachmentId) continue
+        items.push({
+          attachmentId: attachment.attachmentId,
+          kind: message.content_type,
+          url: `/api/inbox/attachments/${attachment.attachmentId}`,
+          filename: attachment.filename,
+          senderName: message.sender_name,
+          sentAt: message.sent_at ?? message.created_at,
+        })
+      }
+    }
+    return items
+  }, [visibleMessages])
+
+  const openLightbox = useCallback((attachmentId: string) => {
+    const index = mediaItems.findIndex((item) => item.attachmentId === attachmentId)
+    if (index >= 0) setLightboxIndex(index)
+  }, [mediaItems])
 
   const shouldKeepConversationRead = useCallback((conversationId: string) => {
     return document.visibilityState === 'visible' && conversationId === selectedIdRef.current
@@ -488,11 +521,36 @@ export function MessagesInbox() {
     if (detailReconciliationTimerRef.current) clearTimeout(detailReconciliationTimerRef.current)
   }, [])
 
-  async function sendReply() {
-    if (!selectedId || (!draft.trim() && files.length === 0)) return
-    const conversationId = selectedId
+  async function addFiles(newFiles: File[]) {
+    if (!selected || newFiles.length === 0) return
+    const accepted: File[] = []
+    for (const file of newFiles) {
+      let candidate = file
+      if (selected.channel === 'whatsapp') {
+        if (candidate.type.startsWith('image/') && candidate.size > WHATSAPP_MEDIA_LIMITS.image) {
+          candidate = await compressImageIfNeeded(candidate, WHATSAPP_MEDIA_LIMITS.image)
+        }
+        const sizeError = validateWhatsAppMediaSize(candidate)
+        if (sizeError) {
+          setError(sizeError)
+          continue
+        }
+      }
+      accepted.push(candidate)
+    }
+    if (accepted.length) setFiles((current) => [...current, ...accepted])
+  }
+
+  function removeFile(index: number) {
+    setFiles((current) => current.filter((_, i) => i !== index))
+  }
+
+  async function sendReply(options: { filesOverride?: File[] } = {}) {
+    if (!selectedId) return
+    const replyFiles = options.filesOverride ?? [...files]
     const replyContent = draft.trim()
-    const replyFiles = [...files]
+    if (!replyContent && replyFiles.length === 0) return
+    const conversationId = selectedId
     setSending(true)
     setError(null)
     try {
@@ -525,9 +583,11 @@ export function MessagesInbox() {
         throw new Error(result.error ?? 'No fue posible enviar el mensaje')
       }
       if (selectedIdRef.current === conversationId) {
-        setDraft('')
-        setFiles([])
-        if (fileInputRef.current) fileInputRef.current.value = ''
+        if (!options.filesOverride) {
+          setDraft('')
+          setFiles([])
+          if (fileInputRef.current) fileInputRef.current.value = ''
+        }
         void markConversationRead(conversationId)
       }
       await Promise.all([
@@ -541,6 +601,10 @@ export function MessagesInbox() {
     } finally {
       setSending(false)
     }
+  }
+
+  function handleSendVoiceNote(file: File) {
+    void sendReply({ filesOverride: [file] })
   }
 
   async function changeStatus(nextStatus: Exclude<Status, 'all'>) {
@@ -636,7 +700,22 @@ export function MessagesInbox() {
           </ScrollArea>
         </aside>
 
-        <main className={cn('flex min-h-0 min-w-0 flex-col', mobilePane === 'list' && 'hidden md:flex')}>
+        <main
+          className={cn('relative flex min-h-0 min-w-0 flex-col', mobilePane === 'list' && 'hidden md:flex')}
+          onDragOver={(event) => { if (selected) { event.preventDefault(); setIsDraggingFile(true) } }}
+          onDragLeave={(event) => { if (event.currentTarget === event.target) setIsDraggingFile(false) }}
+          onDrop={(event) => {
+            event.preventDefault()
+            setIsDraggingFile(false)
+            const dropped = Array.from(event.dataTransfer.files ?? [])
+            if (dropped.length) void addFiles(dropped)
+          }}
+        >
+          {isDraggingFile ? (
+            <div className="pointer-events-none absolute inset-2 z-10 grid place-items-center rounded-2xl border-2 border-dashed border-primary bg-background/90 text-sm font-medium text-primary">
+              Soltá los archivos para adjuntarlos
+            </div>
+          ) : null}
           {!selected ? <div className="grid flex-1 place-items-center p-8 text-center text-muted-foreground"><MessageCircle className="mb-3 h-10 w-10" />Seleccioná una conversación para ver sus mensajes.</div> : <>
             <header className="flex items-center gap-1.5 border-b px-2 py-2 sm:gap-2 sm:px-4 sm:py-3">
               <Button variant="ghost" size="icon" aria-label="Volver a la lista" className="shrink-0 md:hidden" onClick={() => setMobilePane('list')}><ArrowLeft className="h-5 w-5" /></Button>
@@ -662,19 +741,67 @@ export function MessagesInbox() {
             <ScrollArea className="min-h-0 flex-1 bg-muted/20 p-3 sm:p-4">
               {detailLoading ? <p className="text-sm text-muted-foreground">Cargando mensajes…</p> : null}
               <div className="space-y-2 sm:space-y-3">
-                {visibleMessages.map((message) => <div key={message.id} className={cn('flex', message.direction === 'outbound' ? 'justify-end' : 'justify-start')}><div className={cn('max-w-[85%] rounded-2xl px-3 py-2 text-sm shadow-sm md:max-w-[75%] lg:max-w-[65%]', message.direction === 'outbound' ? 'rounded-br-sm bg-primary text-primary-foreground' : 'rounded-bl-sm bg-background border')}><p className="whitespace-pre-wrap">{message.content || `[${message.content_type}]`}</p>{selected.channel === 'email' && message.email_account ? <p className="mt-2 border-t border-current/15 pt-1 text-[10px] opacity-75">{message.direction === 'outbound' ? 'Enviado desde' : 'Recibido en'}: {message.email_account.display_name || message.email_account.email_address}</p> : null}{message.attachments?.length ? <div className="mt-2 space-y-1">{message.attachments.map((attachment, index) => attachment.attachmentId ? <a key={attachment.attachmentId} href={`/api/inbox/attachments/${attachment.attachmentId}`} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs underline underline-offset-2 opacity-90"><FileText className="h-3.5 w-3.5" />{attachment.filename || 'Archivo adjunto'}</a> : <div key={index} className="flex items-center gap-1.5 text-xs opacity-90"><FileText className="h-3.5 w-3.5" />{attachment.filename || attachment.type || 'Archivo adjunto'}</div>)}</div> : null}<div className="mt-1 flex items-center justify-end gap-1 text-[10px] opacity-70">{formatDate(message.sent_at || message.created_at)}{message.direction === 'outbound' && message.wa_status ? <CheckCheck className="h-3 w-3" /> : null}</div></div></div>)}
+                {visibleMessages.map((message) => (
+                  <div key={message.id} className={cn('flex', message.direction === 'outbound' ? 'justify-end' : 'justify-start')}>
+                    <MessageBubble
+                      message={message}
+                      channel={selected.channel}
+                      timeLabel={formatDate(message.sent_at || message.created_at)}
+                      linkedClientId={selected.linked_client_id}
+                      linkedCaseId={selected.linked_case_id}
+                      onOpenLightbox={openLightbox}
+                    />
+                  </div>
+                ))}
               </div>
               <div ref={messagesEndRef} />
             </ScrollArea>
             <div className="border-t p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:p-3 sm:pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-              <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(event) => setFiles(Array.from(event.target.files ?? []))} />
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={(event) => {
+                  void addFiles(Array.from(event.target.files ?? []))
+                  event.target.value = ''
+                }}
+              />
               <div className="flex items-end gap-1.5 sm:gap-2">
-                <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0 md:h-10 md:w-10" title="Adjuntar archivo" onClick={() => fileInputRef.current?.click()} disabled={selected.status === 'resolved' || selected.status === 'spam' || sending}><Paperclip className="h-5 w-5 md:h-4 md:w-4" /></Button>
-                <Textarea rows={1} value={draft} onFocus={() => void markConversationRead(selected.id)} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !isMobile) { event.preventDefault(); void sendReply() } }} placeholder={selected.status === 'resolved' ? 'La conversación está resuelta' : 'Escribí una respuesta…'} disabled={selected.status === 'resolved' || selected.status === 'spam' || sending} className="max-h-40 min-h-11 flex-1 resize-none rounded-2xl md:min-h-10" />
-                <Button size="icon" className="h-11 w-11 shrink-0 rounded-full md:h-10 md:w-10" title={sending ? 'Enviando…' : 'Enviar'} onClick={() => void sendReply()} disabled={(!draft.trim() && files.length === 0) || sending || selected.status === 'resolved' || selected.status === 'spam'}><Send className="h-5 w-5 md:h-4 md:w-4" /></Button>
+                <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0 md:h-10 md:w-10" title="Adjuntar archivo" onClick={() => fileInputRef.current?.click()} disabled={selected.status === 'resolved' || selected.status === 'spam' || sending || isRecorderActive}><Paperclip className="h-5 w-5 md:h-4 md:w-4" /></Button>
+                {!isRecorderActive ? (
+                  <Textarea
+                    rows={1}
+                    value={draft}
+                    onFocus={() => void markConversationRead(selected.id)}
+                    onChange={(event) => setDraft(event.target.value)}
+                    onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !isMobile) { event.preventDefault(); void sendReply() } }}
+                    onPaste={(event) => {
+                      const imageFiles = Array.from(event.clipboardData?.items ?? [])
+                        .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
+                        .map((item) => item.getAsFile())
+                        .filter((file): file is File => !!file)
+                      if (imageFiles.length === 0) return
+                      event.preventDefault()
+                      void addFiles(imageFiles)
+                    }}
+                    placeholder={selected.status === 'resolved' ? 'La conversación está resuelta' : 'Escribí una respuesta…'}
+                    disabled={selected.status === 'resolved' || selected.status === 'spam' || sending}
+                    className="max-h-40 min-h-11 flex-1 resize-none rounded-2xl md:min-h-10"
+                  />
+                ) : null}
+                {!isRecorderActive && (draft.trim() || files.length > 0) ? (
+                  <Button size="icon" className="h-11 w-11 shrink-0 rounded-full md:h-10 md:w-10" title={sending ? 'Enviando…' : 'Enviar'} onClick={() => void sendReply()} disabled={(!draft.trim() && files.length === 0) || sending || selected.status === 'resolved' || selected.status === 'spam'}><Send className="h-5 w-5 md:h-4 md:w-4" /></Button>
+                ) : selected.channel === 'whatsapp' ? (
+                  <AudioRecorderButton
+                    onSend={handleSendVoiceNote}
+                    onActiveChange={setIsRecorderActive}
+                    disabled={selected.status === 'resolved' || selected.status === 'spam' || sending}
+                  />
+                ) : null}
               </div>
-              {files.length > 0 ? <div className="mt-2 flex flex-wrap gap-1">{files.map(file => <Badge key={`${file.name}-${file.size}`} variant="secondary" className="max-w-full gap-1"><FileText className="h-3 w-3" /><span className="truncate">{file.name}</span></Badge>)}</div> : null}
-              <p className={cn('mt-1 text-xs text-muted-foreground', sending ? 'block' : 'hidden md:block')}>{sending ? 'Enviando… El mensaje aparecerá cuando quede guardado.' : 'Enter para enviar · Shift + Enter para salto de línea · máximo 50 MB por archivo'}</p>
+              <ComposerAttachmentTray files={files} onRemove={removeFile} />
+              <p className={cn('mt-1 text-xs text-muted-foreground', sending ? 'block' : 'hidden md:block')}>{sending ? 'Enviando… El mensaje aparecerá cuando quede guardado.' : 'Enter para enviar · Shift + Enter para salto de línea · arrastrá o pegá archivos para adjuntar'}</p>
             </div>
           </>}</main>
 
@@ -691,6 +818,17 @@ export function MessagesInbox() {
           loading={composeLoading}
           onCancel={() => setIsComposing(false)}
           onCreated={(id) => { setIsComposing(false); void loadConversations(id) }}
+        />
+      ) : null}
+
+      {lightboxIndex !== null && mediaItems[lightboxIndex] ? (
+        <MediaLightbox
+          items={mediaItems}
+          index={lightboxIndex}
+          onIndexChange={setLightboxIndex}
+          onClose={() => setLightboxIndex(null)}
+          linkedClientId={selected?.linked_client_id ?? null}
+          linkedCaseId={selected?.linked_case_id ?? null}
         />
       ) : null}
     </div>
