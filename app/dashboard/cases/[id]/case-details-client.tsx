@@ -1121,19 +1121,6 @@ export function CaseDetailsClient({ caseId }: CaseDetailsClientProps) {
                         </CardContent>
                     </Card>
 
-                    {/* AI */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <Bot className="h-5 w-5" />
-                                Asistente
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <CaseAiActions caseId={caseData.id} />
-                        </CardContent>
-                    </Card>
-
                     {/* Counterparty info */}
                     {caseData.case_counterparties?.length > 0 && (
                         <Card>
