@@ -398,16 +398,25 @@ export function MessagesInbox() {
         .channel('inbox-realtime', { config: { broadcast: { self: true } } })
         .on('postgres_changes', { event: '*', schema: 'public', table: 'inbox_messages' }, (payload) => {
           if (!active) return
-          console.log('[Realtime] Message event:', payload.eventType)
+          console.log('[Realtime] Message event:', payload.eventType, payload.new)
           const message = payload.new as Message
           if (!message.conversation_id) return
 
           if (payload.eventType === 'INSERT') {
+            if (message.conversation_id === selectedIdRef.current) {
+              setMessages(current => [...sortMessages([...current, message])])
+            }
+            scheduleListReconciliation(0)
+          } else if (payload.eventType === 'UPDATE') {
+            if (message.conversation_id === selectedIdRef.current) {
+              setMessages(current => sortMessages(
+                current.map(m => m.id === message.id ? message : m)
+              ))
+            }
             scheduleListReconciliation(0)
           }
 
           if (message.conversation_id === selectedIdRef.current) {
-            scheduleDetailReconciliation(0)
             if (payload.eventType === 'INSERT'
               && message.direction === 'inbound'
               && document.visibilityState === 'visible'
