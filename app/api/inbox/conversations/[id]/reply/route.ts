@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
-import { sendWhatsAppMedia, sendWhatsAppText, uploadWhatsAppMedia, type WhatsAppMediaType } from '@/lib/inbox/whatsapp'
+import { sendWhatsAppMedia, sendWhatsAppText, toWhatsAppMediaType, uploadWhatsAppMedia } from '@/lib/inbox/whatsapp'
 import { sendEmail, replySubject } from '@/lib/inbox/smtp'
 import { decrypt } from '@/lib/inbox/crypto'
 import { storeInboxAttachment, storeInboxAttachmentFromStorage } from '@/lib/inbox/attachments'
@@ -99,6 +99,9 @@ export async function POST(request: NextRequest, { params }: { params: Params })
       }
       for (const attachment of attachments) {
         const type = toWhatsAppMediaType(attachment.mime_type)
+        if (!type) {
+          throw new Error(`${attachment.original_filename} (${attachment.mime_type}) no es un formato compatible con WhatsApp`)
+        }
         const { mediaId } = await uploadWhatsAppMedia({
           content: attachment.content,
           mimeType: attachment.mime_type,
@@ -288,13 +291,6 @@ async function updateMessageAttachments(
       size: attachment.size_bytes,
     })),
   }).eq('id', messageId)
-}
-
-function toWhatsAppMediaType(mimeType: string): WhatsAppMediaType {
-  if (mimeType.startsWith('image/')) return 'image'
-  if (mimeType.startsWith('audio/')) return 'audio'
-  if (mimeType.startsWith('video/')) return 'video'
-  return 'document'
 }
 
 async function getPersistedReply(

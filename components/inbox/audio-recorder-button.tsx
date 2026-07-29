@@ -15,10 +15,23 @@ type Props = {
 const BAR_COUNT = 27
 const LONG_RECORDING_WARNING_SECONDS = 600
 
+// WhatsApp Cloud API no acepta audio/webm (lo que MediaRecorder graba por
+// defecto en Chrome/Edge) — solo aac, mp4, mpeg, amr u ogg con códec opus.
+// Se proban primero los formatos compatibles; audio/webm queda como último
+// recurso para navegadores viejos, y en ese caso se avisa antes de enviar en
+// vez de dejar que falle recién al intentar mandarlo por WhatsApp.
+const WHATSAPP_COMPATIBLE_TYPES = ['audio/mp4', 'audio/ogg;codecs=opus']
+const FALLBACK_TYPES = ['audio/webm;codecs=opus', 'audio/webm']
+
 function pickMimeType() {
   if (typeof window === 'undefined' || !window.MediaRecorder) return ''
-  const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus']
+  const candidates = [...WHATSAPP_COMPATIBLE_TYPES, ...FALLBACK_TYPES]
   return candidates.find((candidate) => MediaRecorder.isTypeSupported?.(candidate)) ?? ''
+}
+
+function isWhatsAppCompatible(mimeType: string) {
+  const normalized = mimeType.split(';')[0]
+  return WHATSAPP_COMPATIBLE_TYPES.some((candidate) => candidate.split(';')[0] === normalized)
 }
 
 function formatTime(seconds: number) {
@@ -34,6 +47,7 @@ export function AudioRecorderButton({ onSend, onActiveChange, disabled }: Props)
   const [levels, setLevels] = useState<number[]>(() => Array(BAR_COUNT).fill(0.15))
   const [error, setError] = useState<string | null>(null)
   const [reviewUrl, setReviewUrl] = useState<string | null>(null)
+  const [formatUnsupported, setFormatUnsupported] = useState(false)
 
   const streamRef = useRef<MediaStream | null>(null)
   const recorderRef = useRef<MediaRecorder | null>(null)
@@ -109,6 +123,7 @@ export function AudioRecorderButton({ onSend, onActiveChange, disabled }: Props)
       recorder.onstop = () => {
         const blob = new Blob(chunksRef.current, { type: mimeTypeRef.current || 'audio/webm' })
         setReviewUrl(URL.createObjectURL(blob))
+        setFormatUnsupported(!isWhatsAppCompatible(mimeTypeRef.current))
         setState('review')
       }
       recorderRef.current = recorder
@@ -134,10 +149,12 @@ export function AudioRecorderButton({ onSend, onActiveChange, disabled }: Props)
     setReviewUrl(null)
     chunksRef.current = []
     setState('idle')
+    setFormatUnsupported(false)
     setLevels(Array(BAR_COUNT).fill(0.15))
   }
 
   function send() {
+    if (formatUnsupported) return
     const blob = new Blob(chunksRef.current, { type: mimeTypeRef.current || 'audio/webm' })
     const extension = mimeTypeRef.current.includes('mp4') ? 'm4a' : mimeTypeRef.current.includes('ogg') ? 'ogg' : 'webm'
     const file = new File([blob], `nota-de-voz-${Date.now()}.${extension}`, { type: mimeTypeRef.current || 'audio/webm' })
@@ -145,6 +162,7 @@ export function AudioRecorderButton({ onSend, onActiveChange, disabled }: Props)
     setReviewUrl(null)
     chunksRef.current = []
     setState('idle')
+    setFormatUnsupported(false)
     onSend(file)
   }
 
@@ -193,14 +211,25 @@ export function AudioRecorderButton({ onSend, onActiveChange, disabled }: Props)
   }
 
   return (
-    <div className="flex flex-1 items-center gap-2 rounded-2xl border bg-background px-3 py-1.5">
+    <div className="relative flex flex-1 items-center gap-2 rounded-2xl border bg-background px-3 py-1.5">
       <audio src={reviewUrl ?? undefined} controls className="h-9 flex-1" />
       <button type="button" onClick={discard} aria-label="Descartar nota de voz" className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-muted">
         <Trash2 className="h-4 w-4" />
       </button>
-      <button type="button" onClick={send} aria-label="Enviar nota de voz" className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground">
+      <button
+        type="button"
+        onClick={send}
+        disabled={formatUnsupported}
+        aria-label="Enviar nota de voz"
+        className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground disabled:opacity-40"
+      >
         <Send className="h-4 w-4" />
       </button>
+      {formatUnsupported ? (
+        <p className="absolute bottom-full left-0 mb-1 w-64 rounded-md border bg-background p-2 text-xs text-destructive shadow-md">
+          Tu navegador no puede grabar en un formato compatible con WhatsApp. Probá con una versión actualizada de Chrome, Safari o Firefox.
+        </p>
+      ) : null}
     </div>
   )
 }

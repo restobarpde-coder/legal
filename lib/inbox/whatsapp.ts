@@ -70,6 +70,35 @@ export async function sendWhatsAppTemplate(params: {
 
 export type WhatsAppMediaType = 'image' | 'document' | 'audio' | 'video'
 
+// Mime types que Meta realmente acepta en /media, por categoría. No es "todo lo
+// que empieza con audio/" — por ejemplo audio/webm (lo que graba Chrome por
+// defecto con MediaRecorder) no está soportado y Meta lo rechaza en el upload.
+// https://developers.facebook.com/docs/whatsapp/cloud-api/reference/media
+const WHATSAPP_SUPPORTED_MIME_TYPES: Record<WhatsAppMediaType, string[]> = {
+  audio: ['audio/aac', 'audio/mp4', 'audio/mpeg', 'audio/amr', 'audio/ogg'],
+  video: ['video/mp4', 'video/3gpp'],
+  image: ['image/jpeg', 'image/png'],
+  document: [
+    'text/plain',
+    'application/pdf',
+    'application/vnd.ms-powerpoint',
+    'application/msword',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  ],
+}
+
+/** Devuelve la categoría de media de WhatsApp para este mime type, o null si Meta no lo acepta en ninguna categoría. */
+export function toWhatsAppMediaType(mimeType: string): WhatsAppMediaType | null {
+  const normalized = mimeType.split(';')[0]!.trim().toLowerCase()
+  for (const [type, allowed] of Object.entries(WHATSAPP_SUPPORTED_MIME_TYPES) as Array<[WhatsAppMediaType, string[]]>) {
+    if (allowed.includes(normalized)) return type
+  }
+  return null
+}
+
 export async function uploadWhatsAppMedia(params: {
   content: Buffer
   mimeType: string
