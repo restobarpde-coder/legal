@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Loader2, Send, X, MessageCircle } from 'lucide-react'
 import { toast } from 'sonner'
+import { AgentMessageRenderer } from '@/components/agent-message-renderer'
 
 interface Message {
   id: string
@@ -144,15 +145,19 @@ export function AgentChatPanel({ isOpen, onClose, caseId }: AgentChatPanelProps)
                   }`}
                 >
                   <div
-                    className={`max-w-xs px-3 py-2 rounded-lg text-sm ${
+                    className={`px-3 py-2 rounded-lg text-sm ${
                       message.role === 'user'
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-muted text-muted-foreground'
+                        ? 'bg-primary text-primary-foreground max-w-xs'
+                        : 'bg-muted max-w-sm'
                     }`}
                   >
-                    <p className="whitespace-pre-wrap break-words">
-                      {message.content}
-                    </p>
+                    {message.role === 'user' ? (
+                      <p className="whitespace-pre-wrap break-words">
+                        {message.content}
+                      </p>
+                    ) : (
+                      <AgentMessageRenderer message={message.content} />
+                    )}
                     <p className="text-xs opacity-70 mt-1">
                       {message.timestamp.toLocaleTimeString('es-ES', {
                         hour: '2-digit',
