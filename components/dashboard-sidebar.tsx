@@ -103,12 +103,6 @@ const navigation: NavSection[] = [
         icon: MessageSquare,
       },
       {
-        name: "AI IMPO",
-        href: "/dashboard/chat-webhook",
-        icon: Bot,
-        description: "Consultar un caso",
-      },
-      {
         name: "Grabar declaración",
         href: "/dashboard/declarations",
         icon: Mic,
