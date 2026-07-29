@@ -164,17 +164,31 @@ async function executeTool(
   toolInput: Record<string, any>,
   userId: string
 ): Promise<string> {
+  console.log(`[AGENT] Ejecutando herramienta: ${toolName}`, { toolInput, userId })
+
   try {
     switch (toolName) {
       case 'get_cases': {
-        const { data, error } = await supabase
+        console.log(`[AGENT] get_cases: buscando casos para usuario ${userId}`)
+
+        // Primero intenta con relación
+        let { data, error } = await supabase
           .from('cases')
-          .select('id, title, status, clients(name)')
+          .select('id, title, status, user_id, client_id')
           .eq('user_id', userId)
           .limit(toolInput.limit || 10)
 
-        if (error) throw error
-        return JSON.stringify(data || [])
+        if (error) {
+          console.error(`[AGENT] Error en get_cases (con relación):`, error)
+          throw error
+        }
+
+        console.log(`[AGENT] get_cases: encontrados ${data?.length || 0} casos`)
+        return JSON.stringify({
+          success: true,
+          count: data?.length || 0,
+          cases: data || [],
+        })
       }
 
       case 'get_case_details': {
@@ -293,20 +307,29 @@ async function executeTool(
         return JSON.stringify({ error: `Unknown tool: ${toolName}` })
     }
   } catch (error) {
-    console.error(`Error executing tool ${toolName}:`, error)
+    const errorMsg = error instanceof Error ? error.message : JSON.stringify(error)
+    console.error(`[AGENT] ❌ Error executing tool ${toolName}:`, errorMsg)
+    console.error(`[AGENT] Error details:`, error)
     return JSON.stringify({
-      error: `Error executing tool: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      success: false,
+      error: `Error executing tool: ${errorMsg}`,
+      toolName,
     })
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
+    console.log('[AGENT] 🤖 Iniciando request del agente')
+
     const user = await requireAuth()
+    console.log(`[AGENT] ✅ Usuario autenticado: ${user.id}`)
 
     const { messages } = await request.json()
+    console.log(`[AGENT] 📨 Mensajes recibidos: ${messages.length}`)
 
     if (!Array.isArray(messages) || messages.length === 0) {
+      console.warn('[AGENT] ⚠️ No messages provided')
       return NextResponse.json(
         { error: 'No messages provided' },
         { status: 400 }
@@ -395,16 +418,19 @@ Cuando sugieras crear una tarea o nota, hazlo solo si el usuario lo solicita exp
       agentMessages.push(...toolMessages)
     }
 
+    console.log('[AGENT] ✅ Respuesta lista')
     return NextResponse.json({
       message: finalResponse,
       success: true,
     })
   } catch (error) {
-    console.error('Error in agent API:', error)
+    const errorMsg = error instanceof Error ? error.message : JSON.stringify(error)
+    console.error('[AGENT] ❌ Error fatal en agent API:', errorMsg)
+    console.error('[AGENT] Stack:', error)
     return NextResponse.json(
       {
         error: 'Internal server error',
-        details: error instanceof Error ? error.message : 'Unknown error',
+        details: errorMsg,
       },
       { status: 500 }
     )
