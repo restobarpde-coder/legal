@@ -5,6 +5,7 @@ import { createClient } from '@supabase/supabase-js'
 import { tavily } from '@tavily/core'
 import { queryImpo } from '@/lib/impo-client'
 import { getCaseContext, getUserContext, saveChatMessage, formatContextForPrompt } from '@/lib/agent-chat-history'
+import { getCaseRAGContext } from '@/lib/case-rag'
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -435,13 +436,25 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Recuperar contexto de chats anteriores
+    // Recuperar contexto: chat history + RAG del caso
     let contextPrompt = ''
     if (caseId) {
-      console.log('[AGENT] 📚 Recuperando contexto del caso...')
-      const caseContext = await getCaseContext(caseId, user.id, 5)
+      console.log('[AGENT] 📚 Recuperando contexto del caso con RAG...')
+
+      // Obtener última pregunta para buscar contexto relevante
+      const userQuery = messages[messages.length - 1]?.content || ''
+
+      // RAG: buscar documentos, notas, tareas similares en el caso
+      const ragContext = await getCaseRAGContext(caseId, userQuery)
+      if (ragContext) {
+        contextPrompt = ragContext
+      }
+
+      // Agregar también chat history para continuidad
+      const caseContext = await getCaseContext(caseId, user.id, 3)
       if (caseContext.length > 0) {
-        contextPrompt = formatContextForPrompt(caseContext)
+        contextPrompt += '\n💬 CHATS ANTERIORES:\n'
+        contextPrompt += formatContextForPrompt(caseContext)
       }
     } else {
       console.log('[AGENT] 📚 Recuperando contexto general...')
@@ -456,29 +469,30 @@ export async function POST(request: NextRequest) {
 
 Tienes acceso a:
 1. Base de datos: información de casos, documentos, notas y tareas
-2. IMPO (Banco de Datos de Uruguay): leyes, decretos, constitución, resoluciones
-3. Web search: jurisprudencia, precedentes, normativa y contexto general
-4. Historial de chats: contexto de conversaciones anteriores
+2. RAG (Retrieval Augmented Generation): bóveda de información del caso con búsqueda semántica
+3. IMPO (Banco de Datos de Uruguay): leyes, decretos, constitución, resoluciones
+4. Web search: jurisprudencia, precedentes, normativa y contexto general
+5. Historial de chats: contexto de conversaciones anteriores
 
 ${contextPrompt}
 
 Tu objetivo es:
-1. Responder preguntas sobre casos específicos
+1. Responder preguntas sobre casos específicos usando la bóveda de información
 2. Consultar normativa uruguaya en IMPO cuando sea relevante
 3. Buscar información legal complementaria
-4. Analizar y proporcionar insights
+4. Analizar y proporcionar insights basados en documentos y contexto del caso
 5. Sugerir acciones (crear tareas, añadir notas)
 6. Recordar contexto de conversaciones anteriores para continuar análisis
 
 IMPORTANTE:
-- Cuando el usuario pregunte sobre leyes, decretos, artículos o normas uruguayas, usa IMPO como fuente oficial
-- IMPO es la fuente de verdad para normativa uruguaya (nunca inventes artículos ni normas)
-- Usa web search para contexto, doctrina, casos prácticos, noticias
-- Siempre aclara si la información viene de IMPO, web o análisis propio
+- El contexto de arriba contiene TODA la información relevante del caso recuperada automáticamente
+- Usa el RAG context (documentos, notas, tareas similares) como fuente principal
+- Cuando el usuario pregunte sobre leyes, decretos, artículos o normas uruguayas, usa IMPO
+- IMPO es la fuente de verdad para normativa uruguaya (nunca inventes artículos)
+- Siempre aclara si la información viene de documentos del caso, IMPO, web o análisis propio
 - Cuando sugieras crear tareas o notas, hazlo solo si el usuario lo solicita explícitamente
-- Usa el contexto de chats anteriores para mantener continuidad y evitar repetir análisis
 
-Sé preciso, profesional y basado en datos reales.`
+Sé preciso, profesional y basado en el contexto del caso y datos reales.`
 
     let agentMessages: OpenAI.ChatCompletionMessageParam[] = [
       { role: 'system', content: systemPrompt },

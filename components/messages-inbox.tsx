@@ -375,19 +375,30 @@ export function MessagesInbox() {
 
   useEffect(() => {
     let active = true
+    let channel: ReturnType<typeof supabase.channel> | null = null
 
     void (async () => {
       try {
+        const { data } = await supabase.auth.getSession()
+        if (!data.session) {
+          console.warn('[Realtime] No session, skipping subscription')
+          return
+        }
+
         await supabase.realtime.setAuth()
+        console.log('[Realtime] Authenticated')
       } catch (err) {
-        console.error('[Realtime] Failed to setAuth:', err)
+        console.error('[Realtime] Auth failed:', err)
+        return
       }
+
       if (!active) return
 
-      const channel = supabase
-        .channel('inbox-realtime')
+      channel = supabase
+        .channel('inbox-realtime', { config: { broadcast: { self: true } } })
         .on('postgres_changes', { event: '*', schema: 'public', table: 'inbox_messages' }, (payload) => {
           if (!active) return
+          console.log('[Realtime] Message event:', payload.eventType)
           const message = payload.new as Message
           if (!message.conversation_id) return
 
@@ -408,26 +419,25 @@ export function MessagesInbox() {
             }
           }
         })
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'inbox_conversations' }, () => {
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'inbox_conversations' }, (payload) => {
           if (!active) return
+          console.log('[Realtime] Conversation event:', payload.eventType)
           scheduleListReconciliation(0)
         })
 
       channel.subscribe((subscriptionStatus) => {
         if (!active) return
+        console.log('[Realtime] Subscription status:', subscriptionStatus)
         if (subscriptionStatus === 'SUBSCRIBED') {
           scheduleListReconciliation(0)
           scheduleDetailReconciliation(0)
         }
       })
-
-      return () => {
-        if (active) void supabase.removeChannel(channel)
-      }
     })()
 
     return () => {
       active = false
+      if (channel) void supabase.removeChannel(channel)
     }
   }, [dismissConversationNotifications, markConversationRead, scheduleDetailReconciliation, scheduleListReconciliation, supabase])
 
