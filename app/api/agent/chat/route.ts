@@ -436,6 +436,26 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Validación de seguridad: si hay caseId, verificar que el usuario es dueño
+    if (caseId) {
+      console.log(`[AGENT] 🔐 Validando acceso al caso ${caseId}...`)
+      const { data: caseData, error: caseError } = await supabase
+        .from('cases')
+        .select('id, created_by')
+        .eq('id', caseId)
+        .eq('created_by', user.id)
+        .single()
+
+      if (caseError || !caseData) {
+        console.warn(`[AGENT] ⚠️ Usuario ${user.id} intentó acceder a caso ${caseId} que no le pertenece`)
+        return NextResponse.json(
+          { error: 'Unauthorized: case does not belong to user' },
+          { status: 403 }
+        )
+      }
+      console.log('[AGENT] ✅ Acceso validado')
+    }
+
     // Recuperar contexto: chat history + RAG del caso
     let contextPrompt = ''
     if (caseId) {
