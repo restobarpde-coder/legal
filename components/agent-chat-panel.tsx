@@ -62,13 +62,13 @@ export function AgentChatPanel({ isOpen, onClose, caseId }: AgentChatPanelProps)
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          caseId: caseId,
           messages: [
             ...messages.map((m) => ({
               role: m.role,
               content: m.content,
             })),
             { role: 'user', content: input },
-            ...(caseId ? [{ role: 'system', content: `Contexto: El usuario está en el caso ${caseId}` }] : []),
           ],
         }),
       })

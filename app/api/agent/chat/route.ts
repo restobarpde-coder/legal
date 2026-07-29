@@ -4,6 +4,7 @@ import OpenAI from 'openai'
 import { createClient } from '@supabase/supabase-js'
 import { tavily } from '@tavily/core'
 import { queryImpo } from '@/lib/impo-client'
+import { getCaseContext, getUserContext, saveChatMessage, formatContextForPrompt } from '@/lib/agent-chat-history'
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -423,7 +424,7 @@ export async function POST(request: NextRequest) {
     const user = await requireAuth()
     console.log(`[AGENT] ✅ Usuario autenticado: ${user.id}`)
 
-    const { messages } = await request.json()
+    const { messages, caseId } = await request.json()
     console.log(`[AGENT] 📨 Mensajes recibidos: ${messages.length}`)
 
     if (!Array.isArray(messages) || messages.length === 0) {
@@ -434,6 +435,22 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Recuperar contexto de chats anteriores
+    let contextPrompt = ''
+    if (caseId) {
+      console.log('[AGENT] 📚 Recuperando contexto del caso...')
+      const caseContext = await getCaseContext(caseId, user.id, 5)
+      if (caseContext.length > 0) {
+        contextPrompt = formatContextForPrompt(caseContext)
+      }
+    } else {
+      console.log('[AGENT] 📚 Recuperando contexto general...')
+      const userContext = await getUserContext(user.id, 5)
+      if (userContext.length > 0) {
+        contextPrompt = formatContextForPrompt(userContext)
+      }
+    }
+
     // Agregar contexto del usuario al sistema
     const systemPrompt = `Eres un asistente legal inteligente que ayuda a los abogados con la gestión de casos.
 
@@ -441,6 +458,9 @@ Tienes acceso a:
 1. Base de datos: información de casos, documentos, notas y tareas
 2. IMPO (Banco de Datos de Uruguay): leyes, decretos, constitución, resoluciones
 3. Web search: jurisprudencia, precedentes, normativa y contexto general
+4. Historial de chats: contexto de conversaciones anteriores
+
+${contextPrompt}
 
 Tu objetivo es:
 1. Responder preguntas sobre casos específicos
@@ -448,6 +468,7 @@ Tu objetivo es:
 3. Buscar información legal complementaria
 4. Analizar y proporcionar insights
 5. Sugerir acciones (crear tareas, añadir notas)
+6. Recordar contexto de conversaciones anteriores para continuar análisis
 
 IMPORTANTE:
 - Cuando el usuario pregunte sobre leyes, decretos, artículos o normas uruguayas, usa IMPO como fuente oficial
@@ -455,6 +476,7 @@ IMPORTANTE:
 - Usa web search para contexto, doctrina, casos prácticos, noticias
 - Siempre aclara si la información viene de IMPO, web o análisis propio
 - Cuando sugieras crear tareas o notas, hazlo solo si el usuario lo solicita explícitamente
+- Usa el contexto de chats anteriores para mantener continuidad y evitar repetir análisis
 
 Sé preciso, profesional y basado en datos reales.`
 
@@ -536,6 +558,22 @@ Sé preciso, profesional y basado en datos reales.`
     }
 
     console.log('[AGENT] ✅ Respuesta lista')
+
+    // Guardar mensajes en el historial
+    const userMessage = messages[messages.length - 1]?.content || 'Consulta'
+    await saveChatMessage(user.id, 'user', userMessage, caseId)
+
+    let dataToSave: Record<string, any> | undefined
+    if (lastToolResult) {
+      try {
+        dataToSave = JSON.parse(lastToolResult)
+      } catch (e) {
+        // Ignorar si no es JSON válido
+      }
+    }
+
+    await saveChatMessage(user.id, 'assistant', finalResponse, caseId, dataToSave)
+    console.log('[AGENT] 💾 Mensajes guardados en historial')
 
     // Si la última herramienta devolvió datos estructurados, enviarlos también
     const response: any = {
