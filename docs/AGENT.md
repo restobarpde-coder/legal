@@ -2,10 +2,14 @@
 
 ## Overview
 
-El agente AI es un asistente legal inteligente que tiene acceso a toda la información en Supabase (casos, documentos, notas, tareas) y puede ayudarte a:
+El agente AI es un asistente legal inteligente con acceso a:
 
+1. **Base de datos** — Supabase (casos, documentos, notas, tareas)
+2. **Web search** — Tavily (jurisprudencia, precedentes, normativa)
+
+Puede:
 - Analizar casos existentes
-- Buscar información relacionada
+- Buscar jurisprudencia y precedentes en internet
 - Generar resúmenes y análisis
 - Crear tareas y notas automáticamente
 
@@ -15,7 +19,7 @@ El agente AI es un asistente legal inteligente que tiene acceso a toda la inform
 
 El panel aparece como un sidebar en la derecha de la pantalla, disponible desde cualquier página del dashboard.
 
-## Capacidades Actuales (MVP)
+## Capacidades Actuales
 
 ### 📊 Lectura de Datos
 - `get_cases` - Obtiene lista de tus casos
@@ -23,6 +27,9 @@ El panel aparece como un sidebar en la derecha de la pantalla, disponible desde 
 - `get_case_documents` - Documentos de un caso
 - `get_case_notes` - Notas de un caso
 - `get_case_tasks` - Tareas de un caso
+
+### 🌐 Búsqueda Web
+- `search_web` - Busca jurisprudencia, precedentes y normativa legal
 
 ### ✍️ Acciones Autónomas
 - `create_task` - Crea una nueva tarea en un caso
@@ -59,15 +66,20 @@ Agente:
 → Confirma que fue creada
 ```
 
+### 3. Buscar jurisprudencia
+```
+"Busca jurisprudencia sobre derechos de autor en casos similares"
+
+Agente:
+→ Busca en internet con Tavily
+→ Encuentra precedentes relevantes
+→ Resume hallazgos legales
+```
+
 ## Próximas Mejoras
 
-### Fase 2: Web Search
-- Buscar jurisprudencia
-- Encontrar precedentes legales
-- Consultar normativa actualizada
-
 ### Fase 3: Generación de Documentos
-- Generar escritos
+- Generar escritos legales
 - Crear cronogramas procesales
 - Redactar correspondencia
 
@@ -80,11 +92,13 @@ Agente:
 
 ### Backend
 - **Endpoint**: `POST /api/agent/chat`
-- **Modelo**: Claude (gpt-4o-mini)
+- **Modelo**: OpenAI GPT-4o
 - **Loop Agentico**: Implementa tool-use de forma nativa
 
-### MCP (Model Context Protocol)
-Utiliza Supabase directamente como "MCP" para que el agente acceda a datos.
+### Integraciones
+- **Supabase** — Acceso a base de datos de casos
+- **Tavily** — Web search para jurisprudencia y precedentes
+- **OpenAI** — LLM y orquestación de herramientas
 
 ### Herramientas Disponibles
 Definidas en `app/api/agent/chat/route.ts`:
@@ -97,23 +111,34 @@ const tools = [
   'get_case_tasks',
   'create_task',
   'create_note',
+  'search_web',  // ← NEW
 ]
 ```
 
 ## Variables de Entorno Requeridas
 
 ```bash
-OPENAI_API_KEY=sk_...  # Para Claude API
+# OpenAI (declarations + agent + web search)
+OPENAI_API_KEY=sk_...
+
+# Tavily (legal web search)
+TAVILY_API_KEY=tvly_...
+
+# Supabase
 NEXT_PUBLIC_SUPABASE_URL=...
 SUPABASE_SERVICE_ROLE_KEY=...  # Necesario para acceso de servidor
 ```
 
+### Cómo obtener las claves:
+1. **OPENAI_API_KEY** — https://platform.openai.com/api-keys
+2. **TAVILY_API_KEY** — https://tavily.com (registrarse y crear API key)
+
 ## Limitaciones Actuales
 
 1. **Scope de usuario**: El agente solo accede a casos del usuario autenticado
-2. **Sin web search**: Busca solo en tu base de datos
-3. **Sin generación de documentos**: Solo lectura y creación básica
-4. **Contexto limitado**: Mantiene historial dentro de la sesión
+2. **Sin generación de documentos**: Solo lectura, creación básica y análisis
+3. **Contexto limitado**: Mantiene historial dentro de la sesión
+4. **Tavily gratis**: Primeros usos gratis, luego requiere plan pago
 
 ## Troubleshooting
 
