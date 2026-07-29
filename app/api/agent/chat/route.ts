@@ -171,15 +171,15 @@ async function executeTool(
       case 'get_cases': {
         console.log(`[AGENT] get_cases: buscando casos para usuario ${userId}`)
 
-        // Primero intenta con relación
-        let { data, error } = await supabase
+        const { data, error } = await supabase
           .from('cases')
-          .select('id, title, status, user_id, client_id')
-          .eq('user_id', userId)
+          .select('id, title, status, case_number, priority, client_id')
+          .eq('created_by', userId)
+          .is('deleted_at', null)
           .limit(toolInput.limit || 10)
 
         if (error) {
-          console.error(`[AGENT] Error en get_cases (con relación):`, error)
+          console.error(`[AGENT] Error en get_cases:`, error)
           throw error
         }
 
@@ -192,34 +192,67 @@ async function executeTool(
       }
 
       case 'get_case_details': {
+        console.log(`[AGENT] get_case_details: obteniendo caso ${toolInput.case_id}`)
+
         const { data, error } = await supabase
           .from('cases')
-          .select(`
-            *,
-            clients(name, email),
-            documents(id, name, type),
-            notes(id, content, created_at),
-            tasks(id, title, status, priority)
-          `)
+          .select('*')
           .eq('id', toolInput.case_id)
-          .eq('user_id', userId)
+          .eq('created_by', userId)
+          .is('deleted_at', null)
           .single()
 
-        if (error) throw error
-        return JSON.stringify(data)
+        if (error) {
+          console.error(`[AGENT] Error en get_case_details:`, error)
+          throw error
+        }
+
+        console.log(`[AGENT] get_case_details: caso encontrado`)
+        return JSON.stringify({
+          success: true,
+          case: data,
+        })
       }
 
       case 'get_case_documents': {
+        console.log(`[AGENT] get_case_documents: obteniendo docs del caso ${toolInput.case_id}`)
+
+        // Verifica que el caso pertenece al usuario
+        const { data: caseCheck } = await supabase
+          .from('cases')
+          .select('id')
+          .eq('id', toolInput.case_id)
+          .eq('created_by', userId)
+          .single()
+
+        if (!caseCheck) throw new Error('Case not found or unauthorized')
+
         const { data, error } = await supabase
           .from('documents')
           .select('id, name, type, size, created_at')
           .eq('case_id', toolInput.case_id)
 
         if (error) throw error
-        return JSON.stringify(data || [])
+        return JSON.stringify({
+          success: true,
+          count: data?.length || 0,
+          documents: data || [],
+        })
       }
 
       case 'get_case_notes': {
+        console.log(`[AGENT] get_case_notes: obteniendo notas del caso ${toolInput.case_id}`)
+
+        // Verifica que el caso pertenece al usuario
+        const { data: caseCheck } = await supabase
+          .from('cases')
+          .select('id')
+          .eq('id', toolInput.case_id)
+          .eq('created_by', userId)
+          .single()
+
+        if (!caseCheck) throw new Error('Case not found or unauthorized')
+
         const { data, error } = await supabase
           .from('notes')
           .select('id, content, created_at, created_by')
@@ -227,10 +260,26 @@ async function executeTool(
           .order('created_at', { ascending: false })
 
         if (error) throw error
-        return JSON.stringify(data || [])
+        return JSON.stringify({
+          success: true,
+          count: data?.length || 0,
+          notes: data || [],
+        })
       }
 
       case 'get_case_tasks': {
+        console.log(`[AGENT] get_case_tasks: obteniendo tareas del caso ${toolInput.case_id}`)
+
+        // Verifica que el caso pertenece al usuario
+        const { data: caseCheck } = await supabase
+          .from('cases')
+          .select('id')
+          .eq('id', toolInput.case_id)
+          .eq('created_by', userId)
+          .single()
+
+        if (!caseCheck) throw new Error('Case not found or unauthorized')
+
         const { data, error } = await supabase
           .from('tasks')
           .select('id, title, description, status, priority, due_date')
@@ -238,7 +287,11 @@ async function executeTool(
           .order('due_date', { ascending: true })
 
         if (error) throw error
-        return JSON.stringify(data || [])
+        return JSON.stringify({
+          success: true,
+          count: data?.length || 0,
+          tasks: data || [],
+        })
       }
 
       case 'create_task': {
