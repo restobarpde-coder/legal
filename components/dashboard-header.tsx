@@ -6,9 +6,11 @@ import { MobileDashboardSidebar } from "./dashboard-sidebar"
 import { NotificationDropdown } from "./notification-dropdown"
 import { ModeToggle } from "@/components/mode-toggle"
 import { Input } from "@/components/ui/input"
-import { Search } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Search, MessageCircle } from "lucide-react"
 import { useUser } from "@/components/providers/user-context"
 import { useDebouncedCallback } from "use-debounce"
+import { useAgentPanel } from "@/components/providers/agent-panel-context"
 
 interface DashboardHeaderProps {
   title?: string
@@ -20,6 +22,7 @@ export function DashboardHeader({ title }: DashboardHeaderProps) {
   const pathname = usePathname()
   const [searchQuery, setSearchQuery] = useState(searchParams.get('q') || '')
   const { user } = useUser()
+  const { isOpen, onOpenChange } = useAgentPanel()
 
   // Sync search query with URL params when they change (e.g. navigation)
   useEffect(() => {
@@ -75,6 +78,17 @@ export function DashboardHeader({ title }: DashboardHeaderProps) {
             onKeyDown={handleSearch}
           />
         </div>
+
+        {/* Agent Button */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => onOpenChange(!isOpen)}
+          title="Abrir asistente legal"
+        >
+          <MessageCircle className="h-4 w-4" />
+          <span className="hidden sm:inline ml-2">Agente</span>
+        </Button>
 
         {/* Theme Toggle */}
         <ModeToggle />
