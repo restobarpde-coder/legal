@@ -436,24 +436,40 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Validación de seguridad: si hay caseId, verificar que el usuario es dueño
+    // Validación de seguridad: si hay caseId, verificar que el usuario es miembro o dueño
     if (caseId) {
       console.log(`[AGENT] 🔐 Validando acceso al caso ${caseId}...`)
-      const { data: caseData, error: caseError } = await supabase
-        .from('cases')
-        .select('id, created_by')
-        .eq('id', caseId)
-        .eq('created_by', user.id)
+
+      // Verificar: es miembro del equipo OR es el dueño del caso
+      const { data: accessData, error: accessError } = await supabase
+        .from('case_members')
+        .select('user_id')
+        .eq('case_id', caseId)
+        .eq('user_id', user.id)
         .single()
 
-      if (caseError || !caseData) {
-        console.warn(`[AGENT] ⚠️ Usuario ${user.id} intentó acceder a caso ${caseId} que no le pertenece`)
+      // Si no es miembro, verificar si es el dueño
+      let isAuthorized = !!accessData
+
+      if (!isAuthorized) {
+        const { data: caseData, error: caseError } = await supabase
+          .from('cases')
+          .select('id, created_by')
+          .eq('id', caseId)
+          .eq('created_by', user.id)
+          .single()
+
+        isAuthorized = !!caseData
+      }
+
+      if (!isAuthorized) {
+        console.warn(`[AGENT] ⚠️ Usuario ${user.id} no es miembro ni dueño del caso ${caseId}`)
         return NextResponse.json(
-          { error: 'Unauthorized: case does not belong to user' },
+          { error: 'Unauthorized: you are not a member of this case' },
           { status: 403 }
         )
       }
-      console.log('[AGENT] ✅ Acceso validado')
+      console.log('[AGENT] ✅ Acceso autorizado (miembro o dueño)')
     }
 
     // Recuperar contexto: chat history + RAG del caso

@@ -74,12 +74,19 @@ COMMENT ON FUNCTION search_case_embeddings(UUID, vector, float8, int) IS
 
 -- ============================================================================
 -- RLS (Row Level Security) - Seguridad
+-- Acceso por membresía: cualquier miembro del caso puede acceder
 -- ============================================================================
 ALTER TABLE case_embeddings ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can view embeddings of their own cases"
+CREATE POLICY "Team members can view case embeddings"
   ON case_embeddings FOR SELECT
   USING (
+    EXISTS (
+      SELECT 1 FROM case_members cm
+      WHERE cm.case_id = case_embeddings.case_id
+      AND cm.user_id = auth.uid()
+    )
+    OR
     EXISTS (
       SELECT 1 FROM cases c
       WHERE c.id = case_embeddings.case_id
@@ -87,9 +94,15 @@ CREATE POLICY "Users can view embeddings of their own cases"
     )
   );
 
-CREATE POLICY "Users can insert embeddings in their own cases"
+CREATE POLICY "Team members can insert case embeddings"
   ON case_embeddings FOR INSERT
   WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM case_members cm
+      WHERE cm.case_id = case_id
+      AND cm.user_id = auth.uid()
+    )
+    OR
     EXISTS (
       SELECT 1 FROM cases c
       WHERE c.id = case_id
@@ -97,9 +110,15 @@ CREATE POLICY "Users can insert embeddings in their own cases"
     )
   );
 
-CREATE POLICY "Users can delete embeddings of their own cases"
+CREATE POLICY "Team members can delete case embeddings"
   ON case_embeddings FOR DELETE
   USING (
+    EXISTS (
+      SELECT 1 FROM case_members cm
+      WHERE cm.case_id = case_embeddings.case_id
+      AND cm.user_id = auth.uid()
+    )
+    OR
     EXISTS (
       SELECT 1 FROM cases c
       WHERE c.id = case_embeddings.case_id
