@@ -1,15 +1,33 @@
 import { requireAuth } from '@/lib/auth'
 import { NextRequest, NextResponse } from 'next/server'
+import OpenAI from 'openai'
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+})
+
+const DECLARATION_PROMPT = `Eres un redactor profesional de declaraciones verbales. Recibirás un texto que representa lo que una persona dijo oralmente. Ese texto puede contener errores de ortografía, repeticiones, incoherencias, frases incompletas o expresiones informales.
+
+Tu tarea es:
+1. Interpretar con fidelidad lo que la persona quiso decir.
+2. Corregir y reorganizar el contenido para producir una declaración escrita clara, formal y coherente.
+3. No agregar información que no esté en el mensaje original.
+4. No explicar tu proceso ni añadir notas.
+5. No incluir advertencias, aclaraciones ni texto introductorio.
+
+Entrega únicamente la declaración final redactada, como si fuera un documento formal listo para presentar. La salida debe ser solo la declaración, en formato claro y profesional, comenzando directamente por el contenido (ej.: "Yo, [nombre], declaro que…").
+
+El texto recibido es:`
 
 export async function POST(request: NextRequest) {
   try {
     // Require authentication
     const user = await requireAuth()
-    
+
     // Get the audio file from the form data
     const formData = await request.formData()
     const audioFile = formData.get('audio') as File
-    
+
     if (!audioFile) {
       return NextResponse.json(
         { error: 'No audio file provided' },
@@ -17,13 +35,11 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Get n8n webhook URL from environment variables
-    const n8nWebhookUrl = process.env.N8N_WEBHOOK_URL
-    
-    if (!n8nWebhookUrl) {
-      console.error('N8N_WEBHOOK_URL not configured')
+    // Verify OpenAI key is configured
+    if (!process.env.OPENAI_API_KEY) {
+      console.error('OPENAI_API_KEY not configured')
       return NextResponse.json(
-        { error: 'Webhook not configured' },
+        { error: 'OpenAI API key not configured' },
         { status: 500 }
       )
     }
@@ -34,80 +50,58 @@ export async function POST(request: NextRequest) {
       size: audioFile.size
     })
 
-    // Convert the audio file to a buffer
+    // Convert the audio file to a buffer for Whisper
     const audioBuffer = await audioFile.arrayBuffer()
     const buffer = Buffer.from(audioBuffer)
 
-    // Create form data for n8n using proper File constructor
-    const n8nFormData = new FormData()
-    const audioFileForN8n = new File([buffer], audioFile.name, { type: audioFile.type })
-    n8nFormData.append('audio', audioFileForN8n)
-    n8nFormData.append('userId', user.id)
-    n8nFormData.append('userEmail', user.email || '')
-    
-    console.log('Sending to n8n webhook:', n8nWebhookUrl)
-    
-    // Forward the audio to n8n webhook
-    const n8nResponse = await fetch(n8nWebhookUrl, {
-      method: 'POST',
-      body: n8nFormData,
+    // Transcribe audio using Whisper
+    console.log('Transcribing audio with Whisper...')
+    const transcription = await openai.audio.transcriptions.create({
+      file: new File([buffer], audioFile.name, { type: audioFile.type }),
+      model: 'whisper-1',
+      language: 'es',
     })
-    
-    console.log('N8N response status:', n8nResponse.status)
 
-    if (!n8nResponse.ok) {
-      const errorText = await n8nResponse.text()
-      console.error('N8N webhook error:', {
-        status: n8nResponse.status,
-        statusText: n8nResponse.statusText,
-        body: errorText
-      })
-      return NextResponse.json(
-        { error: 'Error processing audio with n8n', details: errorText },
-        { status: 500 }
-      )
-    }
+    const transcribedText = transcription.text
+    console.log('Transcription:', transcribedText)
 
-    // Parse the response from n8n
-    const responseText = await n8nResponse.text()
-    console.log('N8N raw response:', responseText)
-    
-    // Try to parse as JSON first
-    let n8nData
-    let isPlainText = false
-    
-    try {
-      n8nData = JSON.parse(responseText)
-      console.log('N8N parsed as JSON:', n8nData)
-    } catch (e) {
-      // If not JSON, treat as plain text
-      console.log('N8N response is plain text')
-      isPlainText = true
-      n8nData = { summary: responseText }
-    }
-    
-    // Handle response based on format
-    let summary: string
-    let transcription: string | undefined
-    
-    if (isPlainText) {
-      // Plain text response - use as summary
-      summary = responseText.trim()
-    } else {
-      // JSON response - extract fields
-      summary = n8nData.summary || n8nData.text || n8nData.transcription || JSON.stringify(n8nData, null, 2)
-      transcription = n8nData.transcription
-    }
+    // Process the transcription to generate a formal declaration using GPT
+    console.log('Processing transcription with GPT...')
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: DECLARATION_PROMPT,
+        },
+        {
+          role: 'user',
+          content: transcribedText,
+        },
+      ],
+      temperature: 0.7,
+      max_tokens: 2000,
+    })
 
-    // Return the summary to the frontend
+    const summary = completion.choices[0].message.content || ''
+    console.log('Generated declaration:', summary)
+
+    // Return the summary and transcription to the frontend
     return NextResponse.json({
       summary,
-      transcription,
-      rawResponse: n8nData
+      transcription: transcribedText,
     })
 
   } catch (error) {
     console.error('Error in declaration API:', error)
+
+    if (error instanceof OpenAI.APIError) {
+      return NextResponse.json(
+        { error: `OpenAI API error: ${error.message}` },
+        { status: 500 }
+      )
+    }
+
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
