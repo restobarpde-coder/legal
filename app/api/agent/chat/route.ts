@@ -1,11 +1,14 @@
 import { requireAuth } from '@/lib/auth'
 import { NextRequest, NextResponse } from 'next/server'
-import Anthropic from '@anthropic-ai/sdk'
+import OpenAI from 'openai'
 import { createClient } from '@supabase/supabase-js'
+import { tavily } from '@tavily/core'
 
-const client = new Anthropic({
+const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 })
+
+const tavilyClient = tavily({ apiKey: process.env.TAVILY_API_KEY })
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -134,6 +137,25 @@ const tools = [
       required: ['case_id', 'content'],
     },
   },
+  {
+    name: 'search_web',
+    description: 'Busca en internet información legal, jurisprudencia, precedentes y noticias legales',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Términos de búsqueda (ej: "jurisprudencia sobre...", "precedente legal...")',
+        },
+        include_domains: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Dominios específicos a buscar (opcional, ej: ["judicialcr.poder-judicial.go.cr"])',
+        },
+      },
+      required: ['query'],
+    },
+  },
 ]
 
 // Ejecutar herramientas
@@ -248,6 +270,25 @@ async function executeTool(
         })
       }
 
+      case 'search_web': {
+        const results = await tavilyClient.search(toolInput.query, {
+          topic: 'news',
+          max_results: 5,
+          include_domains: toolInput.include_domains,
+        })
+
+        return JSON.stringify({
+          query: toolInput.query,
+          results: results.results.map((r: any) => ({
+            title: r.title,
+            url: r.url,
+            content: r.content,
+            source: r.source,
+          })),
+          total_results: results.results.length,
+        })
+      }
+
       default:
         return JSON.stringify({ error: `Unknown tool: ${toolName}` })
     }
@@ -274,67 +315,84 @@ export async function POST(request: NextRequest) {
 
     // Agregar contexto del usuario al sistema
     const systemPrompt = `Eres un asistente legal inteligente que ayuda a los abogados con la gestión de casos.
-Tienes acceso a una base de datos con información de casos, documentos, notas y tareas.
+Tienes acceso a:
+1. Base de datos con información de casos, documentos, notas y tareas
+2. Web search para búsqueda de jurisprudencia, precedentes y normativa legal
+
 Tu objetivo es:
 1. Responder preguntas sobre casos específicos
 2. Analizar información y proporcionar insights
-3. Sugerir acciones (crear tareas, añadir notas)
-4. Mantener el contexto de la conversación
+3. Buscar información legal relevante en internet cuando sea necesario
+4. Sugerir acciones (crear tareas, añadir notas)
+5. Mantener el contexto de la conversación
 
-Siempre sé preciso, profesional y basado en datos reales de la base de datos.
+Siempre sé preciso, profesional y basado en datos reales.
+Usa web search para encontrar jurisprudencia, precedentes legales y normativa.
 Cuando sugieras crear una tarea o nota, hazlo solo si el usuario lo solicita explícitamente o si es claramente necesario.`
 
-    let agentMessages = [...messages]
+    let agentMessages: OpenAI.ChatCompletionMessageParam[] = [
+      { role: 'system', content: systemPrompt },
+      ...messages.map((m: any) => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+      })),
+    ]
     let finalResponse = ''
 
     // Loop agentico: continuar hasta que el agente no llame más a herramientas
     for (let i = 0; i < 10; i++) {
-      const response = await client.messages.create({
-        model: 'gpt-4o-mini',
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o',
         max_tokens: 4096,
-        system: systemPrompt,
-        tools: tools as any,
+        tools: tools.map((tool) => ({
+          type: 'function' as const,
+          function: {
+            name: tool.name,
+            description: tool.description,
+            parameters: tool.input_schema as Record<string, unknown>,
+          },
+        })),
         messages: agentMessages,
       })
 
-      // Agregar respuesta del asistente a los mensajes
-      agentMessages.push({
+      // Procesar respuesta
+      const assistantMessage = response.choices[0].message
+      const msgToAdd: OpenAI.ChatCompletionAssistantMessageParam = {
         role: 'assistant',
-        content: response.content,
-      })
+        content: assistantMessage.content,
+      }
+      if (assistantMessage.tool_calls) {
+        msgToAdd.tool_calls = assistantMessage.tool_calls
+      }
+      agentMessages.push(msgToAdd)
 
       // Verificar si el agente llamó a herramientas
-      const toolUses = response.content.filter((c) => c.type === 'tool_use')
-
-      if (toolUses.length === 0) {
-        // El agente terminó, extraer el texto final
-        const textBlocks = response.content.filter((c) => c.type === 'text')
-        finalResponse = textBlocks.map((c) => (c as any).text).join('\n')
+      if (!assistantMessage.tool_calls || assistantMessage.tool_calls.length === 0) {
+        // El agente terminó
+        finalResponse = assistantMessage.content || ''
         break
       }
 
       // Ejecutar herramientas
-      const toolResults = []
-      for (const toolUse of toolUses) {
-        if (toolUse.type === 'tool_use') {
-          const result = await executeTool(
-            toolUse.name,
-            toolUse.input as Record<string, any>,
-            user.id
-          )
-          toolResults.push({
-            type: 'tool_result',
-            tool_use_id: toolUse.id,
-            content: result,
-          })
-        }
+      const toolMessages: OpenAI.ChatCompletionToolMessageParam[] = []
+      for (const toolCall of assistantMessage.tool_calls) {
+        if (toolCall.type !== 'function') continue
+
+        const args = JSON.parse(toolCall.function.arguments)
+        const result = await executeTool(
+          toolCall.function.name,
+          args,
+          user.id
+        )
+        toolMessages.push({
+          role: 'tool',
+          tool_call_id: toolCall.id,
+          content: result,
+        })
       }
 
       // Agregar resultados de herramientas al historial
-      agentMessages.push({
-        role: 'user',
-        content: toolResults,
-      })
+      agentMessages.push(...toolMessages)
     }
 
     return NextResponse.json({
