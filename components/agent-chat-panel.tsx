@@ -108,7 +108,7 @@ export function AgentChatPanel({ isOpen, onClose, caseId }: AgentChatPanelProps)
       {/* Panel */}
       <div className="fixed right-0 top-0 bottom-0 z-50 w-full max-w-md bg-background border-l flex flex-col">
         {/* Header */}
-        <div className="border-b p-4 flex items-center justify-between">
+        <div className="border-b p-4 flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-2">
             <MessageCircle className="h-5 w-5" />
             <h2 className="font-semibold">Asistente Legal</h2>
@@ -122,8 +122,8 @@ export function AgentChatPanel({ isOpen, onClose, caseId }: AgentChatPanelProps)
           </Button>
         </div>
 
-        {/* Messages */}
-        <ScrollArea className="flex-1">
+        {/* Messages - scrollable */}
+        <div className="flex-1 overflow-y-auto">
           <div className="space-y-4 p-4">
             {messages.length === 0 ? (
               <div className="text-center text-sm text-muted-foreground py-8">
@@ -179,10 +179,10 @@ export function AgentChatPanel({ isOpen, onClose, caseId }: AgentChatPanelProps)
 
             <div ref={scrollRef} />
           </div>
-        </ScrollArea>
+        </div>
 
-        {/* Input */}
-        <div className="border-t p-4 space-y-2">
+        {/* Input - fixed */}
+        <div className="border-t p-4 space-y-2 flex-shrink-0 bg-background">
           <div className="flex gap-2">
             <Input
               ref={inputRef}

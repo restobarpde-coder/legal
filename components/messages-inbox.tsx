@@ -375,41 +375,44 @@ export function MessagesInbox() {
 
   useEffect(() => {
     let active = true
-    const channel = supabase
-      .channel('inbox-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'inbox_messages' }, (payload) => {
-        if (!active) return
-        const message = payload.new as Message
-        if (!message.conversation_id) return
-
-        if (payload.eventType === 'INSERT') {
-          scheduleListReconciliation(0)
-        }
-
-        if (message.conversation_id === selectedIdRef.current) {
-          scheduleDetailReconciliation(0)
-          if (payload.eventType === 'INSERT'
-            && message.direction === 'inbound'
-            && document.visibilityState === 'visible'
-          ) {
-            void markConversationRead(message.conversation_id)
-            window.setTimeout(() => {
-              if (active) dismissConversationNotifications(message.conversation_id!)
-            }, 500)
-          }
-        }
-      })
-      // The conversation row carries the list's ordering, preview and unread
-      // count. Without this subscription those only moved when a message event
-      // happened to arrive as well.
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'inbox_conversations' }, () => {
-        if (!active) return
-        scheduleListReconciliation(0)
-      })
 
     void (async () => {
-      await supabase.realtime.setAuth()
+      try {
+        await supabase.realtime.setAuth()
+      } catch (err) {
+        console.error('[Realtime] Failed to setAuth:', err)
+      }
       if (!active) return
+
+      const channel = supabase
+        .channel('inbox-realtime')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'inbox_messages' }, (payload) => {
+          if (!active) return
+          const message = payload.new as Message
+          if (!message.conversation_id) return
+
+          if (payload.eventType === 'INSERT') {
+            scheduleListReconciliation(0)
+          }
+
+          if (message.conversation_id === selectedIdRef.current) {
+            scheduleDetailReconciliation(0)
+            if (payload.eventType === 'INSERT'
+              && message.direction === 'inbound'
+              && document.visibilityState === 'visible'
+            ) {
+              void markConversationRead(message.conversation_id)
+              window.setTimeout(() => {
+                if (active) dismissConversationNotifications(message.conversation_id!)
+              }, 500)
+            }
+          }
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'inbox_conversations' }, () => {
+          if (!active) return
+          scheduleListReconciliation(0)
+        })
+
       channel.subscribe((subscriptionStatus) => {
         if (!active) return
         if (subscriptionStatus === 'SUBSCRIBED') {
@@ -417,11 +420,14 @@ export function MessagesInbox() {
           scheduleDetailReconciliation(0)
         }
       })
+
+      return () => {
+        if (active) void supabase.removeChannel(channel)
+      }
     })()
 
     return () => {
       active = false
-      void supabase.removeChannel(channel)
     }
   }, [dismissConversationNotifications, markConversationRead, scheduleDetailReconciliation, scheduleListReconciliation, supabase])
 

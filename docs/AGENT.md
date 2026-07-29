@@ -21,15 +21,21 @@ El panel aparece como un sidebar en la derecha de la pantalla, disponible desde 
 
 ## Capacidades Actuales
 
-### 📊 Lectura de Datos
+### 📊 Lectura de Datos (Casos)
 - `get_cases` - Obtiene lista de tus casos
 - `get_case_details` - Información completa de un caso
 - `get_case_documents` - Documentos de un caso
 - `get_case_notes` - Notas de un caso
 - `get_case_tasks` - Tareas de un caso
 
+### ⚖️ Normativa Uruguaya (IMPO)
+- `search_impo` - Consulta leyes, decretos, constitución y resoluciones en el Banco de Datos oficial de IMPO
+  - Entiende consultas en lenguaje natural: "ley 19889", "decreto 356/2018", "artículo 72 de la constitución"
+  - Fuente oficial para normativa uruguaya
+  - Nunca inventa artículos ni normas
+
 ### 🌐 Búsqueda Web
-- `search_web` - Busca jurisprudencia, precedentes y normativa legal
+- `search_web` - Busca jurisprudencia, precedentes, doctrina y contexto general
 
 ### ✍️ Acciones Autónomas
 - `create_task` - Crea una nueva tarea en un caso
@@ -66,14 +72,36 @@ Agente:
 → Confirma que fue creada
 ```
 
-### 3. Buscar jurisprudencia
+### 3. Consultar normas uruguayas
 ```
-"Busca jurisprudencia sobre derechos de autor en casos similares"
+"¿Qué dice la ley 19889 sobre..."
+
+Agente:
+→ Consulta IMPO (fuente oficial)
+→ Trae el texto exacto de la norma
+→ Explica artículos relevantes
+→ Fuente: IMPO (nunca inventa)
+```
+
+### 4. Buscar jurisprudencia y contexto
+```
+"Busca jurisprudencia sobre derechos de autor"
 
 Agente:
 → Busca en internet con Tavily
 → Encuentra precedentes relevantes
-→ Resume hallazgos legales
+→ Resume hallazgos y contexto general
+```
+
+### 5. Análisis integrado
+```
+"¿Cómo aplicaría la ley 19172 al caso ABC?"
+
+Agente:
+→ Lee el caso de la BD
+→ Consulta ley 19172 en IMPO
+→ Busca jurisprudencia relacionada
+→ Proporciona análisis completo
 ```
 
 ## Próximas Mejoras
@@ -97,6 +125,7 @@ Agente:
 
 ### Integraciones
 - **Supabase** — Acceso a base de datos de casos
+- **IMPO** — Banco de Datos de normativa uruguaya
 - **Tavily** — Web search para jurisprudencia y precedentes
 - **OpenAI** — LLM y orquestación de herramientas
 
@@ -104,14 +133,20 @@ Agente:
 Definidas en `app/api/agent/chat/route.ts`:
 ```typescript
 const tools = [
+  // Casos
   'get_cases',
   'get_case_details',
   'get_case_documents',
   'get_case_notes',
   'get_case_tasks',
+  
+  // Acciones
   'create_task',
   'create_note',
-  'search_web',  // ← NEW
+  
+  // Búsquedas
+  'search_web',        // Jurisprudencia, precedentes
+  'search_impo',       // Normativa uruguaya (NEW)
 ]
 ```
 

@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
 import { createClient } from '@supabase/supabase-js'
 import { tavily } from '@tavily/core'
+import { queryImpo } from '@/lib/impo-client'
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -151,6 +152,20 @@ const tools = [
           type: 'array',
           items: { type: 'string' },
           description: 'Dominios específicos a buscar (opcional, ej: ["judicialcr.poder-judicial.go.cr"])',
+        },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'search_impo',
+    description: 'Busca normas jurídicas en el Banco de Datos de IMPO (Instituto de Mayoría de Edad de Uruguay). Consulta leyes, decretos, constitución, resoluciones, etc.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Consulta en lenguaje natural (ej: "ley 19889", "decreto 356/2018", "constitución artículo 72", "resolución ministerial")',
         },
       },
       required: ['query'],
@@ -356,6 +371,36 @@ async function executeTool(
         })
       }
 
+      case 'search_impo': {
+        console.log(`[AGENT] search_impo: buscando norma "${toolInput.query}"`)
+
+        const norm = await queryImpo(toolInput.query)
+
+        if (!norm) {
+          return JSON.stringify({
+            success: false,
+            error: `No se encontró norma en IMPO para: ${toolInput.query}`,
+            query: toolInput.query,
+          })
+        }
+
+        console.log(`[AGENT] search_impo: norma encontrada`)
+        return JSON.stringify({
+          success: true,
+          query: toolInput.query,
+          norm: {
+            id: norm.id,
+            tipo: norm.tipo,
+            numero: norm.numero,
+            ano: norm.ano,
+            titulo: norm.titulo,
+            articulos_count: norm.articulos?.length || 0,
+          },
+          contenido: norm.contenido?.substring(0, 2000), // Primeros 2000 caracteres
+          source: 'IMPO (fuente oficial)',
+        })
+      }
+
       default:
         return JSON.stringify({ error: `Unknown tool: ${toolName}` })
     }
@@ -391,20 +436,27 @@ export async function POST(request: NextRequest) {
 
     // Agregar contexto del usuario al sistema
     const systemPrompt = `Eres un asistente legal inteligente que ayuda a los abogados con la gestión de casos.
+
 Tienes acceso a:
-1. Base de datos con información de casos, documentos, notas y tareas
-2. Web search para búsqueda de jurisprudencia, precedentes y normativa legal
+1. Base de datos: información de casos, documentos, notas y tareas
+2. IMPO (Banco de Datos de Uruguay): leyes, decretos, constitución, resoluciones
+3. Web search: jurisprudencia, precedentes, normativa y contexto general
 
 Tu objetivo es:
 1. Responder preguntas sobre casos específicos
-2. Analizar información y proporcionar insights
-3. Buscar información legal relevante en internet cuando sea necesario
-4. Sugerir acciones (crear tareas, añadir notas)
-5. Mantener el contexto de la conversación
+2. Consultar normativa uruguaya en IMPO cuando sea relevante
+3. Buscar información legal complementaria
+4. Analizar y proporcionar insights
+5. Sugerir acciones (crear tareas, añadir notas)
 
-Siempre sé preciso, profesional y basado en datos reales.
-Usa web search para encontrar jurisprudencia, precedentes legales y normativa.
-Cuando sugieras crear una tarea o nota, hazlo solo si el usuario lo solicita explícitamente o si es claramente necesario.`
+IMPORTANTE:
+- Cuando el usuario pregunte sobre leyes, decretos, artículos o normas uruguayas, usa IMPO como fuente oficial
+- IMPO es la fuente de verdad para normativa uruguaya (nunca inventes artículos ni normas)
+- Usa web search para contexto, doctrina, casos prácticos, noticias
+- Siempre aclara si la información viene de IMPO, web o análisis propio
+- Cuando sugieras crear tareas o notas, hazlo solo si el usuario lo solicita explícitamente
+
+Sé preciso, profesional y basado en datos reales.`
 
     let agentMessages: OpenAI.ChatCompletionMessageParam[] = [
       { role: 'system', content: systemPrompt },
