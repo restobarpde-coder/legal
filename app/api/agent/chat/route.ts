@@ -466,6 +466,7 @@ Sé preciso, profesional y basado en datos reales.`
       })),
     ]
     let finalResponse = ''
+    let lastToolResult: any = null
 
     // Loop agentico: continuar hasta que el agente no llame más a herramientas
     for (let i = 0; i < 10; i++) {
@@ -512,6 +513,17 @@ Sé preciso, profesional y basado en datos reales.`
           args,
           user.id
         )
+
+        // Guardar el último resultado para devolver datos estructurados
+        try {
+          const parsed = JSON.parse(result)
+          if (parsed.cases || parsed.tasks || parsed.notes || parsed.documents) {
+            lastToolResult = result
+          }
+        } catch (e) {
+          // No es JSON estructurado, ignorar
+        }
+
         toolMessages.push({
           role: 'tool',
           tool_call_id: toolCall.id,
@@ -524,10 +536,22 @@ Sé preciso, profesional y basado en datos reales.`
     }
 
     console.log('[AGENT] ✅ Respuesta lista')
-    return NextResponse.json({
+
+    // Si la última herramienta devolvió datos estructurados, enviarlos también
+    const response: any = {
       message: finalResponse,
       success: true,
-    })
+    }
+
+    if (lastToolResult) {
+      try {
+        response.data = JSON.parse(lastToolResult)
+      } catch (e) {
+        // Ignorar si no es JSON válido
+      }
+    }
+
+    return NextResponse.json(response)
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : JSON.stringify(error)
     console.error('[AGENT] ❌ Error fatal en agent API:', errorMsg)

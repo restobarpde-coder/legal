@@ -79,10 +79,16 @@ export function AgentChatPanel({ isOpen, onClose, caseId }: AgentChatPanelProps)
 
       const data = await response.json()
 
+      // Si hay datos estructurados, convertirlos a JSON string para que el renderer los detecte
+      let content = data.message
+      if (data.data) {
+        content = JSON.stringify(data.data)
+      }
+
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: data.message,
+        content: content,
         timestamp: new Date(),
       }
 
