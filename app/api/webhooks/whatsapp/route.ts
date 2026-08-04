@@ -5,6 +5,7 @@ import {
   downloadWhatsAppMedia,
   extractMessageText,
   toContentType,
+  sendWhatsAppText,
   type WAWebhookPayload,
   type WAIncomingMessage,
   type WAContact,
@@ -14,6 +15,10 @@ import { resolveInboxContact } from '@/lib/inbox/contacts'
 import { notifyInboxMessage } from '@/lib/inbox/notifications'
 
 export const runtime = 'nodejs'
+
+// Sent once, automatically, the first time a WhatsApp contact ever writes to us.
+const WELCOME_MESSAGE =
+  'Hola, bienvenido/a al Centro de Asesoramiento. Pronto nos pondremos en contacto contigo. ¡Muchas gracias!'
 
 // ─── GET: Meta webhook verification handshake ─────────────────
 
@@ -139,7 +144,7 @@ async function handleIncomingMessage(
   const sentAt        = new Date(parseInt(msg.timestamp, 10) * 1000)
 
   // Find or create conversation for this WhatsApp contact
-  const conversationId = await resolveWhatsAppConversation(
+  const { conversationId, isFirstContact } = await resolveWhatsAppConversation(
     supabase,
     waContactId,
     contactName
@@ -161,6 +166,16 @@ async function handleIncomingMessage(
   if (msgErr || !storedMessage) {
     await markWebhookProcessed(supabase, webhookEvent?.id, 'failed', msgErr?.message)
     return
+  }
+
+  // First-ever message from this contact: auto-reply with a welcome message.
+  // Best-effort — a failure here must never discard the already-stored inbound message.
+  if (isFirstContact) {
+    try {
+      await sendWelcomeMessage(supabase, conversationId, waContactId)
+    } catch (err) {
+      console.error(`[inbox/whatsapp] Could not send welcome message to ${waContactId}`, err)
+    }
   }
 
   // Media URLs from Meta expire; download and retain an encrypted/private copy.
@@ -224,7 +239,7 @@ async function resolveWhatsAppConversation(
   supabase:     ReturnType<typeof createServiceClient>,
   waContactId:  string,
   contactName:  string
-): Promise<string> {
+): Promise<{ conversationId: string; isFirstContact: boolean }> {
   // Re-use the existing open/pending conversation for this WA contact
   const { data: existing } = await supabase
     .from('inbox_conversations')
@@ -236,7 +251,20 @@ async function resolveWhatsAppConversation(
     .limit(1)
     .maybeSingle()
 
-  if (existing) return existing.id
+  if (existing) return { conversationId: existing.id, isFirstContact: false }
+
+  // No open conversation — check whether this contact has ever written to us
+  // before (including resolved/spam conversations) to know if this is truly
+  // their first-ever message and the welcome auto-reply should fire.
+  const { data: anyPrevious } = await supabase
+    .from('inbox_conversations')
+    .select('id')
+    .eq('channel', 'whatsapp')
+    .eq('wa_contact_id', waContactId)
+    .limit(1)
+    .maybeSingle()
+
+  const isFirstContact = !anyPrevious
 
   // Try to auto-link client by phone number
   const phone = `+${waContactId}`.replace(/^\+\+/, '+')
@@ -268,7 +296,27 @@ async function resolveWhatsAppConversation(
     .single()
 
   if (error || !conv) throw new Error(`Failed to create WA conversation: ${error?.message}`)
-  return conv.id
+  return { conversationId: conv.id, isFirstContact }
+}
+
+async function sendWelcomeMessage(
+  supabase:        ReturnType<typeof createServiceClient>,
+  conversationId:  string,
+  waContactId:     string
+) {
+  const { messageId } = await sendWhatsAppText(waContactId, WELCOME_MESSAGE)
+
+  await supabase.from('inbox_messages').insert({
+    conversation_id: conversationId,
+    direction:       'outbound',
+    content:         WELCOME_MESSAGE,
+    content_type:    'text',
+    sender_type:     'user',
+    sender_name:     'Sistema',
+    wa_message_id:   messageId,
+    wa_status:       'sent',
+    sent_at:         new Date().toISOString(),
+  })
 }
 
 // ─── Helpers ──────────────────────────────────────────────────
