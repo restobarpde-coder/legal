@@ -6,7 +6,6 @@ import {
   extractMessageText,
   toContentType,
   sendWhatsAppText,
-  markWhatsAppMessageRead,
   isWithinBusinessHours,
   type WAWebhookPayload,
   type WAIncomingMessage,
@@ -173,14 +172,6 @@ async function handleIncomingMessage(
   if (msgErr || !storedMessage) {
     await markWebhookProcessed(supabase, webhookEvent?.id, 'failed', msgErr?.message)
     return
-  }
-
-  // Tell Meta we've seen it so the sender's checkmarks turn blue. Best-effort —
-  // a failure here must never discard the already-stored inbound message.
-  try {
-    await markWhatsAppMessageRead(msg.id)
-  } catch (err) {
-    console.error(`[inbox/whatsapp] Could not mark ${msg.id} as read`, err)
   }
 
   // First-ever message from this contact: auto-reply with a welcome message.

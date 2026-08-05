@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
+import { markWhatsAppMessageRead } from '@/lib/inbox/whatsapp'
 
 export const runtime = 'nodejs'
 
@@ -22,6 +23,18 @@ export async function POST(_request: Request, { params }: { params: Params }) {
   }
 
   const service = createServiceClient()
+
+  // Grab the WhatsApp message IDs about to be marked read so we can also tell
+  // Meta — the contact's checkmarks only turn blue if we call this explicitly,
+  // it doesn't follow from updating our own `is_read` column.
+  const { data: unreadWaMessages } = await service
+    .from('inbox_messages')
+    .select('wa_message_id')
+    .eq('conversation_id', conversationId)
+    .eq('direction', 'inbound')
+    .eq('is_read', false)
+    .not('wa_message_id', 'is', null)
+
   const readAt = new Date().toISOString()
   const { error: messageError } = await service
     .from('inbox_messages')
@@ -31,6 +44,16 @@ export async function POST(_request: Request, { params }: { params: Params }) {
     .eq('is_read', false)
 
   if (messageError) return NextResponse.json({ error: 'Could not mark messages as read' }, { status: 500 })
+
+  // Best-effort — a failure here must not block the internal read state we just committed.
+  for (const { wa_message_id } of unreadWaMessages ?? []) {
+    if (!wa_message_id) continue
+    try {
+      await markWhatsAppMessageRead(wa_message_id)
+    } catch (err) {
+      console.error(`[inbox/read] Could not mark ${wa_message_id} as read on WhatsApp`, err)
+    }
+  }
 
   const { error: conversationUpdateError } = await service
     .from('inbox_conversations')
