@@ -3,6 +3,26 @@ import { safeCompare } from './crypto'
 
 const GRAPH_URL = 'https://graph.facebook.com/v20.0'
 
+// ─── Business hours ─────────────────────────────────────────
+
+const BUSINESS_TIMEZONE = 'America/Montevideo'
+
+/** Mon–Fri, 9:00–18:00, Montevideo time. */
+export function isWithinBusinessHours(date: Date = new Date()): boolean {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: BUSINESS_TIMEZONE,
+    weekday: 'short',
+    hour: 'numeric',
+    hourCycle: 'h23',
+  }).formatToParts(date)
+
+  const weekday = parts.find(p => p.type === 'weekday')?.value
+  const hour = Number(parts.find(p => p.type === 'hour')?.value)
+
+  const isWeekday = weekday !== 'Sat' && weekday !== 'Sun'
+  return isWeekday && hour >= 9 && hour < 18
+}
+
 // ─── Send ────────────────────────────────────────────────────
 
 export async function sendWhatsAppText(

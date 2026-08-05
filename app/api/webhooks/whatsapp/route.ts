@@ -7,6 +7,7 @@ import {
   toContentType,
   sendWhatsAppText,
   markWhatsAppMessageRead,
+  isWithinBusinessHours,
   type WAWebhookPayload,
   type WAIncomingMessage,
   type WAContact,
@@ -20,6 +21,11 @@ export const runtime = 'nodejs'
 // Sent once, automatically, the first time a WhatsApp contact ever writes to us.
 const WELCOME_MESSAGE =
   'Hola, bienvenido/a al Centro de Asesoramiento. Pronto nos pondremos en contacto contigo. ¡Muchas gracias!'
+
+// Sent every time someone writes outside business hours (Mon–Fri 9–18h, Montevideo).
+const OUT_OF_HOURS_MESSAGE =
+  'En este momento estamos fuera de nuestro horario de atención (lunes a viernes de 9 a 18 h). ' +
+  'Te responderemos a la brevedad dentro de ese horario. ¡Gracias por escribirnos!'
 
 // ─── GET: Meta webhook verification handshake ─────────────────
 
@@ -181,9 +187,21 @@ async function handleIncomingMessage(
   // Best-effort — a failure here must never discard the already-stored inbound message.
   if (isFirstContact) {
     try {
-      await sendWelcomeMessage(supabase, conversationId, waContactId)
+      await sendAutoReply(supabase, conversationId, waContactId, WELCOME_MESSAGE)
     } catch (err) {
       console.error(`[inbox/whatsapp] Could not send welcome message to ${waContactId}`, err)
+    }
+  }
+
+  // Outside business hours: let them know when to expect a reply. Fires on
+  // every out-of-hours message, not just the first one, since a human isn't
+  // going to see it until the next working slot regardless of how many times
+  // they've written before.
+  if (!isWithinBusinessHours()) {
+    try {
+      await sendAutoReply(supabase, conversationId, waContactId, OUT_OF_HOURS_MESSAGE)
+    } catch (err) {
+      console.error(`[inbox/whatsapp] Could not send out-of-hours message to ${waContactId}`, err)
     }
   }
 
@@ -308,17 +326,18 @@ async function resolveWhatsAppConversation(
   return { conversationId: conv.id, isFirstContact }
 }
 
-async function sendWelcomeMessage(
+async function sendAutoReply(
   supabase:        ReturnType<typeof createServiceClient>,
   conversationId:  string,
-  waContactId:     string
+  waContactId:     string,
+  text:            string
 ) {
-  const { messageId } = await sendWhatsAppText(waContactId, WELCOME_MESSAGE)
+  const { messageId } = await sendWhatsAppText(waContactId, text)
 
   await supabase.from('inbox_messages').insert({
     conversation_id: conversationId,
     direction:       'outbound',
-    content:         WELCOME_MESSAGE,
+    content:         text,
     content_type:    'text',
     sender_type:     'user',
     sender_name:     'Sistema',
