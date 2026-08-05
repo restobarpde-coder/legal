@@ -42,6 +42,38 @@ export async function sendWhatsAppText(
   return { messageId }
 }
 
+/**
+ * Tells Meta we've seen an inbound message, which is what turns the sender's
+ * checkmarks blue on their side. This is a separate call from actually
+ * replying — WhatsApp does not mark a message as read just because we sent
+ * a reply in the same conversation.
+ */
+export async function markWhatsAppMessageRead(messageId: string): Promise<void> {
+  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID
+  const accessToken   = process.env.WHATSAPP_ACCESS_TOKEN
+
+  if (!phoneNumberId || !accessToken) {
+    throw new Error('WHATSAPP_PHONE_NUMBER_ID or WHATSAPP_ACCESS_TOKEN not configured')
+  }
+
+  const res = await fetch(`${GRAPH_URL}/${phoneNumberId}/messages`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      messaging_product: 'whatsapp',
+      status: 'read',
+      message_id: messageId,
+    }),
+  })
+
+  if (!res.ok) {
+    throw new Error(`WhatsApp mark-as-read responded with status ${res.status}`)
+  }
+}
+
 export async function sendWhatsAppTemplate(params: {
   to: string
   name: string
