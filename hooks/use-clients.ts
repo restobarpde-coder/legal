@@ -66,7 +66,7 @@ export function useClients(searchQuery?: string) {
   }, [queryClient, supabase])
 
   return useQuery({
-    queryKey: ['clients', searchQuery],
+    queryKey: ['clients', searchQuery || ''],
     queryFn: async () => {
       const params = new URLSearchParams()
       if (searchQuery) {
@@ -83,7 +83,7 @@ export function useClients(searchQuery?: string) {
       }
       return response.json() as Promise<Client[]>
     },
-    staleTime: 0,
+    staleTime: 30_000,
     refetchOnWindowFocus: true,
     select: (data) => {
       // Transformar datos para optimizar renders

@@ -1,7 +1,9 @@
 import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
+import { cache } from "react"
 
-export async function getUser() {
+// Deduplicate authentication within a server render only; never across requests.
+export const getUser = cache(async function getUser() {
   const supabase = await createClient()
   const {
     data: { user },
@@ -13,7 +15,7 @@ export async function getUser() {
   }
 
   return user
-}
+})
 
 export async function requireAuth() {
   const user = await getUser()
@@ -34,7 +36,7 @@ export async function requireAuthAPI() {
   return user
 }
 
-export async function getUserProfile() {
+export const getUserProfile = cache(async function getUserProfile() {
   const supabase = await createClient()
   const user = await requireAuth()
 
@@ -69,4 +71,4 @@ export async function getUserProfile() {
   }
 
   return profile
-}
+})

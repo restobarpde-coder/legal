@@ -114,7 +114,7 @@ export function useCases(searchQuery?: string, statusFilter?: string, priorityFi
   }, [queryClient, supabase])
 
   return useQuery({
-    queryKey: ['cases', searchQuery, statusFilter, priorityFilter],
+    queryKey: ['cases', searchQuery || '', statusFilter || 'all', priorityFilter || 'all'],
     queryFn: async (): Promise<Case[]> => {
       const params = new URLSearchParams()
       if (searchQuery) params.append('q', searchQuery)
@@ -131,7 +131,7 @@ export function useCases(searchQuery?: string, statusFilter?: string, priorityFi
       }
       return response.json()
     },
-    staleTime: 0,
+    staleTime: 30_000,
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,
   })

@@ -17,7 +17,7 @@ import { notifyInboxMessage } from '@/lib/inbox/notifications'
 
 export const runtime = 'nodejs'
 
-// Sent once, automatically, the first time a WhatsApp contact ever writes to us.
+// Sent once on first contact when the message arrives during business hours.
 const WELCOME_MESSAGE =
   'Hola, bienvenido/a al Centro de Asesoramiento. Pronto nos pondremos en contacto contigo. ¡Muchas gracias!'
 
@@ -174,25 +174,17 @@ async function handleIncomingMessage(
     return
   }
 
-  // First-ever message from this contact: auto-reply with a welcome message.
-  // Best-effort — a failure here must never discard the already-stored inbound message.
-  if (isFirstContact) {
+  // Choose one automatic response. Outside business hours takes precedence
+  // over the first-contact welcome so a new contact never receives both.
+  // Best-effort: failures must not discard the stored inbound message.
+  const automaticReply = !isWithinBusinessHours()
+    ? OUT_OF_HOURS_MESSAGE
+    : isFirstContact ? WELCOME_MESSAGE : null
+  if (automaticReply) {
     try {
-      await sendAutoReply(supabase, conversationId, waContactId, WELCOME_MESSAGE)
+      await sendAutoReply(supabase, conversationId, waContactId, automaticReply)
     } catch (err) {
-      console.error(`[inbox/whatsapp] Could not send welcome message to ${waContactId}`, err)
-    }
-  }
-
-  // Outside business hours: let them know when to expect a reply. Fires on
-  // every out-of-hours message, not just the first one, since a human isn't
-  // going to see it until the next working slot regardless of how many times
-  // they've written before.
-  if (!isWithinBusinessHours()) {
-    try {
-      await sendAutoReply(supabase, conversationId, waContactId, OUT_OF_HOURS_MESSAGE)
-    } catch (err) {
-      console.error(`[inbox/whatsapp] Could not send out-of-hours message to ${waContactId}`, err)
+      console.error(`[inbox/whatsapp] Could not send automatic reply to ${waContactId}`, err)
     }
   }
 

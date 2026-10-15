@@ -2,8 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
+import './inbox/workspace.css'
 import { useSearchParams } from 'next/navigation'
 import {
+  Search,
+  Plus,
+  BriefcaseBusiness,
   ArrowLeft,
   Info,
   Mail,
@@ -21,6 +25,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/co
 import { Textarea } from '@/components/ui/textarea'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
+import type { InboxTemplate } from '@/components/inbox/conversation-form'
 import { InboxComposer, type InboxAccount } from '@/components/inbox-composer'
 import { LinkClientDialog } from '@/components/inbox/link-client-dialog'
 import { MessageBubble } from '@/components/inbox/message-bubble'
@@ -89,11 +94,6 @@ function sortMessages(items: Message[]) {
   })
 }
 
-function formatDate(value: string | null) {
-  if (!value) return ''
-  return new Intl.DateTimeFormat('es-UY', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' }).format(new Date(value))
-}
-
 function formatListDate(value: string | null) {
   if (!value) return ''
   const date = new Date(value)
@@ -115,6 +115,8 @@ export function MessagesInbox() {
   const supabase = useMemo(() => createClient(), [])
   const searchParams = useSearchParams()
   const notificationConversationId = searchParams.get('conversation')
+  const [search, setSearch] = useState('')
+  const [unreadOnly, setUnreadOnly] = useState(false)
   const [channel, setChannel] = useState<Channel>('all')
   const [status, setStatus] = useState<Status>('open')
   const [conversations, setConversations] = useState<Conversation[]>([])
@@ -124,6 +126,9 @@ export function MessagesInbox() {
   const [loading, setLoading] = useState(true)
   const [detailLoading, setDetailLoading] = useState(false)
   const [draft, setDraft] = useState('')
+  const [templateId, setTemplateId] = useState('')
+  const [templateIndex, setTemplateIndex] = useState(0)
+  const [dismissTemplates, setDismissTemplates] = useState(false)
   const [files, setFiles] = useState<File[]>([])
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -132,7 +137,7 @@ export function MessagesInbox() {
   const [mobilePane, setMobilePane] = useState<'list' | 'chat'>('list')
   const isMobile = useIsMobile()
   const [accounts, setAccounts] = useState<InboxAccount[]>([])
-  const [templates, setTemplates] = useState<Array<{ id: string; name: string; language_code: string }>>([])
+  const [templates, setTemplates] = useState<InboxTemplate[]>([])
   const [composeLoading, setComposeLoading] = useState(false)
   const [isRecorderActive, setIsRecorderActive] = useState(false)
   const [isDraggingFile, setIsDraggingFile] = useState(false)
@@ -161,6 +166,19 @@ export function MessagesInbox() {
     () => conversations.find((conversation) => conversation.id === selectedId) ?? null,
     [conversations, selectedId]
   )
+  const filteredConversations = useMemo(() => {
+    const normalize = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+    const query = normalize(search.trim())
+    return conversations.filter(conversation =>
+      (!unreadOnly || conversation.unread_count > 0) &&
+      (!query || normalize([conversation.contact_name, conversation.contact_phone, conversation.contact_email, conversation.last_message_preview, conversation.email_subject].filter(Boolean).join(' ')).includes(query))
+    )
+  }, [conversations, search, unreadOnly])
+  const selectedTemplate = templates.find(template => template.id === templateId)
+  const showTemplates = selected?.channel === 'whatsapp' && draft.startsWith('/') && !dismissTemplates && !selectedTemplate && !isRecorderActive
+  const matchingTemplates = templates.filter(template => `${template.title ?? ''} ${template.name}`.toLowerCase().includes(draft.slice(1).trim().toLowerCase()))
+  useEffect(() => { setTemplateId(''); setTemplateIndex(0); setDismissTemplates(false) }, [selectedId])
+  function chooseTemplate(template: InboxTemplate) { setTemplateId(template.id); setDraft(''); setTemplateIndex(0) }
   const visibleMessages = messagesConversationId === selectedId ? messages : []
 
   const mediaItems = useMemo<LightboxItem[]>(() => {
@@ -393,17 +411,34 @@ export function MessagesInbox() {
     }
   }, [dismissConversationNotifications, selectedId])
 
+  // Chat shortcuts need the catalog even when the compose panel was never opened.
+  useEffect(() => {
+    let active = true
+    void fetch('/api/inbox/templates', { cache: 'no-store' })
+      .then(async response => {
+        const result = await response.json()
+        if (!response.ok) throw new Error(result.error ?? 'No fue posible cargar las plantillas')
+        return result
+      })
+      .then(result => { if (active) setTemplates(result.templates ?? []) })
+      .catch(() => { if (active) setError('No fue posible cargar las plantillas. Recargá la página para reintentar.') })
+    return () => { active = false }
+  }, [isComposing])
+
   useEffect(() => {
     if (!isComposing) return
+    let active = true
     setComposeLoading(true)
-    void Promise.all([
-      fetch('/api/inbox/email-accounts').then(response => response.json()),
-      fetch('/api/inbox/templates').then(response => response.json()),
-    ]).then(([accountResult, templateResult]) => {
-      setAccounts(accountResult.accounts ?? [])
-      setTemplates(templateResult.templates ?? [])
-    }).catch(() => setError('No fue posible cargar las opciones de redacción'))
-      .finally(() => setComposeLoading(false))
+    void fetch('/api/inbox/email-accounts')
+      .then(async response => {
+        const result = await response.json()
+        if (!response.ok) throw new Error('No fue posible cargar las casillas de email')
+        return result
+      })
+      .then(result => { if (active) setAccounts(result.accounts ?? []) })
+      .catch(() => { if (active) setError('No fue posible cargar las casillas de email') })
+      .finally(() => { if (active) setComposeLoading(false) })
+    return () => { active = false }
   }, [isComposing])
 
   useEffect(() => {
@@ -523,6 +558,10 @@ export function MessagesInbox() {
 
   async function addFiles(newFiles: File[]) {
     if (!selected || newFiles.length === 0) return
+    if (selectedTemplate) {
+      setError('Quitá la plantilla seleccionada para adjuntar archivos.')
+      return
+    }
     const accepted: File[] = []
     for (const file of newFiles) {
       let candidate = file
@@ -547,9 +586,12 @@ export function MessagesInbox() {
 
   async function sendReply(options: { filesOverride?: File[] } = {}) {
     if (!selectedId) return
-    const replyFiles = options.filesOverride ?? [...files]
-    const replyContent = draft.trim()
-    if (!replyContent && replyFiles.length === 0) return
+    if (sending) return
+    const templateToSend = options.filesOverride ? undefined : selectedTemplate
+    if (!options.filesOverride && showTemplates) return
+    const replyFiles = templateToSend ? [] : options.filesOverride ?? [...files]
+    const replyContent = templateToSend ? '' : draft.trim()
+    if (!templateToSend && !replyContent && replyFiles.length === 0) return
     const conversationId = selectedId
     setSending(true)
     setError(null)
@@ -573,7 +615,7 @@ export function MessagesInbox() {
       const response = await fetch(`/api/inbox/conversations/${conversationId}/reply`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: replyContent, attachments: uploadedFiles }),
+        body: JSON.stringify({ content: replyContent, attachments: uploadedFiles, template_id: templateToSend?.id }),
       })
       const result = await response.json()
       if (!response.ok) {
@@ -585,6 +627,7 @@ export function MessagesInbox() {
       if (selectedIdRef.current === conversationId) {
         if (!options.filesOverride) {
           setDraft('')
+          setTemplateId('')
           setFiles([])
           if (fileInputRef.current) fileInputRef.current.value = ''
         }
@@ -618,7 +661,7 @@ export function MessagesInbox() {
   const detailsPanel = selected ? (
     <div className="space-y-5">
       <div>
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Contacto</p>
+        <p className="text-sm font-semibold text-foreground">Contacto</p>
         <div className="mt-2 flex items-center gap-2">
           <div className="grid h-9 w-9 place-items-center rounded-full bg-muted"><UserRound className="h-4 w-4" /></div>
           <div className="min-w-0">
@@ -628,28 +671,29 @@ export function MessagesInbox() {
         </div>
       </div>
       <div>
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Vinculación</p>
+        <p className="text-sm font-semibold text-foreground">Vinculación</p>
         {selected.linked_client
           ? <Link href={`/dashboard/clients/${selected.linked_client.id}`} className="mt-2 block rounded-md border p-2 text-sm hover:bg-muted"><span className="font-medium">Cliente</span><br />{selected.linked_client.name}</Link>
           : <p className="mt-2 rounded-md border border-dashed p-2 text-sm text-muted-foreground">Consulta de potencial cliente sin vincular.</p>}
         <LinkClientDialog conversationId={selected.id} currentClient={selected.linked_client ?? null} onLinked={() => { void loadConversations(selected.id, { background: true }) }} trigger={<Button variant="outline" size="sm" className="mt-2 w-full">{selected.linked_client ? 'Cambiar vinculación' : 'Vincular a cliente'}</Button>} />
       </div>
+      {selected.linked_case ? <div><p className="text-sm font-semibold text-foreground">Caso vinculado</p><Link href={`/dashboard/cases/${selected.linked_case.id}`} className="mt-2 flex items-center gap-2 rounded-lg bg-muted p-3 text-sm hover:bg-accent"><BriefcaseBusiness className="h-4 w-4 shrink-0" /><span className="break-words">{selected.linked_case.title}</span></Link></div> : null}
       <div>
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Asignado a</p>
+        <p className="text-sm font-semibold text-foreground">Asignado a</p>
         <p className="mt-2 text-sm">{selected.assigned_user?.full_name || selected.assigned_user?.email || 'Sin asignar'}</p>
       </div>
     </div>
   ) : null
 
   return (
-    <div className="flex h-[calc(100dvh-5.5rem)] flex-col gap-3 sm:h-[calc(100dvh-6rem)] md:h-[calc(100dvh-6.5rem)] md:gap-4 lg:h-[calc(100dvh-7rem)]">
+    <div className="inbox-workspace flex h-[calc(100dvh-5.5rem)] flex-col gap-3 sm:h-[calc(100dvh-6rem)] md:h-[calc(100dvh-6.5rem)] md:gap-4 lg:h-[calc(100dvh-7rem)]">
       <div className={cn('flex flex-wrap items-center justify-between gap-3', mobilePane === 'chat' && 'hidden md:flex')}>
         <div>
-          <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Mensajes</h1>
-          <p className="mt-1 hidden text-sm text-muted-foreground sm:block">WhatsApp y email del estudio en una sola bandeja.</p>
+          <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Conversaciones</h1>
+          <p className="mt-1 hidden text-sm text-muted-foreground sm:block">Cada consulta, más cerca de una solución.</p>
         </div>
         <div className="flex gap-2">
-          <Button onClick={() => setIsComposing(true)} disabled={isComposing}><Mail className="h-4 w-4" /><span className="hidden sm:inline">Nueva conversación</span><span className="sm:hidden">Nueva</span></Button>
+          <Button onClick={() => setIsComposing(true)} disabled={isComposing}><Plus className="h-4 w-4" /><span className="hidden sm:inline">Nueva conversación</span><span className="sm:hidden">Nueva</span></Button>
           <Button variant="outline" size="icon" aria-label="Actualizar" onClick={() => void loadConversations()} disabled={loading || isComposing} className="sm:hidden">
             <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
           </Button>
@@ -659,34 +703,37 @@ export function MessagesInbox() {
         </div>
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden rounded-xl border bg-background md:grid-cols-[280px_minmax(0,1fr)] lg:grid-cols-[330px_minmax(0,1fr)] xl:grid-cols-[330px_minmax(0,1fr)_300px]">
-        <aside className={cn('flex min-h-0 flex-col md:border-r', mobilePane === 'chat' && 'hidden md:flex')}>
-          <div className="space-y-3 border-b p-3">
+      <div className="inbox-frame grid min-h-0 flex-1 grid-cols-1 overflow-hidden rounded-2xl border bg-background md:grid-cols-[300px_minmax(0,1fr)] lg:grid-cols-[340px_minmax(0,1fr)] 2xl:grid-cols-[360px_minmax(0,1fr)_280px]">
+        <aside className={cn('inbox-list flex min-h-0 flex-col md:border-r', mobilePane === 'chat' && 'hidden md:flex')}>
+          <div className="space-y-3 border-b p-4">
+            <div className="flex items-center justify-between"><h2 className="text-lg font-semibold">Tu bandeja</h2><span className="text-xs text-muted-foreground">{conversations.length} conversaciones</span></div>
+            <div className="relative"><Search aria-hidden="true" className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" /><Input aria-label="Buscar entre las conversaciones cargadas" placeholder="Buscar nombre, teléfono o mensaje" value={search} onChange={event => setSearch(event.target.value)} className="h-10 rounded-xl border-0 bg-muted pl-9" /></div>
+            <div className="flex gap-2"><button type="button" aria-pressed={!unreadOnly} className={cn('inbox-filter', !unreadOnly && 'is-active')} onClick={() => setUnreadOnly(false)}>Todas</button><button type="button" aria-pressed={unreadOnly} className={cn('inbox-filter', unreadOnly && 'is-active')} onClick={() => setUnreadOnly(true)}>No leídas</button></div>
             <div className="grid grid-cols-2 gap-2">
-              <select value={channel} onChange={(event) => setChannel(event.target.value as Channel)} className="h-9 rounded-md border bg-background px-2 text-sm">
+              <select aria-label="Filtrar por canal" value={channel} onChange={(event) => setChannel(event.target.value as Channel)} className="h-9 min-w-0 rounded-md border bg-background px-2 text-sm">
                 <option value="all">Todos los canales</option><option value="whatsapp">WhatsApp</option><option value="email">Email</option>
               </select>
-              <select value={status} onChange={(event) => setStatus(event.target.value as Status)} className="h-9 rounded-md border bg-background px-2 text-sm">
+              <select aria-label="Filtrar por estado" value={status} onChange={(event) => setStatus(event.target.value as Status)} className="h-9 min-w-0 rounded-md border bg-background px-2 text-sm">
                 <option value="open">Abiertas</option><option value="pending">Pendientes</option><option value="resolved">Resueltas</option><option value="all">Todas</option>
               </select>
             </div>
-            <Input placeholder="Buscar próximamente" disabled />
+
           </div>
           <ScrollArea className="min-h-0 flex-1">
             {loading ? <p className="p-4 text-sm text-muted-foreground">Cargando conversaciones…</p> : null}
-            {!loading && conversations.length === 0 ? <p className="p-4 text-sm text-muted-foreground">No hay conversaciones para estos filtros.</p> : null}
-            {conversations.map((conversation) => (
-              <button key={conversation.id} onClick={() => selectConversation(conversation.id)} className={cn('w-full border-b px-3 py-3 text-left transition hover:bg-muted/60 active:bg-muted', selectedId === conversation.id && 'md:bg-muted')}>
+            {!loading && filteredConversations.length === 0 ? <p className="p-4 text-sm text-muted-foreground">No encontramos conversaciones. Probá con otra búsqueda o cambiá los filtros.</p> : null}
+            {filteredConversations.map((conversation) => (
+              <button key={conversation.id} onClick={() => selectConversation(conversation.id)} aria-current={selectedId === conversation.id ? 'true' : undefined} className={cn('inbox-conversation w-full px-4 py-4 text-left transition-colors', selectedId === conversation.id && 'is-selected')}>
                 <div className="flex items-start gap-3">
                   <div className="relative grid h-10 w-10 shrink-0 place-items-center rounded-full bg-muted">
-                    <UserRound className="h-5 w-5 text-muted-foreground" />
+                    <span className="text-sm font-semibold text-primary">{(conversation.contact_name || conversation.contact_phone || conversation.contact_email || '?').slice(0, 2).toUpperCase()}</span>
                     <span className="absolute -bottom-0.5 -right-0.5 grid h-4 w-4 place-items-center rounded-full border bg-background">
                       {conversation.channel === 'whatsapp' ? <MessageCircle className="h-2.5 w-2.5 text-emerald-600" /> : <Mail className="h-2.5 w-2.5 text-blue-600" />}
                     </span>
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline justify-between gap-2">
-                      <span className={cn('truncate text-sm', conversation.unread_count > 0 ? 'font-semibold' : 'font-medium')}>{conversation.contact_name || 'Sin nombre'}</span>
+                      <span className={cn('truncate text-sm', conversation.unread_count > 0 ? 'font-semibold' : 'font-medium')}>{conversation.contact_name || conversation.contact_phone || conversation.contact_email || 'Contacto sin nombre'}</span>
                       <span className={cn('shrink-0 text-xs', conversation.unread_count > 0 ? 'font-medium text-primary' : 'text-muted-foreground')}>{formatListDate(conversation.last_message_at)}</span>
                     </div>
                     <div className="mt-0.5 flex items-center justify-between gap-2">
@@ -701,7 +748,7 @@ export function MessagesInbox() {
         </aside>
 
         <main
-          className={cn('relative flex min-h-0 min-w-0 flex-col', mobilePane === 'list' && 'hidden md:flex')}
+          className={cn('inbox-thread relative flex min-h-0 min-w-0 flex-col', mobilePane === 'list' && 'hidden md:flex')}
           onDragOver={(event) => { if (selected) { event.preventDefault(); setIsDraggingFile(true) } }}
           onDragLeave={(event) => { if (event.currentTarget === event.target) setIsDraggingFile(false) }}
           onDrop={(event) => {
@@ -716,21 +763,22 @@ export function MessagesInbox() {
               Soltá los archivos para adjuntarlos
             </div>
           ) : null}
-          {!selected ? <div className="grid flex-1 place-items-center p-8 text-center text-muted-foreground"><MessageCircle className="mb-3 h-10 w-10" />Seleccioná una conversación para ver sus mensajes.</div> : <>
-            <header className="flex items-center gap-1.5 border-b px-2 py-2 sm:gap-2 sm:px-4 sm:py-3">
+          {!selected ? <div className="inbox-empty flex flex-1 flex-col items-center justify-center p-8 text-center"><div className="mb-6 grid h-20 w-20 place-items-center rounded-3xl bg-primary/10 text-primary"><MessageCircle className="h-9 w-9" strokeWidth={1.5} /></div><h2 className="text-2xl font-semibold tracking-tight">Una buena atención empieza acá</h2><p className="mt-3 max-w-sm text-sm leading-relaxed text-muted-foreground">Seleccioná una conversación para continuar la consulta, compartir documentos y acompañar a tus clientes.</p><Button variant="outline" className="mt-6" onClick={() => setIsComposing(true)}><Plus className="h-4 w-4" />Iniciar conversación</Button><p className="mt-8 flex items-center gap-2 text-xs text-muted-foreground"><BriefcaseBusiness className="h-4 w-4" />Centro de Asesoramiento Paysandú</p></div> : <>
+            <header className="inbox-chat-header flex items-center gap-2 border-b px-2 py-3 sm:gap-3 sm:px-5 sm:py-4">
               <Button variant="ghost" size="icon" aria-label="Volver a la lista" className="shrink-0 md:hidden" onClick={() => setMobilePane('list')}><ArrowLeft className="h-5 w-5" /></Button>
+              <div aria-hidden="true" className="hidden h-10 w-10 shrink-0 place-items-center rounded-full bg-secondary text-sm font-semibold text-secondary-foreground sm:grid">{(selected.contact_name || selected.contact_phone || '?').slice(0, 2).toUpperCase()}</div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <h2 className="truncate font-semibold">{selected.contact_name || 'Sin nombre'}</h2>
+                  <h2 className="truncate font-semibold">{selected.contact_name || selected.contact_phone || selected.contact_email || 'Contacto sin nombre'}</h2>
                   <Badge variant="secondary" className="hidden shrink-0 sm:inline-flex">{channelLabel(selected.channel)}</Badge>
                   {selected.email_account ? <Badge variant="outline" className="hidden shrink-0 lg:inline-flex">{selected.email_account.account_type === 'shared' ? 'Compartida' : 'Personal'}</Badge> : null}
                 </div>
                 <p className="truncate text-xs text-muted-foreground">{selected.contact_email || selected.contact_phone || 'Contacto sin datos'}{selected.email_account ? ` · Desde: ${selected.email_account.display_name || selected.email_account.email_address}` : ''}</p>
               </div>
-              <select value={selected.status} onChange={(event) => void changeStatus(event.target.value as Exclude<Status, 'all'>)} className="h-9 shrink-0 rounded-md border bg-background px-2 text-sm"><option value="open">Abierta</option><option value="pending">Pendiente</option><option value="resolved">Resuelta</option><option value="spam">Spam</option></select>
+              <select aria-label="Estado de la conversación" value={selected.status} onChange={(event) => void changeStatus(event.target.value as Exclude<Status, 'all'>)} className="h-9 shrink-0 rounded-md border bg-background px-2 text-sm"><option value="open">Abierta</option><option value="pending">Pendiente</option><option value="resolved">Resuelta</option><option value="spam">Spam</option></select>
               <Sheet>
                 <SheetTrigger asChild>
-                  <Button variant="ghost" size="icon" aria-label="Detalles de la conversación" className="shrink-0 xl:hidden"><Info className="h-5 w-5" /></Button>
+                  <Button variant="ghost" size="icon" aria-label="Detalles de la conversación" className="shrink-0 2xl:hidden"><Info className="h-5 w-5" /></Button>
                 </SheetTrigger>
                 <SheetContent side="right" className="w-[85vw] max-w-sm overflow-y-auto">
                   <SheetHeader><SheetTitle>Detalles</SheetTitle></SheetHeader>
@@ -738,25 +786,29 @@ export function MessagesInbox() {
                 </SheetContent>
               </Sheet>
             </header>
-            <ScrollArea className="min-h-0 flex-1 bg-muted/20 p-3 sm:p-4">
+            <ScrollArea className="inbox-message-canvas min-h-0 flex-1 p-4 sm:p-6">
               {detailLoading ? <p className="text-sm text-muted-foreground">Cargando mensajes…</p> : null}
               <div className="space-y-2 sm:space-y-3">
-                {visibleMessages.map((message) => (
+                {!detailLoading && visibleMessages.length === 0 ? <p className="py-8 text-center text-sm text-muted-foreground">Todavía no hay mensajes en esta conversación.</p> : null}
+                {visibleMessages.map((message, index) => (
+                  <div key={message.id}>
+                    {(index === 0 || new Date(message.sent_at || message.created_at).toLocaleDateString('es-UY', { timeZone: 'America/Montevideo' }) !== new Date(visibleMessages[index - 1].sent_at || visibleMessages[index - 1].created_at).toLocaleDateString('es-UY', { timeZone: 'America/Montevideo' })) ? <div className="mb-5 mt-3 flex justify-center"><span className="inbox-date-label">{new Intl.DateTimeFormat('es-UY', { day: 'numeric', month: 'long', timeZone: 'America/Montevideo' }).format(new Date(message.sent_at || message.created_at))}</span></div> : null}
                   <div key={message.id} className={cn('flex', message.direction === 'outbound' ? 'justify-end' : 'justify-start')}>
                     <MessageBubble
                       message={message}
                       channel={selected.channel}
-                      timeLabel={formatDate(message.sent_at || message.created_at)}
+                      timeLabel={new Intl.DateTimeFormat('es-UY', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Montevideo' }).format(new Date(message.sent_at || message.created_at))}
                       linkedClientId={selected.linked_client_id}
                       linkedCaseId={selected.linked_case_id}
                       onOpenLightbox={openLightbox}
                     />
                   </div>
+                  </div>
                 ))}
               </div>
               <div ref={messagesEndRef} />
             </ScrollArea>
-            <div className="border-t p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:p-3 sm:pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+            <div className="inbox-reply border-t p-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:p-3 sm:pb-[max(0.75rem,env(safe-area-inset-bottom))]">
               <input
                 ref={fileInputRef}
                 type="file"
@@ -767,15 +819,35 @@ export function MessagesInbox() {
                   event.target.value = ''
                 }}
               />
+              {showTemplates ? <div role="listbox" id="chat-template-list" aria-label="Plantillas de WhatsApp" className="mb-3 max-h-[min(24rem,45dvh)] overflow-y-auto rounded-xl border bg-background p-2 shadow-sm">
+                <p className="px-3 py-2 text-xs text-muted-foreground">Plantillas · elegí el mensaje que querés enviar</p>
+                {matchingTemplates.length === 0 ? <p className="p-3 text-sm text-muted-foreground">No encontramos plantillas para esa búsqueda.</p> : matchingTemplates.map((template, index) => <button type="button" role="option" aria-selected={index === templateIndex} id={`chat-template-${index}`} key={template.id} disabled={sending || files.length > 0 || selected.status === 'resolved' || selected.status === 'spam'} onClick={() => chooseTemplate(template)} className={cn('block w-full rounded-lg p-3 text-left hover:bg-accent disabled:opacity-50', index === templateIndex && 'bg-accent')}><span className="block text-sm font-medium">{template.title ?? template.name}</span><span className="mt-1 block whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground">{template.body ?? 'El contenido de esta plantilla no está disponible en la vista previa.'}</span><span className="mt-2 block text-xs text-muted-foreground">/{template.name} · {template.language_code}</span></button>)}
+                {files.length > 0 ? <p className="px-3 py-2 text-xs text-destructive">Quitá los adjuntos para enviar una plantilla.</p> : null}
+              </div> : null}
+              {selectedTemplate ? <div className="mb-3 rounded-xl border bg-background p-4"><div className="flex items-center justify-between gap-3"><p className="text-sm font-semibold">{selectedTemplate.title ?? selectedTemplate.name}</p><Button variant="ghost" size="sm" disabled={sending} onClick={() => setTemplateId('')}>Quitar</Button></div><p className="mt-2 whitespace-pre-wrap text-sm">{selectedTemplate.body ?? 'Se enviará el contenido aprobado en Meta.'}</p><p className="mt-2 text-xs text-muted-foreground">{selectedTemplate.language_code} · Requiere aprobación de Meta. El envío no permite editar el texto.</p></div> : null}
               <div className="flex items-end gap-1.5 sm:gap-2">
-                <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0 md:h-10 md:w-10" title="Adjuntar archivo" onClick={() => fileInputRef.current?.click()} disabled={selected.status === 'resolved' || selected.status === 'spam' || sending || isRecorderActive}><Paperclip className="h-5 w-5 md:h-4 md:w-4" /></Button>
+                <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0 md:h-10 md:w-10" title="Adjuntar archivo" onClick={() => fileInputRef.current?.click()} disabled={selected.status === 'resolved' || selected.status === 'spam' || sending || isRecorderActive || !!selectedTemplate}><Paperclip className="h-5 w-5 md:h-4 md:w-4" /></Button>
                 {!isRecorderActive ? (
                   <Textarea
+                    aria-label="Escribir una respuesta"
                     rows={1}
                     value={draft}
                     onFocus={() => void markConversationRead(selected.id)}
-                    onChange={(event) => setDraft(event.target.value)}
-                    onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !isMobile) { event.preventDefault(); void sendReply() } }}
+                    onChange={(event) => { setDraft(event.target.value); setTemplateIndex(0); setDismissTemplates(false) }}
+                    aria-controls={showTemplates ? 'chat-template-list' : undefined}
+                    aria-expanded={!!showTemplates}
+                    aria-activedescendant={showTemplates && matchingTemplates[templateIndex] ? `chat-template-${templateIndex}` : undefined}
+                    onKeyDown={(event) => {
+                      if (event.nativeEvent.isComposing) return
+                      if (showTemplates && ['ArrowDown', 'ArrowUp', 'Enter', 'Escape'].includes(event.key)) {
+                        event.preventDefault()
+                        if (event.key === 'Escape') setDismissTemplates(true)
+                        else if (event.key === 'ArrowDown') setTemplateIndex(index => Math.min(index + 1, Math.max(0, matchingTemplates.length - 1)))
+                        else if (event.key === 'ArrowUp') setTemplateIndex(index => Math.max(0, index - 1))
+                        else if (matchingTemplates[templateIndex] && files.length === 0) chooseTemplate(matchingTemplates[templateIndex])
+                        return
+                      }
+                      if (event.key === 'Enter' && !event.shiftKey && !isMobile) { event.preventDefault(); void sendReply() } }}
                     onPaste={(event) => {
                       const imageFiles = Array.from(event.clipboardData?.items ?? [])
                         .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
@@ -785,13 +857,13 @@ export function MessagesInbox() {
                       event.preventDefault()
                       void addFiles(imageFiles)
                     }}
-                    placeholder={selected.status === 'resolved' ? 'La conversación está resuelta' : 'Escribí una respuesta…'}
-                    disabled={selected.status === 'resolved' || selected.status === 'spam' || sending}
+                    placeholder={selected.status === 'resolved' ? 'La conversación está resuelta' : selected.channel === 'whatsapp' ? 'Escribí un mensaje o / para plantillas…' : 'Escribí una respuesta…'}
+                    disabled={selected.status === 'resolved' || selected.status === 'spam' || sending || !!selectedTemplate}
                     className="max-h-40 min-h-11 flex-1 resize-none rounded-2xl md:min-h-10"
                   />
                 ) : null}
-                {!isRecorderActive && (draft.trim() || files.length > 0) ? (
-                  <Button size="icon" className="h-11 w-11 shrink-0 rounded-full md:h-10 md:w-10" title={sending ? 'Enviando…' : 'Enviar'} onClick={() => void sendReply()} disabled={(!draft.trim() && files.length === 0) || sending || selected.status === 'resolved' || selected.status === 'spam'}><Send className="h-5 w-5 md:h-4 md:w-4" /></Button>
+                {!isRecorderActive && (selectedTemplate || draft.trim() || files.length > 0) ? (
+                  <Button size="icon" className="h-11 w-11 shrink-0 rounded-full md:h-10 md:w-10" title={sending ? 'Enviando…' : 'Enviar'} onClick={() => void sendReply()} disabled={(!selectedTemplate && !draft.trim() && files.length === 0) || !!showTemplates || sending || selected.status === 'resolved' || selected.status === 'spam'}><Send className="h-5 w-5 md:h-4 md:w-4" /></Button>
                 ) : selected.channel === 'whatsapp' ? (
                   <AudioRecorderButton
                     onSend={handleSendVoiceNote}
@@ -805,8 +877,8 @@ export function MessagesInbox() {
             </div>
           </>}</main>
 
-        <aside className="hidden min-h-0 overflow-y-auto border-l p-4 xl:block">
-          {detailsPanel}
+        <aside className="inbox-details hidden min-h-0 overflow-y-auto border-l p-5 2xl:block">
+          {detailsPanel ?? <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-muted-foreground"><UserRound className="h-7 w-7" strokeWidth={1.5} /><p className="text-sm">Los datos del contacto y su caso aparecerán acá.</p></div>}
         </aside>
       </div>
       {error ? <p className="text-sm text-destructive">{error}</p> : null}

@@ -10,32 +10,33 @@ async function getDashboardData() {
   const supabase = await createClient()
   const user = await requireAuth()
 
-  // Get user's cases
-  const { data: cases } = await supabase
-    .from("cases")
-    .select(`
-      *,
-      clients (name),
-      case_members!inner (user_id)
-    `)
-    .eq("case_members.user_id", user.id)
-
-  // Get recent tasks
-  const { data: tasks } = await supabase
-    .from("tasks")
-    .select(`
-      *,
-      cases (title, clients (name))
-    `)
-    .or(`assigned_to.eq.${user.id},created_by.eq.${user.id}`)
-    .order("created_at", { ascending: false })
-    .limit(5)
-
-  // Get clients count
-  const { count: clientsCount } = await supabase.from("clients").select("*", { count: "exact", head: true })
-
-  // Get documents count
-  const { count: documentsCount } = await supabase.from("documents").select("*", { count: "exact", head: true })
+  // These queries are independent once the user is authenticated.
+  const [
+    { data: cases },
+    { data: tasks },
+    { count: clientsCount },
+    { count: documentsCount },
+  ] = await Promise.all([
+    supabase
+      .from("cases")
+      .select(`
+        *,
+        clients (name),
+        case_members!inner (user_id)
+      `)
+      .eq("case_members.user_id", user.id),
+    supabase
+      .from("tasks")
+      .select(`
+        *,
+        cases (title, clients (name))
+      `)
+      .or(`assigned_to.eq.${user.id},created_by.eq.${user.id}`)
+      .order("created_at", { ascending: false })
+      .limit(5),
+    supabase.from("clients").select("*", { count: "exact", head: true }),
+    supabase.from("documents").select("*", { count: "exact", head: true }),
+  ])
 
   return {
     cases: cases || [],

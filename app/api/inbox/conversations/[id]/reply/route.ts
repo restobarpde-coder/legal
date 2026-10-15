@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
-import { sendWhatsAppMedia, sendWhatsAppText, toWhatsAppMediaType, uploadWhatsAppMedia } from '@/lib/inbox/whatsapp'
+import { sendWhatsAppMedia, sendWhatsAppTemplate, sendWhatsAppText, toWhatsAppMediaType, uploadWhatsAppMedia } from '@/lib/inbox/whatsapp'
 import { sendEmail, replySubject } from '@/lib/inbox/smtp'
 import { decrypt } from '@/lib/inbox/crypto'
 import { storeInboxAttachment, storeInboxAttachmentFromStorage } from '@/lib/inbox/attachments'
+
+import { WHATSAPP_TEMPLATES } from '@/lib/inbox/whatsapp-templates'
 
 export const runtime = 'nodejs'
 
@@ -22,10 +24,10 @@ export async function POST(request: NextRequest, { params }: { params: Params })
   if (authErr || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const payload = await readReplyPayload(request)
-  if (!payload.content && payload.files.length === 0 && payload.storageFiles.length === 0) {
+  if (!payload.templateId && !payload.content && payload.files.length === 0 && payload.storageFiles.length === 0) {
     return NextResponse.json({ error: 'Escribí un mensaje o adjuntá un archivo' }, { status: 400 })
   }
-  const { content } = payload
+  let { content } = payload
 
   // Fetch conversation — RLS ensures user has access
   const { data: conv, error: convErr } = await supabase
@@ -40,6 +42,20 @@ export async function POST(request: NextRequest, { params }: { params: Params })
 
   if (conv.status === 'resolved' || conv.status === 'spam') {
     return NextResponse.json({ error: 'Cannot reply to a resolved or spam conversation' }, { status: 409 })
+  }
+
+  let template: { name: string; language_code: string; body?: string } | null = null
+  if (payload.templateId) {
+    if (conv.channel !== 'whatsapp' || payload.content || payload.files.length || payload.storageFiles.length) {
+      return NextResponse.json({ error: 'Enviá la plantilla sola desde una conversación de WhatsApp.' }, { status: 400 })
+    }
+    template = WHATSAPP_TEMPLATES.find(item => item.id === payload.templateId) ?? null
+    if (!template) {
+      const { data } = await supabase.from('inbox_whatsapp_templates').select('name, language_code').eq('id', payload.templateId).eq('is_active', true).maybeSingle()
+      template = data
+    }
+    if (!template) return NextResponse.json({ error: 'Plantilla no disponible' }, { status: 404 })
+    content = template.body ?? `[Plantilla: ${template.name}]`
   }
 
   // Get sender display name
@@ -93,7 +109,10 @@ export async function POST(request: NextRequest, { params }: { params: Params })
 
     try {
       const providerMessageIds: string[] = []
-      if (content) {
+      if (template) {
+        const { messageId } = await sendWhatsAppTemplate({ to: conv.wa_contact_id, name: template.name, languageCode: template.language_code })
+        providerMessageIds.push(messageId)
+      } else if (content) {
         const { messageId } = await sendWhatsAppText(conv.wa_contact_id, content)
         providerMessageIds.push(messageId)
       }
@@ -125,7 +144,7 @@ export async function POST(request: NextRequest, { params }: { params: Params })
       const errMsg = err instanceof Error ? err.message : 'Unknown error'
       await svc.from('inbox_messages').update({ wa_status: 'failed' }).eq('id', msg.id)
       await svc.from('inbox_delivery_attempts').update({ status: 'failed', last_error: errMsg }).eq('message_id', msg.id)
-      return NextResponse.json({ error: 'WhatsApp send failed', detail: errMsg }, { status: 502 })
+      return NextResponse.json({ error: errMsg, message_id: msg.id }, { status: 502 })
     }
 
     const persistedMessage = await getPersistedReply(svc, msg.id)
@@ -243,16 +262,16 @@ export async function POST(request: NextRequest, { params }: { params: Params })
 type UploadedReplyFile = File
 type StoredReplyFile = { path: string; filename: string; mimeType: string; size: number }
 
-async function readReplyPayload(request: NextRequest): Promise<{ content: string; files: UploadedReplyFile[]; storageFiles: StoredReplyFile[] }> {
+async function readReplyPayload(request: NextRequest): Promise<{ templateId: string; content: string; files: UploadedReplyFile[]; storageFiles: StoredReplyFile[] }> {
   const requestType = request.headers.get('content-type') ?? ''
   if (requestType.includes('multipart/form-data')) {
     const form = await request.formData()
     const files = form.getAll('files').filter((value): value is UploadedReplyFile => value instanceof File)
-    return { content: String(form.get('content') ?? '').trim(), files, storageFiles: [] }
+    return { templateId: '', content: String(form.get('content') ?? '').trim(), files, storageFiles: [] }
   }
   const body = await request.json()
   const storageFiles = Array.isArray(body?.attachments) ? body.attachments.filter((file: StoredReplyFile) => file?.path && file?.filename && file?.size) : []
-  return { content: String(body?.content ?? '').trim(), files: [], storageFiles }
+  return { templateId: String(body?.template_id ?? '').trim(), content: String(body?.content ?? '').trim(), files: [], storageFiles }
 }
 
 async function saveReplyAttachments(messageId: string, userId: string, files: UploadedReplyFile[], storageFiles: StoredReplyFile[]) {

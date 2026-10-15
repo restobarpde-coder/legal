@@ -2,7 +2,7 @@
 
 import { useRouter, usePathname } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
-import { useCallback, useRef, useTransition } from 'react'
+import { useCallback, useTransition } from 'react'
 
 type PrefetchRouteOptions = {
   includeData?: boolean
@@ -13,41 +13,44 @@ export function useOptimizedNavigation() {
   const pathname = usePathname()
   const queryClient = useQueryClient()
   const [isPending, startTransition] = useTransition()
-  const prefetchedRoutesRef = useRef<Set<string>>(new Set())
-  const prefetchedDataRef = useRef<Set<string>>(new Set())
 
-  const dataPrefetchers: Record<string, () => Promise<unknown>> = {
-    '/dashboard/cases': () =>
-      queryClient.prefetchQuery({
-        queryKey: ['cases', '', 'all', 'all'],
-        queryFn: () => fetch('/api/cases', { cache: 'no-store' }).then((res) => res.json()),
-        staleTime: 0,
-      }),
-    '/dashboard/clients': () =>
-      queryClient.prefetchQuery({
-        queryKey: ['clients', ''],
-        queryFn: () => fetch('/api/clients', { cache: 'no-store' }).then((res) => res.json()),
-        staleTime: 0,
-      }),
-  }
+  const prefetchData = useCallback((href: string) => {
+    const dataPrefetchers: Record<string, () => Promise<unknown>> = {
+      '/dashboard/cases': () =>
+        queryClient.prefetchQuery({
+          queryKey: ['cases', '', 'all', 'all'],
+          queryFn: () => fetch('/api/cases', { cache: 'no-store' }).then((res) => {
+            if (!res.ok) throw new Error('No se pudo precargar la página')
+            return res.json()
+          }),
+          staleTime: 30_000,
+        }),
+      '/dashboard/clients': () =>
+        queryClient.prefetchQuery({
+          queryKey: ['clients', ''],
+          queryFn: () => fetch('/api/clients', { cache: 'no-store' }).then((res) => {
+            if (!res.ok) throw new Error('No se pudo precargar la página')
+            return res.json()
+          }),
+          staleTime: 30_000,
+        }),
+    }
+    // React Query deduplicates requests and retries stale or failed prefetches.
+    void dataPrefetchers[href]?.()
+  }, [queryClient])
 
   // Prefetch inteligente basado en la ruta destino (con dedupe)
   const prefetchRoute = useCallback(
     (href: string, options?: PrefetchRouteOptions) => {
-      if (!prefetchedRoutesRef.current.has(href)) {
-        router.prefetch(href)
-        prefetchedRoutesRef.current.add(href)
-      }
+      // Let Next.js manage expiration and deduplication of its route cache.
+      router.prefetch(href)
 
       const shouldPrefetchData = options?.includeData ?? true
       if (!shouldPrefetchData) return
 
-      if (!prefetchedDataRef.current.has(href) && dataPrefetchers[href]) {
-        prefetchedDataRef.current.add(href)
-        void dataPrefetchers[href]()
-      }
+      prefetchData(href)
     },
-    [router, queryClient]
+    [router, prefetchData]
   )
 
   const prefetchCommonRoutes = useCallback(
@@ -66,7 +69,7 @@ export function useOptimizedNavigation() {
       }
 
       schedule(() => {
-        routes.forEach((route) => prefetchRoute(route))
+        routes.forEach((route) => prefetchRoute(route, { includeData: false }))
       })
     },
     [prefetchRoute]

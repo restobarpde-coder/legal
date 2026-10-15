@@ -26,3 +26,16 @@ No se incluye `retomar_contacto`, ya que no figura entre las plantillas cargadas
 El envío existente usa el nombre y el idioma del catálogo; los textos, encabezados
 estáticos y botones los entrega Meta desde la plantilla aprobada. No se envía un
 mensaje libre adicional fuera de la ventana de atención.
+
+## Desde un chat existente
+
+Escribir `/` en el campo de respuesta de WhatsApp abre el catálogo. Continuar
+escribiendo filtra por nombre o título. Las flechas recorren las opciones, Enter
+selecciona y Escape cierra la lista; también se puede seleccionar con un toque.
+La selección muestra una vista previa y requiere pulsar Enviar. Quitar permite
+volver al mensaje libre. Las plantillas se envían solas, sin archivos adicionales.
+
+El endpoint de respuesta acepta `template_id`, verifica el acceso a la conversación
+y resuelve nombre, idioma y cuerpo en el servidor. Conserva el historial y los
+estados de envío, incluidos los intentos fallidos. Meta valida la disponibilidad
+de la plantilla; aparecer en el catálogo no confirma su aprobación.

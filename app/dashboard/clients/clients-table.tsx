@@ -10,6 +10,7 @@ import { SearchBar } from "@/components/search-bar"
 import { DeleteConfirmationModal } from "@/components/delete-confirmation-modal"
 import { Edit, MoreVertical, Trash2 } from "lucide-react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { useDeleteClient, type Client } from "@/hooks/use-clients"
 
@@ -20,6 +21,7 @@ interface ClientsTableProps {
 }
 
 export function ClientsTable({ clients, searchQuery, onSearchChange }: ClientsTableProps) {
+  const router = useRouter()
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<{id: string, name: string} | null>(null)
 
@@ -95,7 +97,7 @@ export function ClientsTable({ clients, searchQuery, onSearchChange }: ClientsTa
                     <TableRow
                       key={client.id}
                       className="cursor-pointer hover:bg-accent transition-colors"
-                      onClick={() => window.location.href = `/dashboard/clients/${client.id}`}
+                      onClick={() => router.push(`/dashboard/clients/${client.id}`)}
                     >
                       <TableCell className="font-medium">{client.name}</TableCell>
                       <TableCell className="hidden md:table-cell">{client.company || "-"}</TableCell>
@@ -147,7 +149,7 @@ export function ClientsTable({ clients, searchQuery, onSearchChange }: ClientsTa
               clients.map((client) => (
                 <div
                   key={client.id}
-                  onClick={() => window.location.href = `/dashboard/clients/${client.id}`}
+                  onClick={() => router.push(`/dashboard/clients/${client.id}`)}
                   className="bg-card border rounded-lg p-4 cursor-pointer active:bg-accent transition-colors hover:shadow-md"
                 >
                   <div className="flex items-start justify-between gap-3">

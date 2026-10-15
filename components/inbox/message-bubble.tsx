@@ -28,7 +28,7 @@ function StatusIcon({ status }: { status: InboxMessage['wa_status'] }) {
   if (status === 'failed') return <AlertCircle className="h-3 w-3 text-destructive" />
   if (status === 'pending') return <Clock className="h-3 w-3 opacity-70" />
   if (status === 'sent') return <Check className="h-3 w-3 opacity-70" />
-  return <CheckCheck className="h-3 w-3 opacity-70" />
+  return <CheckCheck className={cn('h-3.5 w-3.5', status === 'read' ? 'text-sky-600 dark:text-sky-300' : 'opacity-70')} />
 }
 
 export function MessageBubble({ message, channel, timeLabel, linkedClientId, linkedCaseId, onOpenLightbox }: Props) {
@@ -46,7 +46,7 @@ export function MessageBubble({ message, channel, timeLabel, linkedClientId, lin
   )
 
   return (
-    <div className={cn('flex flex-col gap-1', outbound ? 'items-end' : 'items-start')}>
+    <div className={cn('flex w-full min-w-0 flex-col gap-1', outbound ? 'items-end' : 'items-start')}>
       {attachments.map((attachment, index) => (
         <div key={attachment.attachmentId ?? index} className="max-w-[85%] md:max-w-[75%] lg:max-w-[65%]">
           <MessageAttachment
@@ -63,11 +63,11 @@ export function MessageBubble({ message, channel, timeLabel, linkedClientId, lin
       {hasText || !hasAttachments ? (
         <div
           className={cn(
-            'max-w-[85%] rounded-2xl px-3 py-2 text-sm shadow-sm md:max-w-[75%] lg:max-w-[65%]',
-            outbound ? 'rounded-br-sm bg-primary text-primary-foreground' : 'rounded-bl-sm border bg-background'
+            'max-w-[90%] rounded-xl px-3.5 py-2.5 text-sm leading-relaxed sm:max-w-[80%] lg:max-w-[75%]',
+            channel === 'whatsapp' ? cn('inbox-bubble', outbound ? 'inbox-bubble-outbound rounded-tr-sm' : 'rounded-tl-sm') : outbound ? 'rounded-br-sm bg-primary text-primary-foreground' : 'rounded-bl-sm border bg-background'
           )}
         >
-          <p className="whitespace-pre-wrap">{message.content || (!hasAttachments ? `[${message.content_type}]` : null)}</p>
+          <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{message.content || (!hasAttachments ? `[${message.content_type}]` : null)}</p>
           {channel === 'email' && message.email_account ? (
             <p className="mt-2 border-t border-current/15 pt-1 text-[10px] opacity-75">
               {outbound ? 'Enviado desde' : 'Recibido en'}: {message.email_account.display_name || message.email_account.email_address}

@@ -1,0 +1,55 @@
+/* The communication workspace has its own palette; the rest of the dashboard
+   retains the centre's existing theme. Tokens also flow into compose controls. */
+.inbox-workspace {
+  --background: #ffffff;
+  --foreground: #172b29;
+  --card: #ffffff;
+  --card-foreground: #172b29;
+  --primary: #087f6c;
+  --primary-foreground: #ffffff;
+  --secondary: #e8f3ef;
+  --secondary-foreground: #245448;
+  --muted: #f0f4f3;
+  --muted-foreground: #596e69;
+  --accent: #e7f2ee;
+  --accent-foreground: #145c4e;
+  --border: #dfe8e4;
+  --input: #c8d6d0;
+  --ring: #087f6c;
+  color: var(--foreground);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+.inbox-frame { box-shadow: 0 8px 30px rgb(22 55 43 / 5%); }
+.inbox-list, .inbox-chat-header, .inbox-details { background: var(--background); }
+.inbox-conversation { border-bottom: 1px solid var(--border); }
+.inbox-conversation:hover { background: var(--muted); }
+.inbox-conversation.is-selected { background: var(--secondary); }
+.inbox-conversation:focus-visible, .inbox-filter:focus-visible {
+  outline: 2px solid var(--ring); outline-offset: -3px;
+}
+.inbox-filter { padding: 7px 13px; border-radius: 999px; font-size: 13px; font-weight: 500; color: var(--muted-foreground); background: var(--muted); cursor: pointer; }
+.inbox-filter.is-active { color: var(--secondary-foreground); background: var(--secondary); }
+.inbox-thread, .inbox-message-canvas, .inbox-empty { background-color: #eef1eb; }
+.inbox-message-canvas { scrollbar-gutter: stable; }
+.inbox-date-label { border-radius: 7px; padding: 5px 12px; background: var(--background); color: var(--muted-foreground); font-size: 12px; box-shadow: 0 1px 2px rgb(20 50 40 / 8%); }
+.inbox-reply { background: #f7f9f8; }
+.inbox-reply textarea { background: var(--background); border-color: var(--border); padding: 12px 16px; line-height: 1.5; }
+.inbox-bubble { background: var(--background, #fff); color: var(--foreground, #172b29); box-shadow: 0 1px 2px rgb(20 50 40 / 12%); }
+.inbox-bubble-outbound { background: #d9f4df; color: #173d2b; }
+.dark .inbox-workspace {
+  --background: #142724; --foreground: #e2eeea;
+  --card: #142724; --card-foreground: #e2eeea;
+  --primary: #66d4b5; --primary-foreground: #102c24;
+  --secondary: #254b40; --secondary-foreground: #b9ecda;
+  --muted: #1d3430; --muted-foreground: #a1b9b0;
+  --accent: #254b40; --accent-foreground: #d6f0e5;
+  --border: #30463e; --input: #425c50; --ring: #66d4b5;
+}
+.dark .inbox-thread, .dark .inbox-message-canvas, .dark .inbox-empty { background: #0e1e1a; }
+.dark .inbox-reply { background: #142724; }
+.dark .inbox-bubble-outbound { background: #245c47; color: #e4f3e9; }
+@media (max-width: 767px) {
+  .inbox-frame { border-radius: 12px; box-shadow: none; }
+  .inbox-chat-header h2 { font-size: 15px; }
+  .inbox-chat-header select { max-width: 100px; font-size: 12px; }
+}
