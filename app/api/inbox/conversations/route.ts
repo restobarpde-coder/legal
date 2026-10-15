@@ -5,6 +5,7 @@ import { resolveInboxContact } from '@/lib/inbox/contacts'
 import { sendEmail } from '@/lib/inbox/smtp'
 import { decrypt } from '@/lib/inbox/crypto'
 import { sendWhatsAppTemplate } from '@/lib/inbox/whatsapp'
+import { WHATSAPP_TEMPLATES } from '@/lib/inbox/whatsapp-templates'
 import { normalizePhoneUY } from '@/lib/phone'
 
 export const runtime = 'nodejs'
@@ -129,7 +130,11 @@ export async function POST(request: NextRequest) {
     const { e164, waId } = normalizedPhone!
     const templateId = String(body.template_id ?? '')
     if (!templateId) return NextResponse.json({ error: 'Elegí una plantilla aprobada de WhatsApp' }, { status: 400 })
-    const { data: template } = await supabase.from('inbox_whatsapp_templates').select('id, name, language_code').eq('id', templateId).eq('is_active', true).single()
+    let template: { id: string; name: string; language_code: string } | null = WHATSAPP_TEMPLATES.find(item => item.id === templateId) ?? null
+    if (!template) {
+      const { data } = await supabase.from('inbox_whatsapp_templates').select('id, name, language_code').eq('id', templateId).eq('is_active', true).single()
+      template = data
+    }
     if (!template) return NextResponse.json({ error: 'Plantilla no disponible' }, { status: 404 })
 
     const { data: conversation, error } = await svc.from('inbox_conversations').insert({

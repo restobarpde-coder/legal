@@ -16,7 +16,7 @@ export type InboxAccount = {
   sync_enabled?: boolean
 }
 
-export type InboxTemplate = { id: string; name: string; language_code: string }
+export type InboxTemplate = { id: string; name: string; language_code: string; title?: string; body?: string }
 
 export type ConversationFormDefaults = {
   channel?: 'whatsapp' | 'email'
@@ -137,16 +137,17 @@ export function ConversationForm({ defaults, linkedClientId, linkedCaseId, onCre
         <Input placeholder="Asunto" value={form.subject} onChange={event => update('subject', event.target.value)} required />
       </> : <>
         <div>
-          <label className="mb-1.5 block text-sm font-medium">Plantilla aprobada de Meta</label>
+          <label className="mb-1.5 block text-sm font-medium">Plantilla de WhatsApp</label>
           <select value={form.template_id} onChange={event => update('template_id', event.target.value)} required className="h-10 w-full rounded-md border bg-background px-3 text-sm">
             <option value="">Seleccioná una plantilla</option>
-            {templates.map(template => <option key={template.id} value={template.id}>{template.name} · {template.language_code}</option>)}
+            {templates.map(template => <option key={template.id} value={template.id}>{template.title ?? template.name} · {template.language_code}</option>)}
           </select>
-          <p className="mt-1.5 text-xs text-muted-foreground">El primer contacto de WhatsApp debe usar una plantilla aprobada.</p>
+          <p className="mt-1.5 text-xs text-muted-foreground">Para enviarla, la plantilla debe estar aprobada en Meta con el mismo nombre e idioma.</p>
+          {templates.find(template => template.id === form.template_id)?.body ? <p className="mt-3 whitespace-pre-wrap rounded-md border bg-muted/30 p-3 text-sm">{templates.find(template => template.id === form.template_id)?.body}</p> : null}
         </div>
       </>}
 
-      <Textarea placeholder={channel === 'email' ? 'Escribí el mensaje…' : 'Mensaje opcional para acompañar la plantilla…'} value={form.content} onChange={event => update('content', event.target.value)} required={channel === 'email'} className="min-h-40 resize-y" />
+      {channel === 'email' ? <Textarea placeholder="Escribí el mensaje…" value={form.content} onChange={event => update('content', event.target.value)} required className="min-h-40 resize-y" /> : null}
       {error ? <p className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">{error}</p> : null}
       <div className="flex justify-end gap-2 border-t pt-4">
         <Button type="button" variant="outline" onClick={onCancel} disabled={saving}>Cancelar</Button>

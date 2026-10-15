@@ -113,7 +113,13 @@ export async function sendWhatsAppTemplate(params: {
       template: { name: params.name, language: { code: params.languageCode } },
     }),
   })
-  if (!response.ok) throw new Error(`WhatsApp template send responded with status ${response.status}`)
+  if (!response.ok) {
+    const failure = await response.json().catch(() => null)
+    if (failure?.error?.code === 132001) {
+      throw new Error('La plantilla no está disponible en Meta para este idioma. Verificá que esté creada y aprobada con el mismo nombre e idioma.')
+    }
+    throw new Error('WhatsApp no pudo enviar la plantilla. Verificá su aprobación en Meta y volvé a intentar.')
+  }
   const data = await response.json()
   const messageId = data?.messages?.[0]?.id
   if (!messageId) throw new Error('WhatsApp API returned no message ID')

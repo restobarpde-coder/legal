@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { requireRole } from '@/lib/authz-server'
+import { WHATSAPP_TEMPLATES } from '@/lib/inbox/whatsapp-templates'
 
 export async function GET() {
   const supabase = await createClient()
@@ -8,7 +9,10 @@ export async function GET() {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { data, error } = await supabase.from('inbox_whatsapp_templates').select('id, name, language_code, category').eq('is_active', true).order('name')
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ templates: data ?? [] })
+  const customTemplates = (data ?? []).filter(template =>
+    !WHATSAPP_TEMPLATES.some(builtin => builtin.name === template.name && builtin.language_code === template.language_code)
+  )
+  return NextResponse.json({ templates: [...WHATSAPP_TEMPLATES, ...customTemplates] })
 }
 
 export async function POST(request: NextRequest) {
